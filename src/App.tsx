@@ -6,6 +6,8 @@ import { SignupPage } from './pages/SignupPage';
 import { RoleHome } from './pages/RoleHome';
 import { StudentDashboard } from './pages/StudentDashboard';
 import { TeacherDashboard } from './pages/TeacherDashboard';
+import { ExamDetailPage } from './pages/ExamDetailPage';
+import { TaskEditorPage } from './pages/TaskEditorPage';
 
 function App() {
   return (
@@ -35,6 +37,22 @@ function App() {
             element={
               <ProtectedRoute role="TEACHER">
                 <TeacherDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/teacher/exams/:examId"
+            element={
+              <ProtectedRoute role="TEACHER">
+                <ExamDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/teacher/exams/:examId/tasks/:taskId"
+            element={
+              <ProtectedRoute role="TEACHER">
+                <TaskEditorPage />
               </ProtectedRoute>
             }
           />
