@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wasm C-Compiler Online Judge</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs/loader.min.js"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col">
+
+    <header class="bg-gray-800 p-4 border-b border-gray-700">
+        <h1 class="text-xl font-bold text-teal-400">C言語 プログラミング演習システム</h1>
+    </header>
+
+    <main class="flex-1 flex flex-col md:flex-row p-4 gap-4 overflow-hidden">
+        <div class="flex-1 flex flex-col bg-gray-800 rounded-lg overflow-hidden border border-gray-700">
+            <div class="bg-gray-750 px-4 py-2 border-b border-gray-700 flex justify-between items-center">
+                <span class="text-sm font-semibold">main.c</span>
+                <button id="run-btn" class="bg-teal-500 hover:bg-teal-600 text-gray-900 font-bold px-4 py-1.5 rounded transition">
+                    ▶ コードを実行する
+                </button>
+            </div>
+            <div id="editor-container" class="flex-1 h-[400px] md:h-auto"></div>
+        </div>
+
+        <div class="w-full md:w-[450px] flex flex-col gap-4">
+            <div class="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                <h2 class="text-sm font-bold text-gray-400 mb-2">【問題】2つの整数を読み込み、その和を出力せよ。</h2>
+                <div class="bg-gray-900 p-2.5 rounded text-xs font-mono">
+                    <strong>入力例:</strong> 5 10 <br>
+                    <strong>期待される出力例:</strong> 15
+                </div>
+            </div>
+
+            <div class="flex-1 bg-gray-800 p-4 rounded-lg border border-gray-700 flex flex-col">
+                <h3 class="text-sm font-bold text-gray-400 mb-2">実行結果・コンソール出力</h3>
+                <pre id="console-output" class="flex-1 bg-gray-900 p-3 rounded text-sm font-mono text-green-400 overflow-y-auto whitespace-pre-wrap">ここにコンパイルや実行の結果が表示されます...</pre>
+                <div id="judge-status" class="mt-2 text-center py-2 rounded font-bold text-lg hidden"></div>
+            </div>
+        </div>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>

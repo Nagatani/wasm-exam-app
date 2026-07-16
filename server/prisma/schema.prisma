@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  TEACHER
+}
+
+enum ExamStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum Language {
+  C
+  JAVA
+}
+
+enum SubmissionStatus {
+  AC
+  WA
+  CE
+  TLE
+  MLE
+}
+
+model User {
+  id            String   @id @default(uuid())
+  studentNumber String   @unique
+  passwordHash  String
+  displayName   String
+  role          Role     @default(STUDENT)
+  createdAt     DateTime @default(now())
+
+  sessions       Session[]
+  examsCreated   Exam[]
+  submissions    Submission[]
+
+  @@map("users")
+}
+
+// Server-side session store: possessing the raw token isn't enough to prove
+// identity from a DB dump alone, and `revoked` lets a teacher (or the student
+// themselves) force an immediate logout without waiting for expiry.
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Exam {
+  id               String     @id @default(uuid())
+  title            String
+  description      String?
+  timeLimitMinutes Int
+  status           ExamStatus @default(DRAFT)
+  createdById      String
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  createdBy   User         @relation(fields: [createdById], references: [id])
+  tasks       Task[]
+  submissions Submission[]
+
+  @@map("exams")
+}
+
+model Task {
+  id               String  @id @default(uuid())
+  examId           String
+  order            Int
+  title            String
+  statementMarkdown String
+  starterCodeC     String?
+  starterCodeJava  String?
+  points           Int     @default(0)
+  createdAt        DateTime @default(now())
+
+  exam        Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  testCases   TestCase[]
+  solutions   Solution[]
+  submissions Submission[]
+
+  @@index([examId])
+  @@map("tasks")
+}
+
+model TestCase {
+  id             String  @id @default(uuid())
+  taskId         String
+  input          String
+  expectedOutput String
+  isSample       Boolean @default(false)
+  order          Int
+  timeLimitMs    Int     @default(2000)
+  memoryLimitMb  Int     @default(256)
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@map("test_cases")
+}
+
+// Reference/model answer. Only ever returned by teacher-only API routes.
+model Solution {
+  id       String   @id @default(uuid())
+  taskId   String
+  language Language
+  code     String
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, language])
+  @@map("solutions")
+}
+
+// Immutable once created (enforced in the API layer, not the DB): a
+// submission is a record of what a student actually turned in.
+model Submission {
+  id            String            @id @default(uuid())
+  examId        String
+  taskId        String
+  studentId     String
+  language      Language
+  code          String
+  results       Json
+  overallStatus SubmissionStatus
+  score         Int               @default(0)
+  submittedAt   DateTime          @default(now())
+
+  exam    Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+  task    Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  student User @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([examId])
+  @@index([studentId])
+  @@map("submissions")
+}
