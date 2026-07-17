@@ -5,6 +5,7 @@ import { getTask, updateTask, deleteTask, createTestCase, upsertSolution } from 
 import { ApiError } from '../api/client';
 import type { Language, TaskDetail } from '../types/exam';
 import { TestCaseRow } from '../components/TestCaseRow';
+import { CodeEditor } from '../components/CodeEditor';
 
 const inputClass =
   'w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white';
@@ -167,16 +168,15 @@ export function TaskEditorPage() {
           />
         )}
 
-        <label className="mb-1 block text-sm text-gray-400" htmlFor="starter-c">
-          初期テンプレートコード（C言語）
-        </label>
-        <textarea
-          id="starter-c"
-          rows={6}
-          className={`mb-3 ${codeClass}`}
-          value={task.starterCodeC ?? ''}
-          onChange={(e) => setTask({ ...task, starterCodeC: e.target.value })}
-        />
+        <label className="mb-1 block text-sm text-gray-400">初期テンプレートコード（C言語）</label>
+        <div className="mb-3">
+          <CodeEditor
+            value={task.starterCodeC ?? ''}
+            onChange={(v) => setTask({ ...task, starterCodeC: v })}
+            language="c"
+            height={220}
+          />
+        </div>
 
         <label className="mb-1 block text-sm text-gray-400" htmlFor="starter-java">
           初期テンプレートコード（Java）
@@ -244,7 +244,12 @@ export function TaskEditorPage() {
         </div>
       </div>
 
-      <SolutionEditor taskId={task.id} language="C" initialCode={findSolution(task, 'C')} />
+      <SolutionEditor
+        taskId={task.id}
+        language="C"
+        initialCode={findSolution(task, 'C')}
+        useMonaco
+      />
       <SolutionEditor taskId={task.id} language="JAVA" initialCode={findSolution(task, 'JAVA')} />
     </div>
   );
@@ -258,10 +263,12 @@ function SolutionEditor({
   taskId,
   language,
   initialCode,
+  useMonaco = false,
 }: {
   taskId: string;
   language: Language;
   initialCode: string;
+  useMonaco?: boolean;
 }) {
   const [code, setCode] = useState(initialCode);
   const [saving, setSaving] = useState(false);
@@ -283,12 +290,18 @@ function SolutionEditor({
       <h3 className="mb-2 text-sm font-bold text-gray-400">
         解答例コード（{language === 'C' ? 'C言語' : 'Java'}） — 生徒には非公開
       </h3>
-      <textarea
-        rows={6}
-        className={`mb-2 ${codeClass}`}
-        value={code}
-        onChange={(e) => setCode(e.target.value)}
-      />
+      {useMonaco ? (
+        <div className="mb-2">
+          <CodeEditor value={code} onChange={setCode} language="c" height={220} />
+        </div>
+      ) : (
+        <textarea
+          rows={6}
+          className={`mb-2 ${codeClass}`}
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+        />
+      )}
       <button
         onClick={handleSave}
         disabled={saving}

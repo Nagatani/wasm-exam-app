@@ -38,12 +38,20 @@ export function TeacherDashboard() {
     <div className="min-h-screen bg-gray-900 p-6 text-white">
       <header className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-bold text-teal-400">講師管理画面</h1>
-        <button
-          onClick={() => logOut().then(refresh)}
-          className="rounded bg-gray-700 px-3 py-1.5 text-sm hover:bg-gray-600"
-        >
-          ログアウト
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/teacher/sandbox"
+            className="rounded bg-gray-700 px-3 py-1.5 text-sm hover:bg-gray-600"
+          >
+            サンドボックス動作確認
+          </Link>
+          <button
+            onClick={() => logOut().then(refresh)}
+            className="rounded bg-gray-700 px-3 py-1.5 text-sm hover:bg-gray-600"
+          >
+            ログアウト
+          </button>
+        </div>
       </header>
 
       <p className="mb-4 text-gray-400">ようこそ、{profile?.studentNumber} さん。</p>

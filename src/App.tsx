@@ -8,6 +8,7 @@ import { StudentDashboard } from './pages/StudentDashboard';
 import { TeacherDashboard } from './pages/TeacherDashboard';
 import { ExamDetailPage } from './pages/ExamDetailPage';
 import { TaskEditorPage } from './pages/TaskEditorPage';
+import { SandboxPage } from './pages/SandboxPage';
 
 function App() {
   return (
@@ -53,6 +54,14 @@ function App() {
             element={
               <ProtectedRoute role="TEACHER">
                 <TaskEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/teacher/sandbox"
+            element={
+              <ProtectedRoute role="TEACHER">
+                <SandboxPage />
               </ProtectedRoute>
             }
           />
