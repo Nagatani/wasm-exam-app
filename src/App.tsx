@@ -9,6 +9,8 @@ import { TeacherDashboard } from './pages/TeacherDashboard';
 import { ExamDetailPage } from './pages/ExamDetailPage';
 import { TaskEditorPage } from './pages/TaskEditorPage';
 import { SandboxPage } from './pages/SandboxPage';
+import { StudentTaskPage } from './pages/StudentTaskPage';
+import { StudentExamFinishedPage } from './pages/StudentExamFinishedPage';
 
 function App() {
   return (
@@ -30,6 +32,22 @@ function App() {
             element={
               <ProtectedRoute role="STUDENT">
                 <StudentDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/student/exams/:examId/tasks/:taskId"
+            element={
+              <ProtectedRoute role="STUDENT">
+                <StudentTaskPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/student/exams/:examId/finished"
+            element={
+              <ProtectedRoute role="STUDENT">
+                <StudentExamFinishedPage />
               </ProtectedRoute>
             }
           />
