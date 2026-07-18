@@ -62,3 +62,34 @@ export interface TaskDetail {
   testCases: TestCase[];
   solutions: Solution[];
 }
+
+export type SubmissionOverallStatus = 'AC' | 'WA' | 'CE' | 'TLE' | 'MLE';
+
+export interface TaskResultColumn {
+  id: string;
+  title: string;
+  order: number;
+  points: number;
+}
+
+export interface StudentTaskCell {
+  taskId: string;
+  status: SubmissionOverallStatus | null;
+  score: number;
+  submittedAt: string | null;
+}
+
+export interface StudentResultRow {
+  id: string;
+  studentNumber: string;
+  displayName: string;
+  results: StudentTaskCell[];
+  totalScore: number;
+  lastSubmittedAt: string | null;
+}
+
+export interface ExamResults {
+  exam: { id: string; title: string };
+  tasks: TaskResultColumn[];
+  students: StudentResultRow[];
+}

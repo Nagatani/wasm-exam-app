@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
+import { getExamResults } from '../lib/examResults';
+import { toCsv, UTF8_BOM } from '../lib/csv';
 
 export const examsRouter = Router();
 
@@ -115,6 +117,52 @@ examsRouter.delete('/:examId', async (req, res) => {
 
   await prisma.exam.delete({ where: { id: req.params.examId } });
   res.status(204).end();
+});
+
+examsRouter.get('/:examId/results', async (req, res) => {
+  const results = await getExamResults(req.params.examId);
+  if (!results) {
+    res.status(404).json({ error: '試験が見つかりません。' });
+    return;
+  }
+  res.json(results);
+});
+
+examsRouter.get('/:examId/results/csv', async (req, res) => {
+  const results = await getExamResults(req.params.examId);
+  if (!results) {
+    res.status(404).json({ error: '試験が見つかりません。' });
+    return;
+  }
+
+  const header = [
+    '学籍番号',
+    '氏名',
+    '試験名',
+    ...results.tasks.map((t) => t.title),
+    '合計点',
+    '提出日時',
+  ];
+
+  const rows = results.students.map((student) => [
+    student.studentNumber,
+    student.displayName,
+    results.exam.title,
+    ...student.results.map((r) => String(r.score)),
+    String(student.totalScore),
+    student.lastSubmittedAt ? student.lastSubmittedAt.toISOString() : '',
+  ]);
+
+  const csv = UTF8_BOM + toCsv([header, ...rows]);
+  const asciiFilename = `exam-results-${results.exam.id}.csv`;
+  const utf8Filename = encodeURIComponent(`${results.exam.title}-成績.csv`);
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${asciiFilename}"; filename*=UTF-8''${utf8Filename}`,
+  );
+  res.send(csv);
 });
 
 examsRouter.post('/:examId/tasks', async (req, res) => {

@@ -11,6 +11,7 @@ import { TaskEditorPage } from './pages/TaskEditorPage';
 import { SandboxPage } from './pages/SandboxPage';
 import { StudentTaskPage } from './pages/StudentTaskPage';
 import { StudentExamFinishedPage } from './pages/StudentExamFinishedPage';
+import { ExamResultsPage } from './pages/ExamResultsPage';
 
 function App() {
   return (
@@ -72,6 +73,14 @@ function App() {
             element={
               <ProtectedRoute role="TEACHER">
                 <TaskEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/teacher/exams/:examId/results"
+            element={
+              <ProtectedRoute role="TEACHER">
+                <ExamResultsPage />
               </ProtectedRoute>
             }
           />

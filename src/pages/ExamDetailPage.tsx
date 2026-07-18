@@ -165,12 +165,20 @@ export function ExamDetailPage() {
 
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-bold">問題一覧</h2>
-        <button
-          onClick={handleAddTask}
-          className="rounded bg-teal-500 px-3 py-1.5 text-sm font-bold text-gray-900 hover:bg-teal-600"
-        >
-          + 問題を追加
-        </button>
+        <div className="flex gap-2">
+          <Link
+            to={`/teacher/exams/${exam.id}/results`}
+            className="rounded bg-gray-700 px-3 py-1.5 text-sm font-bold hover:bg-gray-600"
+          >
+            成績を見る
+          </Link>
+          <button
+            onClick={handleAddTask}
+            className="rounded bg-teal-500 px-3 py-1.5 text-sm font-bold text-gray-900 hover:bg-teal-600"
+          >
+            + 問題を追加
+          </button>
+        </div>
       </div>
 
       {exam.tasks.length === 0 ? (
