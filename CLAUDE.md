@@ -18,7 +18,9 @@ Being built in explicit phases (see project memory / prior conversation for the 
 
 Frontend (repo root):
 - `npm run dev` — start the Vite dev server (expects the API server from `VITE_API_BASE_URL` in `.env`, default `http://localhost:4000`).
-- `npm run build` — typecheck (`tsc -b`) then production build.
+- `npm run build` — typecheck (`tsc -b`) then production build (uses `.env`/`.env.production` per Vite's mode rules — see "Consolidated serving" below).
+- `npm run build:full` — the above, then also builds `server/`. Use this before `npm start`.
+- `npm start` — runs `server/`'s compiled output (`npm --prefix server run start`), which serves both the API and the built frontend from one process/port. This is the *operational* run mode; `npm run dev` (two terminals) is still the *development* workflow.
 - `npm run lint` — run oxlint over the frontend.
 - `npm run preview` — preview a production build locally.
 
@@ -42,6 +44,16 @@ Two independent npm projects in one repo, no shared `node_modules`:
 - **`server/`**: Express + TypeScript + Prisma + PostgreSQL. Owns all persistence and all auth. Deployed and run independently of the frontend (e.g. behind a reverse proxy on institution-controlled infra).
 
 There is no third-party BaaS anywhere in this stack. Judging still happens in the student's browser (WASI/Wasmer, CheerpJ) — the server's job is auth, data storage, and (in later phases) authoring/grading APIs, not code execution.
+
+### Consolidated serving: one process instead of two terminals
+
+For actual day-to-day operation (not active development), `server/src/index.ts` also serves the frontend's production build itself via `express.static`, plus a catch-all `app.get('*', ...)` that falls back to `index.html` so React Router's client-side routes survive a hard refresh. This was added specifically because running two separate dev-server terminals (frontend + backend) every time was operational friction the user didn't want during regular use (e.g. running this during a class).
+
+- `CLIENT_DIST_PATH` (server env, optional) resolves to `path.resolve(__dirname, '../../dist')` by default — this works unchanged whether the server is running via `tsx watch src/index.ts` (dev) or compiled `node dist/index.js` (prod), because `server/src` and `server/dist` sit at the same depth under `server/`, one level below the repo-root `dist/` the frontend builds into. Don't "fix" this path assuming it's dev-only; it's intentionally depth-symmetric.
+- The Express routes register the API (`/api/*`) *before* `express.static`/the catch-all, so API paths always resolve first — the static/catch-all block only sees requests nothing else matched.
+- **Build the frontend with `VITE_API_BASE_URL` empty** (`.env.production`, copy from `.env.production.example`) when targeting consolidated serving, so `src/api/client.ts`'s `apiFetch` produces same-origin relative paths (`fetch("/api/...")`) instead of a hardcoded dev URL — this is what makes the same build work regardless of what host/port the operational deployment actually runs on. `npm run build` picks `.env.production` over `.env` automatically because Vite defaults to production mode for builds; `npm run dev` still uses `.env` (pointing at `http://localhost:4000`) since it defaults to development mode. Verified by grepping the built bundle for the dev URL (absent) and for a bare `/api/...` path (present) after a `.env.production`-driven build.
+- The COOP/COEP headers Phase 3's C sandbox needs (see below) are now set as global Express middleware, not just in `vite.config.ts` — because this server can be the one serving the HTML document in operational mode, and cross-origin isolation has to come from whatever origin actually serves that document.
+- This doesn't replace the two-terminal dev workflow — `npm run dev` (Vite, port 5173) + `server`'s `npm run dev` (port 4000) is still how you'd want to work on the frontend with HMR. Consolidated serving is for running the finished app, not editing it.
 
 ### Auth: student-ID + password, custom sessions
 
