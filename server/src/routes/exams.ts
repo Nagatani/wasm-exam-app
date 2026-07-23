@@ -167,6 +167,35 @@ examsRouter.get('/:examId/results/csv', async (req, res) => {
   res.send(csv);
 });
 
+// "差し戻し": wipes a single student's attempt at this exam back to
+// never-took-it — deletes every Submission plus the ExamAttempt row so the
+// student-side countdown restarts from scratch the next time they open it.
+// Irreversible (submissions are otherwise immutable by design), so this is
+// the one place that deliberately breaks that invariant, and only a teacher
+// can reach it.
+examsRouter.delete('/:examId/students/:studentId/results', async (req, res) => {
+  const { examId, studentId } = req.params;
+
+  const exam = await prisma.exam.findUnique({ where: { id: examId } });
+  if (!exam) {
+    res.status(404).json({ error: '試験が見つかりません。' });
+    return;
+  }
+
+  const student = await prisma.user.findUnique({ where: { id: studentId } });
+  if (!student || student.role !== 'STUDENT') {
+    res.status(404).json({ error: '生徒が見つかりません。' });
+    return;
+  }
+
+  await prisma.$transaction([
+    prisma.submission.deleteMany({ where: { examId, studentId } }),
+    prisma.examAttempt.deleteMany({ where: { examId, studentId } }),
+  ]);
+
+  res.status(204).end();
+});
+
 examsRouter.post('/:examId/tasks', async (req, res) => {
   const exam = await prisma.exam.findUnique({ where: { id: req.params.examId } });
   if (!exam) {

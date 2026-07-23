@@ -40,6 +40,15 @@ export function getExamResults(examId: string) {
   return apiFetch<ExamResults>(`/api/exams/${examId}/results`);
 }
 
+// Deletes every submission + the exam-attempt record for one student on this
+// exam — irreversible. Used to "差し戻し" (revert) a student back to
+// never-having-taken the exam.
+export function deleteStudentExamResults(examId: string, studentId: string) {
+  return apiFetch<void>(`/api/exams/${examId}/students/${studentId}/results`, {
+    method: 'DELETE',
+  });
+}
+
 // The results endpoint returns JSON but the CSV export is a separate route
 // returning text/csv, so it can't go through apiFetch's JSON parsing — this
 // fetches the blob directly and triggers a browser download.

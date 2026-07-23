@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { downloadExamResultsCsv, getExamResults } from '../api/exams';
+import { deleteStudentExamResults, downloadExamResultsCsv, getExamResults } from '../api/exams';
 import { ApiError } from '../api/client';
 import type { ExamResults, SubmissionOverallStatus } from '../types/exam';
 import { ThemeToggle } from '../components/ThemeToggle';
@@ -32,14 +32,28 @@ export function ExamResultsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [revertingId, setRevertingId] = useState<string | null>(null);
+  // Only show the full-page loading state on the very first fetch — a
+  // post-revert refresh should update the table in place, not blank it.
+  const hasLoadedOnceRef = useRef(false);
 
-  useEffect(() => {
+  const loadResults = useCallback(() => {
     if (!examId) return;
+    if (!hasLoadedOnceRef.current) {
+      setLoading(true);
+    }
     getExamResults(examId)
-      .then(setResults)
+      .then((data) => {
+        setResults(data);
+        hasLoadedOnceRef.current = true;
+      })
       .catch((err) => setError(err instanceof ApiError ? err.message : '成績の取得に失敗しました。'))
       .finally(() => setLoading(false));
   }, [examId]);
+
+  useEffect(() => {
+    loadResults();
+  }, [loadResults]);
 
   async function handleDownload() {
     if (!examId) return;
@@ -51,6 +65,27 @@ export function ExamResultsPage() {
       setError(err instanceof ApiError ? err.message : 'CSVのダウンロードに失敗しました。');
     } finally {
       setDownloading(false);
+    }
+  }
+
+  async function handleRevert(studentId: string, displayName: string, studentNumber: string) {
+    if (!examId) return;
+    if (
+      !confirm(
+        `${displayName}（${studentNumber}）のこの試験の受験結果をすべて削除し、受験をなかったことにします。この操作は取り消せません。よろしいですか？`,
+      )
+    ) {
+      return;
+    }
+    setRevertingId(studentId);
+    setError(null);
+    try {
+      await deleteStudentExamResults(examId, studentId);
+      loadResults();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '差し戻しに失敗しました。');
+    } finally {
+      setRevertingId(null);
     }
   }
 
@@ -115,6 +150,7 @@ export function ExamResultsPage() {
                 <th className="whitespace-nowrap px-3 py-2 text-left">合計点</th>
                 <th className="whitespace-nowrap px-3 py-2 text-left">所要時間</th>
                 <th className="whitespace-nowrap px-3 py-2 text-left">最終提出日時</th>
+                <th className="whitespace-nowrap px-3 py-2 text-left">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -156,6 +192,16 @@ export function ExamResultsPage() {
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-mp-muted">
                     {formatDateTime(student.lastSubmittedAt)}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2">
+                    <button
+                      onClick={() => handleRevert(student.id, student.displayName, student.studentNumber)}
+                      disabled={!student.lastSubmittedAt || revertingId === student.id}
+                      title="この生徒の受験結果をすべて削除し、受験をなかったことにします。"
+                      className="rounded bg-mp-red px-3 py-1 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
+                    >
+                      {revertingId === student.id ? '削除中...' : '差し戻し'}
+                    </button>
                   </td>
                 </tr>
               ))}
