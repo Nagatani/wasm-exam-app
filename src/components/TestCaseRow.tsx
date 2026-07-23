@@ -78,7 +78,7 @@ export function TestCaseRow({ testCase, onUpdated, onDeleted }: TestCaseRowProps
           </button>
           <button
             onClick={handleDelete}
-            className="rounded bg-mp-red px-3 py-1 text-sm font-bold text-mp-ink hover:opacity-90"
+            className="rounded bg-mp-red px-3 py-1 text-sm font-bold text-mp-btn-fg hover:opacity-90"
           >
             削除
           </button>

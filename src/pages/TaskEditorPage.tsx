@@ -199,14 +199,14 @@ export function TaskEditorPage() {
           <button
             type="submit"
             disabled={saving}
-            className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-ink hover:opacity-90 disabled:opacity-50"
+            className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
           >
             {saving ? '保存中...' : '保存'}
           </button>
           <button
             type="button"
             onClick={handleDelete}
-            className="rounded bg-mp-red px-4 py-2 font-bold text-mp-ink hover:opacity-90"
+            className="rounded bg-mp-red px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90"
           >
             問題を削除
           </button>
@@ -218,7 +218,7 @@ export function TaskEditorPage() {
           <h2 className="text-lg font-bold">テストケース</h2>
           <button
             onClick={handleAddTestCase}
-            className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-ink hover:opacity-90"
+            className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90"
           >
             + テストケースを追加
           </button>

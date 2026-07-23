@@ -89,7 +89,7 @@ export function StudentDashboard() {
               <button
                 onClick={() => handleStart(exam.id)}
                 disabled={starting === exam.id}
-                className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-ink hover:opacity-90 disabled:opacity-50"
+                className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
               >
                 {starting === exam.id ? '読み込み中...' : '受験する'}
               </button>

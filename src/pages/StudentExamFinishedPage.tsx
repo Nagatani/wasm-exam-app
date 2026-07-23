@@ -93,7 +93,7 @@ export function StudentExamFinishedPage() {
 
         <Link
           to="/student"
-          className="block rounded bg-mp-cyan px-4 py-2 text-center font-bold text-mp-ink hover:opacity-90"
+          className="block rounded bg-mp-cyan px-4 py-2 text-center font-bold text-mp-btn-fg hover:opacity-90"
         >
           試験一覧に戻る
         </Link>

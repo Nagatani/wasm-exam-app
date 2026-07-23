@@ -62,7 +62,7 @@ export function TeacherDashboard() {
         <h2 className="text-lg font-bold">試験一覧</h2>
         <button
           onClick={() => setShowCreateForm((v) => !v)}
-          className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-ink hover:opacity-90"
+          className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90"
         >
           {showCreateForm ? 'キャンセル' : '+ 新規試験作成'}
         </button>
@@ -99,7 +99,7 @@ export function TeacherDashboard() {
                 <span
                   className={
                     exam.status === 'PUBLISHED'
-                      ? 'rounded bg-mp-green px-2 py-1 text-xs font-bold text-mp-ink'
+                      ? 'rounded bg-mp-green px-2 py-1 text-xs font-bold text-mp-btn-fg'
                       : 'rounded border border-mp-border bg-mp-surface-hover px-2 py-1 text-xs text-mp-muted'
                   }
                 >
@@ -180,7 +180,7 @@ function CreateExamForm({ onCreated }: { onCreated: () => void }) {
       <button
         type="submit"
         disabled={submitting}
-        className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-ink hover:opacity-90 disabled:opacity-50"
+        className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
       >
         {submitting ? '作成中...' : '作成する'}
       </button>

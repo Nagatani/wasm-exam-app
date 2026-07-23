@@ -14,7 +14,9 @@
   --mp-border: #5b595c;
   --mp-muted: #939293;
   --mp-fg: #fcfcfa;
-  --mp-ink: #19181a;
+  /* Dark-theme accents are pastel/light (straight from Monokai Pro), so
+     near-black text reads best on top of a solid accent fill. */
+  --mp-btn-fg: #19181a;
   --mp-red: #ff6188;
   --mp-orange: #fc9867;
   --mp-yellow: #ffd866;
@@ -30,13 +32,20 @@
   --mp-border: #d3cdcc;
   --mp-muted: #706b6e;
   --mp-fg: #29242a;
-  --mp-ink: #19181a;
-  --mp-red: #e14775;
-  --mp-orange: #e16032;
-  --mp-yellow: #cc7a0a;
-  --mp-green: #269d69;
-  --mp-cyan: #1c8ca8;
-  --mp-purple: #7058be;
+  /* Light-theme accents are deliberately deeper than Monokai Pro Light's own
+     editor syntax colors (kept faithfully in runner/monacoThemes.ts) — a
+     straight reuse of those mid-tone hues as solid button fills reads flat
+     against a near-white page and gives poor contrast with any single text
+     color. Darkening ~20% (same hue/saturation) lets every button here use
+     white text confidently, so light mode doesn't just look like dark mode's
+     colors on a lighter page. */
+  --mp-btn-fg: #ffffff;
+  --mp-red: #cc2154;
+  --mp-orange: #c0471c;
+  --mp-yellow: #a36208;
+  --mp-green: #1e7e54;
+  --mp-cyan: #167086;
+  --mp-purple: #553ea0;
 }
 
 @theme inline {
@@ -46,7 +55,7 @@
   --color-mp-border: var(--mp-border);
   --color-mp-muted: var(--mp-muted);
   --color-mp-fg: var(--mp-fg);
-  --color-mp-ink: var(--mp-ink);
+  --color-mp-btn-fg: var(--mp-btn-fg);
   --color-mp-red: var(--mp-red);
   --color-mp-orange: var(--mp-orange);
   --color-mp-yellow: var(--mp-yellow);

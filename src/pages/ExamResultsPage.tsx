@@ -77,7 +77,7 @@ export function ExamResultsPage() {
         <button
           onClick={handleDownload}
           disabled={downloading}
-          className="rounded bg-mp-cyan px-4 py-2 text-sm font-bold text-mp-ink hover:opacity-90 disabled:opacity-50"
+          className="rounded bg-mp-cyan px-4 py-2 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
         >
           {downloading ? 'ダウンロード中...' : '📄 CSVダウンロード'}
         </button>

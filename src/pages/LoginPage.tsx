@@ -71,7 +71,7 @@ export function LoginPage() {
         <button
           type="submit"
           disabled={submitting}
-          className="w-full rounded bg-mp-cyan py-2 font-bold text-mp-ink transition hover:opacity-90 disabled:opacity-50"
+          className="w-full rounded bg-mp-cyan py-2 font-bold text-mp-btn-fg transition hover:opacity-90 disabled:opacity-50"
         >
           {submitting ? 'ログイン中...' : 'ログイン'}
         </button>

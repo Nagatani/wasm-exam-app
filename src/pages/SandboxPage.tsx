@@ -72,7 +72,7 @@ export function SandboxPage() {
       <button
         onClick={handleRun}
         disabled={status === 'loading'}
-        className="mb-4 rounded bg-mp-cyan px-4 py-2 font-bold text-mp-ink hover:opacity-90 disabled:opacity-50"
+        className="mb-4 rounded bg-mp-cyan px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
       >
         {status === 'loading' ? '実行中...' : '▶ コンパイル＆実行'}
       </button>

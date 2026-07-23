@@ -153,14 +153,14 @@ export function ExamDetailPage() {
           <button
             type="submit"
             disabled={saving}
-            className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-ink hover:opacity-90 disabled:opacity-50"
+            className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
           >
             {saving ? '保存中...' : '保存'}
           </button>
           <button
             type="button"
             onClick={handleDelete}
-            className="rounded bg-mp-red px-4 py-2 font-bold text-mp-ink hover:opacity-90"
+            className="rounded bg-mp-red px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90"
           >
             試験を削除
           </button>
@@ -178,7 +178,7 @@ export function ExamDetailPage() {
           </Link>
           <button
             onClick={handleAddTask}
-            className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-ink hover:opacity-90"
+            className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90"
           >
             + 問題を追加
           </button>
