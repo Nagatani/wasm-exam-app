@@ -4,6 +4,9 @@ export interface StudentExamSummary {
   description: string | null;
   timeLimitMinutes: number;
   taskCount: number;
+  // Distinct tasks this student has submitted for this exam. Fully
+  // submitted (>= taskCount, and taskCount > 0) means the exam is done.
+  submittedTaskCount: number;
 }
 
 export interface StudentTaskSummary {

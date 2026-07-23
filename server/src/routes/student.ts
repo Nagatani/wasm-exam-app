@@ -20,12 +20,25 @@ const judgeRequestSchema = z.object({
   outcomes: z.array(outcomeSchema),
 });
 
-studentRouter.get('/exams', async (_req, res) => {
+studentRouter.get('/exams', async (req, res) => {
   const exams = await prisma.exam.findMany({
     where: { status: 'PUBLISHED' },
     orderBy: { createdAt: 'desc' },
     include: { _count: { select: { tasks: true } } },
   });
+
+  // Distinct (examId, taskId) submissions for this student across every
+  // published exam, so the dashboard can tell "fully submitted" apart from
+  // "not started"/"in progress" without an extra round-trip per exam.
+  const submissions = await prisma.submission.findMany({
+    where: { studentId: req.user!.id, examId: { in: exams.map((e) => e.id) } },
+    select: { examId: true, taskId: true },
+    distinct: ['examId', 'taskId'],
+  });
+  const submittedCountByExam = new Map<string, number>();
+  for (const s of submissions) {
+    submittedCountByExam.set(s.examId, (submittedCountByExam.get(s.examId) ?? 0) + 1);
+  }
 
   res.json({
     exams: exams.map((exam) => ({
@@ -34,6 +47,7 @@ studentRouter.get('/exams', async (_req, res) => {
       description: exam.description,
       timeLimitMinutes: exam.timeLimitMinutes,
       taskCount: exam._count.tasks,
+      submittedTaskCount: submittedCountByExam.get(exam.id) ?? 0,
     })),
   });
 });
