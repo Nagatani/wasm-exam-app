@@ -147,6 +147,11 @@ export function ExamResultsPage() {
                     {task.title}（打鍵数）
                   </th>
                 ))}
+                {results.tasks.map((task) => (
+                  <th key={`${task.id}-time`} className="whitespace-nowrap px-3 py-2 text-left">
+                    {task.title}（解答時間）
+                  </th>
+                ))}
                 <th className="whitespace-nowrap px-3 py-2 text-left">合計点</th>
                 <th className="whitespace-nowrap px-3 py-2 text-left">所要時間</th>
                 <th className="whitespace-nowrap px-3 py-2 text-left">最終提出日時</th>
@@ -181,6 +186,11 @@ export function ExamResultsPage() {
                   {student.results.map((cell) => (
                     <td key={`${cell.taskId}-keystrokes`} className="whitespace-nowrap px-3 py-2 text-mp-muted">
                       {cell.keystrokeCount === null ? '-' : cell.keystrokeCount}
+                    </td>
+                  ))}
+                  {student.results.map((cell) => (
+                    <td key={`${cell.taskId}-time`} className="whitespace-nowrap px-3 py-2 text-mp-muted">
+                      {formatDuration(cell.timeSpentSeconds)}
                     </td>
                   ))}
                   <td className="whitespace-nowrap px-3 py-2 font-bold">{student.totalScore}</td>

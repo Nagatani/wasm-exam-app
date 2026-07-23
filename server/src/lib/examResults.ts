@@ -16,6 +16,10 @@ export interface StudentTaskCell {
   keystrokeCount: number | null;
   pasteCount: number | null;
   pastedCharCount: number | null;
+  // Wall-clock seconds spent on this specific task's page before submitting
+  // it, distinct from `elapsedSeconds` on the student row (which spans the
+  // whole exam from open to last submission).
+  timeSpentSeconds: number | null;
 }
 
 export interface StudentResultRow {
@@ -89,6 +93,7 @@ export async function getExamResults(examId: string): Promise<ExamResults | null
             keystrokeCount: submission.keystrokeCount,
             pasteCount: submission.pasteCount,
             pastedCharCount: submission.pastedCharCount,
+            timeSpentSeconds: submission.timeSpentSeconds,
           }
         : {
             taskId: task.id,
@@ -98,6 +103,7 @@ export async function getExamResults(examId: string): Promise<ExamResults | null
             keystrokeCount: null,
             pasteCount: null,
             pastedCharCount: null,
+            timeSpentSeconds: null,
           };
     });
 

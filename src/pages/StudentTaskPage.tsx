@@ -64,6 +64,11 @@ export function StudentTaskPage() {
   const keystrokeCountRef = useRef(0);
   const pasteCountRef = useRef(0);
   const pastedCharCountRef = useRef(0);
+  // When this task's page was (re-)entered — the reference point for "time
+  // spent on this task". Resets whenever taskId changes, same as the counters
+  // above; revisiting a task (e.g. browser back) restarts its clock rather
+  // than resuming it, a known limitation shared with the counters.
+  const taskStartTimeRef = useRef(Date.now());
 
   useEffect(() => {
     if (!taskId || !examId) return;
@@ -73,6 +78,7 @@ export function StudentTaskPage() {
     keystrokeCountRef.current = 0;
     pasteCountRef.current = 0;
     pastedCharCountRef.current = 0;
+    taskStartTimeRef.current = Date.now();
     Promise.all([getStudentTask(taskId), getStudentExam(examId)])
       .then(([{ task }, { exam }]) => {
         setTask(task);
@@ -151,6 +157,7 @@ export function StudentTaskPage() {
         keystrokeCount: keystrokeCountRef.current,
         pasteCount: pasteCountRef.current,
         pastedCharCount: pastedCharCountRef.current,
+        timeSpentSeconds: Math.round((Date.now() - taskStartTimeRef.current) / 1000),
       });
 
       const idx = examTasks.findIndex((t) => t.id === task.id);

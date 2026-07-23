@@ -80,6 +80,7 @@ export interface StudentTaskCell {
   keystrokeCount: number | null;
   pasteCount: number | null;
   pastedCharCount: number | null;
+  timeSpentSeconds: number | null;
 }
 
 export interface StudentResultRow {

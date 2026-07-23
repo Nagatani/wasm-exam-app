@@ -71,13 +71,15 @@ export interface JudgeOutcome {
   stdout: string;
 }
 
-// Captured client-side from the Monaco editor while a student works on a
-// task, to help a teacher spot answers that were mostly pasted in rather
-// than typed.
-export interface EditorIntegrityStats {
+// Captured client-side while a student works on a task — from the Monaco
+// editor (keystrokes/pastes, to help a teacher spot answers that were mostly
+// pasted in rather than typed) and from a wall-clock timer scoped to this
+// task's page (time spent on this specific task, not the whole exam).
+export interface TaskSubmissionMetrics {
   keystrokeCount: number;
   pasteCount: number;
   pastedCharCount: number;
+  timeSpentSeconds: number;
 }
 
 export interface SubmissionSummary {

@@ -171,6 +171,11 @@ model Submission {
   pasteCount      Int @default(0)
   pastedCharCount Int @default(0)
 
+  // Wall-clock seconds from when the student's browser opened this specific
+  // task to when they hit submit — also client-reported, same trust level as
+  // the fields above.
+  timeSpentSeconds Int @default(0)
+
   exam    Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
   task    Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
   student User @relation(fields: [studentId], references: [id], onDelete: Cascade)

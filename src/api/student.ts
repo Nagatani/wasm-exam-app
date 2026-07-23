@@ -1,6 +1,6 @@
 import { apiFetch } from './client';
 import type {
-  EditorIntegrityStats,
+  TaskSubmissionMetrics,
   JudgeOutcome,
   JudgeVerdict,
   StudentExamDetail,
@@ -39,7 +39,7 @@ export function submitTask(
   taskId: string,
   code: string,
   input: JudgeRequest,
-  editorStats: EditorIntegrityStats,
+  metrics: TaskSubmissionMetrics,
 ) {
   return apiFetch<{
     submission: {
@@ -51,7 +51,7 @@ export function submitTask(
     };
   }>('/api/student/submissions', {
     method: 'POST',
-    body: JSON.stringify({ taskId, language: 'C', code, ...input, ...editorStats }),
+    body: JSON.stringify({ taskId, language: 'C', code, ...input, ...metrics }),
   });
 }
 

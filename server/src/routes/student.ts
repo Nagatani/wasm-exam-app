@@ -166,6 +166,7 @@ const submissionRequestSchema = judgeRequestSchema.extend({
   keystrokeCount: z.number().int().nonnegative(),
   pasteCount: z.number().int().nonnegative(),
   pastedCharCount: z.number().int().nonnegative(),
+  timeSpentSeconds: z.number().int().nonnegative(),
 });
 
 studentRouter.post('/submissions', async (req, res) => {
@@ -203,6 +204,7 @@ studentRouter.post('/submissions', async (req, res) => {
       keystrokeCount: parsed.data.keystrokeCount,
       pasteCount: parsed.data.pasteCount,
       pastedCharCount: parsed.data.pastedCharCount,
+      timeSpentSeconds: parsed.data.timeSpentSeconds,
     },
   });
 
