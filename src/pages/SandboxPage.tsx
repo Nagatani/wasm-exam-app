@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CodeEditor } from '../components/CodeEditor';
+import { ThemeToggle } from '../components/ThemeToggle';
 import { compileAndRunC, type RunCResult } from '../runner/cRunner';
 
 const DEFAULT_SOURCE = `#include <stdio.h>
@@ -38,27 +39,30 @@ export function SandboxPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 p-6 text-white">
-      <Link to="/teacher" className="mb-4 inline-block text-sm text-teal-400 hover:underline">
-        ← 講師管理画面に戻る
-      </Link>
+    <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
+      <div className="mb-4 flex items-center justify-between">
+        <Link to="/teacher" className="inline-block text-sm text-mp-cyan hover:underline">
+          ← 講師管理画面に戻る
+        </Link>
+        <ThemeToggle />
+      </div>
 
-      <h1 className="mb-2 text-xl font-bold text-teal-400">
+      <h1 className="mb-2 text-xl font-bold text-mp-cyan">
         C言語 コンパイル・実行サンドボックス（動作確認用）
       </h1>
-      <p className="mb-4 text-sm text-gray-400">
+      <p className="mb-4 text-sm text-mp-muted">
         Monaco Editor + Wasmer SDK（clang/clang, WASIX）でブラウザ内のみでC言語をコンパイル・実行します。サーバーには一切送信されません。
       </p>
 
       <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <label className="mb-1 block text-sm text-gray-400">C言語ソースコード</label>
+          <label className="mb-1 block text-sm text-mp-muted">C言語ソースコード</label>
           <CodeEditor value={source} onChange={setSource} language="c" height={320} />
         </div>
         <div>
-          <label className="mb-1 block text-sm text-gray-400">標準入力（stdin）</label>
+          <label className="mb-1 block text-sm text-mp-muted">標準入力（stdin）</label>
           <textarea
-            className="h-[320px] w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 font-mono text-sm text-white"
+            className="h-[320px] w-full rounded border border-mp-border bg-mp-bg px-3 py-2 font-mono text-sm text-mp-fg"
             value={stdin}
             onChange={(e) => setStdin(e.target.value)}
           />
@@ -68,44 +72,44 @@ export function SandboxPage() {
       <button
         onClick={handleRun}
         disabled={status === 'loading'}
-        className="mb-4 rounded bg-teal-500 px-4 py-2 font-bold text-gray-900 hover:bg-teal-600 disabled:opacity-50"
+        className="mb-4 rounded bg-mp-cyan px-4 py-2 font-bold text-mp-ink hover:opacity-90 disabled:opacity-50"
       >
         {status === 'loading' ? '実行中...' : '▶ コンパイル＆実行'}
       </button>
 
-      {status === 'loading' && <p className="mb-4 text-sm text-gray-400">{statusMessage}</p>}
-      {status === 'error' && <p className="mb-4 text-sm text-red-400">{error}</p>}
+      {status === 'loading' && <p className="mb-4 text-sm text-mp-muted">{statusMessage}</p>}
+      {status === 'error' && <p className="mb-4 text-sm text-mp-red">{error}</p>}
 
       {result && (
-        <div className="rounded-lg border border-gray-700 bg-gray-800 p-4">
+        <div className="rounded-lg border border-mp-border bg-mp-surface p-4">
           <p className="mb-2 font-bold">
             結果:{' '}
             {result.stage === 'success' ? (
-              <span className="text-green-400">実行成功</span>
+              <span className="text-mp-green">実行成功</span>
             ) : result.stage === 'compile_error' ? (
-              <span className="text-red-400">コンパイルエラー</span>
+              <span className="text-mp-red">コンパイルエラー</span>
             ) : (
-              <span className="text-red-400">実行時エラー（終了コード: {result.exitCode}）</span>
+              <span className="text-mp-red">実行時エラー（終了コード: {result.exitCode}）</span>
             )}
           </p>
 
           {result.stage === 'compile_error' ? (
             <>
-              <p className="mb-1 text-sm text-gray-400">コンパイラ出力:</p>
-              <pre className="whitespace-pre-wrap rounded bg-gray-900 p-3 text-sm text-red-300">
+              <p className="mb-1 text-sm text-mp-muted">コンパイラ出力:</p>
+              <pre className="whitespace-pre-wrap rounded bg-mp-bg p-3 text-sm text-mp-red">
                 {result.compileStderr}
               </pre>
             </>
           ) : (
             <>
-              <p className="mb-1 text-sm text-gray-400">標準出力:</p>
-              <pre className="mb-3 whitespace-pre-wrap rounded bg-gray-900 p-3 text-sm text-green-300">
+              <p className="mb-1 text-sm text-mp-muted">標準出力:</p>
+              <pre className="mb-3 whitespace-pre-wrap rounded bg-mp-bg p-3 text-sm text-mp-green">
                 {result.stdout || '(なし)'}
               </pre>
               {result.stderr && (
                 <>
-                  <p className="mb-1 text-sm text-gray-400">標準エラー出力:</p>
-                  <pre className="whitespace-pre-wrap rounded bg-gray-900 p-3 text-sm text-red-300">
+                  <p className="mb-1 text-sm text-mp-muted">標準エラー出力:</p>
+                  <pre className="whitespace-pre-wrap rounded bg-mp-bg p-3 text-sm text-mp-red">
                     {result.stderr}
                   </pre>
                 </>

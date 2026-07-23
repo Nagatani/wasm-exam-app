@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { signUp } from '../api/auth';
 import { ApiError } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
+import { ThemeToggle } from '../components/ThemeToggle';
 
 export function SignupPage() {
   const [studentId, setStudentId] = useState('');
@@ -36,34 +37,35 @@ export function SignupPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-900 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-mp-bg px-4">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm rounded-lg border border-gray-700 bg-gray-800 p-6"
+        className="w-full max-w-sm rounded-lg border border-mp-border bg-mp-surface p-6"
       >
-        <h1 className="mb-6 text-center text-xl font-bold text-teal-400">
-          新規登録
-        </h1>
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-xl font-bold text-mp-cyan">新規登録</h1>
+          <ThemeToggle />
+        </div>
 
-        <label className="mb-1 block text-sm text-gray-400" htmlFor="studentId">
+        <label className="mb-1 block text-sm text-mp-muted" htmlFor="studentId">
           学籍番号
         </label>
         <input
           id="studentId"
-          className="mb-4 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white"
+          className="mb-4 w-full rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
           value={studentId}
           onChange={(e) => setStudentId(e.target.value)}
           autoComplete="username"
           required
         />
 
-        <label className="mb-1 block text-sm text-gray-400" htmlFor="password">
+        <label className="mb-1 block text-sm text-mp-muted" htmlFor="password">
           パスワード
         </label>
         <input
           id="password"
           type="password"
-          className="mb-4 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white"
+          className="mb-4 w-full rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="new-password"
@@ -72,7 +74,7 @@ export function SignupPage() {
         />
 
         <label
-          className="mb-1 block text-sm text-gray-400"
+          className="mb-1 block text-sm text-mp-muted"
           htmlFor="passwordConfirm"
         >
           パスワード（確認）
@@ -80,7 +82,7 @@ export function SignupPage() {
         <input
           id="passwordConfirm"
           type="password"
-          className="mb-4 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white"
+          className="mb-4 w-full rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
           value={passwordConfirm}
           onChange={(e) => setPasswordConfirm(e.target.value)}
           autoComplete="new-password"
@@ -88,19 +90,19 @@ export function SignupPage() {
           required
         />
 
-        {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
+        {error && <p className="mb-4 text-sm text-mp-red">{error}</p>}
 
         <button
           type="submit"
           disabled={submitting}
-          className="w-full rounded bg-teal-500 py-2 font-bold text-gray-900 transition hover:bg-teal-600 disabled:opacity-50"
+          className="w-full rounded bg-mp-cyan py-2 font-bold text-mp-ink transition hover:opacity-90 disabled:opacity-50"
         >
           {submitting ? '登録中...' : '登録する'}
         </button>
 
-        <p className="mt-4 text-center text-sm text-gray-400">
+        <p className="mt-4 text-center text-sm text-mp-muted">
           既にアカウントをお持ちの方は{' '}
-          <Link to="/login" className="text-teal-400 hover:underline">
+          <Link to="/login" className="text-mp-cyan hover:underline">
             ログイン
           </Link>
         </p>

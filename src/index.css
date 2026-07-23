@@ -1,5 +1,62 @@
 @import "tailwindcss";
 
+/*
+ * Monokai Pro palette, extracted from the official "Monokai Pro" (dark) and
+ * "Monokai Pro Light" VS Code theme JSON (monokai.theme-monokai-pro-vscode),
+ * so the app's UI and the Monaco editor (src/runner/monacoThemes.ts) share
+ * one exact color source instead of two hand-picked approximations.
+ */
+:root,
+[data-theme='dark'] {
+  --mp-bg: #2d2a2e;
+  --mp-surface: #403e41;
+  --mp-surface-hover: #524f53;
+  --mp-border: #5b595c;
+  --mp-muted: #939293;
+  --mp-fg: #fcfcfa;
+  --mp-ink: #19181a;
+  --mp-red: #ff6188;
+  --mp-orange: #fc9867;
+  --mp-yellow: #ffd866;
+  --mp-green: #a9dc76;
+  --mp-cyan: #78dce8;
+  --mp-purple: #ab9df2;
+}
+
+[data-theme='light'] {
+  --mp-bg: #fefaf9;
+  --mp-surface: #ede7e5;
+  --mp-surface-hover: #e0dad9;
+  --mp-border: #d3cdcc;
+  --mp-muted: #706b6e;
+  --mp-fg: #29242a;
+  --mp-ink: #19181a;
+  --mp-red: #e14775;
+  --mp-orange: #e16032;
+  --mp-yellow: #cc7a0a;
+  --mp-green: #269d69;
+  --mp-cyan: #1c8ca8;
+  --mp-purple: #7058be;
+}
+
+@theme inline {
+  --color-mp-bg: var(--mp-bg);
+  --color-mp-surface: var(--mp-surface);
+  --color-mp-surface-hover: var(--mp-surface-hover);
+  --color-mp-border: var(--mp-border);
+  --color-mp-muted: var(--mp-muted);
+  --color-mp-fg: var(--mp-fg);
+  --color-mp-ink: var(--mp-ink);
+  --color-mp-red: var(--mp-red);
+  --color-mp-orange: var(--mp-orange);
+  --color-mp-yellow: var(--mp-yellow);
+  --color-mp-green: var(--mp-green);
+  --color-mp-cyan: var(--mp-cyan);
+  --color-mp-purple: var(--mp-purple);
+}
+
 body {
   margin: 0;
+  background-color: var(--mp-bg);
+  color: var(--mp-fg);
 }

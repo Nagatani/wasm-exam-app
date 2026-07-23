@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { CodeEditor } from '../components/CodeEditor';
+import { ThemeToggle } from '../components/ThemeToggle';
 import { getStudentExam, getStudentTask, runTask, submitTask } from '../api/student';
 import { compileC, runCompiledC } from '../runner/cRunner';
 import { ApiError } from '../api/client';
@@ -15,9 +16,9 @@ const STATUS_LABEL: Record<JudgeVerdict['overallStatus'], string> = {
 };
 
 const STATUS_COLOR: Record<JudgeVerdict['overallStatus'], string> = {
-  AC: 'bg-green-900 text-green-300 border-green-700',
-  WA: 'bg-red-900 text-red-300 border-red-700',
-  CE: 'bg-yellow-900 text-yellow-300 border-yellow-700',
+  AC: 'bg-mp-green/15 text-mp-green border-mp-green/40',
+  WA: 'bg-mp-red/15 text-mp-red border-mp-red/40',
+  CE: 'bg-mp-yellow/15 text-mp-yellow border-mp-yellow/40',
 };
 
 interface ExecutionResult {
@@ -130,12 +131,12 @@ export function StudentTaskPage() {
   }
 
   if (loading) {
-    return <div className="min-h-screen bg-gray-900 p-6 text-gray-400">読み込み中...</div>;
+    return <div className="min-h-screen bg-mp-bg p-6 text-mp-muted">読み込み中...</div>;
   }
 
   if (!task) {
     return (
-      <div className="min-h-screen bg-gray-900 p-6 text-red-400">
+      <div className="min-h-screen bg-mp-bg p-6 text-mp-red">
         {error ?? '問題が見つかりません。'}
       </div>
     );
@@ -145,28 +146,29 @@ export function StudentTaskPage() {
   const busy = running || submitting;
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-900 text-white">
-      <header className="border-b border-gray-700 bg-gray-800 px-4 py-2">
-        <h1 className="text-sm font-bold text-teal-400">
+    <div className="flex min-h-screen flex-col bg-mp-bg text-mp-fg">
+      <header className="flex items-center justify-between border-b border-mp-border bg-mp-surface px-4 py-2">
+        <h1 className="text-sm font-bold text-mp-cyan">
           問題 {task.order + 1}: {task.title}（{task.points}点）
         </h1>
+        <ThemeToggle />
       </header>
 
       <main className="flex flex-1 flex-col gap-4 overflow-hidden p-4 md:flex-row">
         {/* 左カラム: 問題文 + サンプルテストケース */}
-        <div className="flex w-full flex-col overflow-y-auto rounded-lg border border-gray-700 bg-gray-800 p-4 md:w-1/3">
-          <h2 className="mb-2 text-sm font-bold text-gray-400">問題文</h2>
+        <div className="flex w-full flex-col overflow-y-auto rounded-lg border border-mp-border bg-mp-surface p-4 md:w-1/3">
+          <h2 className="mb-2 text-sm font-bold text-mp-muted">問題文</h2>
           <div className="prose prose-invert mb-4 max-w-none text-sm">
             <ReactMarkdown>{task.statementMarkdown}</ReactMarkdown>
           </div>
 
-          <h2 className="mb-2 text-sm font-bold text-gray-400">サンプルテストケース</h2>
+          <h2 className="mb-2 text-sm font-bold text-mp-muted">サンプルテストケース</h2>
           {sampleTestCases.length === 0 ? (
-            <p className="text-sm text-gray-500">サンプルはありません。</p>
+            <p className="text-sm text-mp-muted">サンプルはありません。</p>
           ) : (
             <div className="space-y-3">
               {sampleTestCases.map((tc) => (
-                <div key={tc.id} className="rounded bg-gray-900 p-2.5 text-xs font-mono">
+                <div key={tc.id} className="rounded bg-mp-bg p-2.5 text-xs font-mono">
                   <p>
                     <strong>入力例:</strong> {tc.input || '(なし)'}
                   </p>
@@ -190,26 +192,26 @@ export function StudentTaskPage() {
         </div>
 
         {/* 右カラム: 実行結果 */}
-        <div className="flex w-full flex-col gap-3 overflow-y-auto rounded-lg border border-gray-700 bg-gray-800 p-4 md:w-1/3">
+        <div className="flex w-full flex-col gap-3 overflow-y-auto rounded-lg border border-mp-border bg-mp-surface p-4 md:w-1/3">
           <div className="flex gap-2">
             <button
               onClick={handleRun}
               disabled={busy}
-              className="flex-1 rounded bg-teal-500 px-3 py-2 text-sm font-bold text-gray-900 hover:bg-teal-600 disabled:opacity-50"
+              className="flex-1 rounded bg-mp-cyan px-3 py-2 text-sm font-bold text-mp-ink hover:opacity-90 disabled:opacity-50"
             >
               {running ? '実行中...' : '▶ コンパイル＆テスト実行'}
             </button>
             <button
               onClick={handleSubmit}
               disabled={busy}
-              className="flex-1 rounded bg-blue-600 px-3 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+              className="flex-1 rounded bg-mp-purple px-3 py-2 text-sm font-bold text-mp-ink hover:opacity-90 disabled:opacity-50"
             >
               {submitting ? '提出中...' : '送信（解答提出）'}
             </button>
           </div>
 
-          {busy && statusMessage && <p className="text-xs text-gray-400">{statusMessage}</p>}
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {busy && statusMessage && <p className="text-xs text-mp-muted">{statusMessage}</p>}
+          {error && <p className="text-sm text-mp-red">{error}</p>}
 
           {verdict && (
             <div className={`rounded border px-3 py-2 text-center font-bold ${STATUS_COLOR[verdict.overallStatus]}`}>
@@ -218,7 +220,7 @@ export function StudentTaskPage() {
           )}
 
           {verdict?.overallStatus === 'CE' && compileError && (
-            <pre className="whitespace-pre-wrap rounded bg-gray-900 p-3 text-xs text-red-300">
+            <pre className="whitespace-pre-wrap rounded bg-mp-bg p-3 text-xs text-mp-red">
               {compileError}
             </pre>
           )}
@@ -228,7 +230,7 @@ export function StudentTaskPage() {
               {task.testCases.map((tc) => {
                 const result = verdict.results.find((r) => r.testCaseId === tc.id);
                 return (
-                  <div key={tc.id} className="rounded bg-gray-900 p-2 text-xs">
+                  <div key={tc.id} className="rounded bg-mp-bg p-2 text-xs">
                     <div className="mb-1 flex items-center justify-between">
                       <span className="font-semibold">
                         テストケース {tc.order + 1}
@@ -237,17 +239,17 @@ export function StudentTaskPage() {
                       <span
                         className={
                           result?.status === 'AC'
-                            ? 'text-green-400'
+                            ? 'text-mp-green'
                             : result?.status === 'RE'
-                              ? 'text-yellow-400'
-                              : 'text-red-400'
+                              ? 'text-mp-yellow'
+                              : 'text-mp-red'
                         }
                       >
                         {result?.status ?? '-'}
                       </span>
                     </div>
                     {tc.isSample && result && (
-                      <div className="font-mono text-gray-400">
+                      <div className="font-mono text-mp-muted">
                         <p>入力: {tc.input}</p>
                         <p>期待値: {tc.expectedOutput}</p>
                         <p>出力: {result.actualOutput}</p>

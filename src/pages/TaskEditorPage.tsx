@@ -6,11 +6,12 @@ import { ApiError } from '../api/client';
 import type { Language, TaskDetail } from '../types/exam';
 import { TestCaseRow } from '../components/TestCaseRow';
 import { CodeEditor } from '../components/CodeEditor';
+import { ThemeToggle } from '../components/ThemeToggle';
 
 const inputClass =
-  'w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white';
+  'w-full rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg';
 const codeClass =
-  'w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 font-mono text-sm text-white';
+  'w-full rounded border border-mp-border bg-mp-bg px-3 py-2 font-mono text-sm text-mp-fg';
 
 export function TaskEditorPage() {
   const { examId, taskId } = useParams<{ examId: string; taskId: string }>();
@@ -79,31 +80,34 @@ export function TaskEditorPage() {
   }
 
   if (loading) {
-    return <div className="min-h-screen bg-gray-900 p-6 text-gray-400">読み込み中...</div>;
+    return <div className="min-h-screen bg-mp-bg p-6 text-mp-muted">読み込み中...</div>;
   }
 
   if (!task) {
     return (
-      <div className="min-h-screen bg-gray-900 p-6 text-red-400">
+      <div className="min-h-screen bg-mp-bg p-6 text-mp-red">
         {error ?? '問題が見つかりません。'}
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 p-6 text-white">
-      <Link
-        to={`/teacher/exams/${examId}`}
-        className="mb-4 inline-block text-sm text-teal-400 hover:underline"
-      >
-        ← 試験詳細に戻る
-      </Link>
+    <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
+      <div className="mb-4 flex items-center justify-between">
+        <Link
+          to={`/teacher/exams/${examId}`}
+          className="inline-block text-sm text-mp-cyan hover:underline"
+        >
+          ← 試験詳細に戻る
+        </Link>
+        <ThemeToggle />
+      </div>
 
       <form
         onSubmit={handleSave}
-        className="mb-6 rounded-lg border border-gray-700 bg-gray-800 p-4"
+        className="mb-6 rounded-lg border border-mp-border bg-mp-surface p-4"
       >
-        <label className="mb-1 block text-sm text-gray-400" htmlFor="task-title">
+        <label className="mb-1 block text-sm text-mp-muted" htmlFor="task-title">
           タイトル
         </label>
         <input
@@ -116,7 +120,7 @@ export function TaskEditorPage() {
 
         <div className="mb-3 flex gap-4">
           <div>
-            <label className="mb-1 block text-sm text-gray-400" htmlFor="task-order">
+            <label className="mb-1 block text-sm text-mp-muted" htmlFor="task-order">
               表示順
             </label>
             <input
@@ -128,7 +132,7 @@ export function TaskEditorPage() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm text-gray-400" htmlFor="task-points">
+            <label className="mb-1 block text-sm text-mp-muted" htmlFor="task-points">
               配点
             </label>
             <input
@@ -143,19 +147,19 @@ export function TaskEditorPage() {
         </div>
 
         <div className="mb-1 flex items-center justify-between">
-          <label className="block text-sm text-gray-400" htmlFor="task-statement">
+          <label className="block text-sm text-mp-muted" htmlFor="task-statement">
             問題文（Markdown）
           </label>
           <button
             type="button"
             onClick={() => setShowPreview((v) => !v)}
-            className="text-xs text-teal-400 hover:underline"
+            className="text-xs text-mp-cyan hover:underline"
           >
             {showPreview ? '編集に戻る' : 'プレビュー'}
           </button>
         </div>
         {showPreview ? (
-          <div className="prose prose-invert mb-3 max-w-none rounded border border-gray-600 bg-gray-900 p-3">
+          <div className="prose prose-invert mb-3 max-w-none rounded border border-mp-border bg-mp-bg p-3">
             <ReactMarkdown>{task.statementMarkdown}</ReactMarkdown>
           </div>
         ) : (
@@ -168,7 +172,7 @@ export function TaskEditorPage() {
           />
         )}
 
-        <label className="mb-1 block text-sm text-gray-400">初期テンプレートコード（C言語）</label>
+        <label className="mb-1 block text-sm text-mp-muted">初期テンプレートコード（C言語）</label>
         <div className="mb-3">
           <CodeEditor
             value={task.starterCodeC ?? ''}
@@ -178,7 +182,7 @@ export function TaskEditorPage() {
           />
         </div>
 
-        <label className="mb-1 block text-sm text-gray-400" htmlFor="starter-java">
+        <label className="mb-1 block text-sm text-mp-muted" htmlFor="starter-java">
           初期テンプレートコード（Java）
         </label>
         <textarea
@@ -189,20 +193,20 @@ export function TaskEditorPage() {
           onChange={(e) => setTask({ ...task, starterCodeJava: e.target.value })}
         />
 
-        {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
+        {error && <p className="mb-3 text-sm text-mp-red">{error}</p>}
 
         <div className="flex gap-2">
           <button
             type="submit"
             disabled={saving}
-            className="rounded bg-teal-500 px-4 py-2 font-bold text-gray-900 hover:bg-teal-600 disabled:opacity-50"
+            className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-ink hover:opacity-90 disabled:opacity-50"
           >
             {saving ? '保存中...' : '保存'}
           </button>
           <button
             type="button"
             onClick={handleDelete}
-            className="rounded bg-red-900 px-4 py-2 font-bold text-red-300 hover:bg-red-800"
+            className="rounded bg-mp-red/20 px-4 py-2 font-bold text-mp-red hover:bg-mp-red/30"
           >
             問題を削除
           </button>
@@ -214,7 +218,7 @@ export function TaskEditorPage() {
           <h2 className="text-lg font-bold">テストケース</h2>
           <button
             onClick={handleAddTestCase}
-            className="rounded bg-teal-500 px-3 py-1.5 text-sm font-bold text-gray-900 hover:bg-teal-600"
+            className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-ink hover:opacity-90"
           >
             + テストケースを追加
           </button>
@@ -286,8 +290,8 @@ function SolutionEditor({
   }
 
   return (
-    <div className="mb-4 rounded-lg border border-gray-700 bg-gray-800 p-4">
-      <h3 className="mb-2 text-sm font-bold text-gray-400">
+    <div className="mb-4 rounded-lg border border-mp-border bg-mp-surface p-4">
+      <h3 className="mb-2 text-sm font-bold text-mp-muted">
         解答例コード（{language === 'C' ? 'C言語' : 'Java'}） — 生徒には非公開
       </h3>
       {useMonaco ? (
@@ -305,7 +309,7 @@ function SolutionEditor({
       <button
         onClick={handleSave}
         disabled={saving}
-        className="rounded bg-gray-700 px-3 py-1.5 text-sm hover:bg-gray-600 disabled:opacity-50"
+        className="rounded bg-mp-surface-hover px-3 py-1.5 text-sm hover:opacity-90 disabled:opacity-50"
       >
         {saving ? '保存中...' : saved ? '保存しました' : '保存'}
       </button>

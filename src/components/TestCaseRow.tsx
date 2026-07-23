@@ -3,7 +3,7 @@ import { updateTestCase, deleteTestCase } from '../api/tasks';
 import type { TestCase } from '../types/exam';
 
 const fieldClass =
-  'w-full rounded border border-gray-600 bg-gray-900 px-2 py-1 font-mono text-sm text-white';
+  'w-full rounded border border-mp-border bg-mp-bg px-2 py-1 font-mono text-sm text-mp-fg';
 
 interface TestCaseRowProps {
   testCase: TestCase;
@@ -38,10 +38,10 @@ export function TestCaseRow({ testCase, onUpdated, onDeleted }: TestCaseRowProps
   }
 
   return (
-    <div className="rounded-lg border border-gray-700 bg-gray-800 p-3">
+    <div className="rounded-lg border border-mp-border bg-mp-surface p-3">
       <div className="mb-2 grid grid-cols-1 gap-3 md:grid-cols-2">
         <div>
-          <label className="mb-1 block text-xs text-gray-400">入力（stdin）</label>
+          <label className="mb-1 block text-xs text-mp-muted">入力（stdin）</label>
           <textarea
             rows={3}
             className={fieldClass}
@@ -50,7 +50,7 @@ export function TestCaseRow({ testCase, onUpdated, onDeleted }: TestCaseRowProps
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-gray-400">期待される出力（stdout）</label>
+          <label className="mb-1 block text-xs text-mp-muted">期待される出力（stdout）</label>
           <textarea
             rows={3}
             className={fieldClass}
@@ -60,7 +60,7 @@ export function TestCaseRow({ testCase, onUpdated, onDeleted }: TestCaseRowProps
         </div>
       </div>
       <div className="flex items-center justify-between">
-        <label className="flex items-center gap-2 text-sm text-gray-400">
+        <label className="flex items-center gap-2 text-sm text-mp-muted">
           <input
             type="checkbox"
             checked={isSample}
@@ -72,13 +72,13 @@ export function TestCaseRow({ testCase, onUpdated, onDeleted }: TestCaseRowProps
           <button
             onClick={handleSave}
             disabled={saving}
-            className="rounded bg-gray-700 px-3 py-1 text-sm hover:bg-gray-600 disabled:opacity-50"
+            className="rounded bg-mp-surface-hover px-3 py-1 text-sm hover:opacity-90 disabled:opacity-50"
           >
             {saving ? '保存中...' : '保存'}
           </button>
           <button
             onClick={handleDelete}
-            className="rounded bg-red-900 px-3 py-1 text-sm text-red-300 hover:bg-red-800"
+            className="rounded bg-mp-red/20 px-3 py-1 text-sm text-mp-red hover:bg-mp-red/30"
           >
             削除
           </button>

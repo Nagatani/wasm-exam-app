@@ -3,13 +3,14 @@ import { Link, useParams } from 'react-router-dom';
 import { downloadExamResultsCsv, getExamResults } from '../api/exams';
 import { ApiError } from '../api/client';
 import type { ExamResults, SubmissionOverallStatus } from '../types/exam';
+import { ThemeToggle } from '../components/ThemeToggle';
 
 const STATUS_COLOR: Record<SubmissionOverallStatus, string> = {
-  AC: 'text-green-400',
-  WA: 'text-red-400',
-  CE: 'text-yellow-400',
-  TLE: 'text-orange-400',
-  MLE: 'text-orange-400',
+  AC: 'text-mp-green',
+  WA: 'text-mp-red',
+  CE: 'text-mp-yellow',
+  TLE: 'text-mp-orange',
+  MLE: 'text-mp-orange',
 };
 
 function formatDateTime(iso: string | null): string {
@@ -46,47 +47,50 @@ export function ExamResultsPage() {
   }
 
   if (loading) {
-    return <div className="min-h-screen bg-gray-900 p-6 text-gray-400">読み込み中...</div>;
+    return <div className="min-h-screen bg-mp-bg p-6 text-mp-muted">読み込み中...</div>;
   }
 
   if (!results) {
     return (
-      <div className="min-h-screen bg-gray-900 p-6 text-red-400">
+      <div className="min-h-screen bg-mp-bg p-6 text-mp-red">
         {error ?? '試験が見つかりません。'}
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 p-6 text-white">
-      <Link
-        to={`/teacher/exams/${examId}`}
-        className="mb-4 inline-block text-sm text-teal-400 hover:underline"
-      >
-        ← 試験詳細に戻る
-      </Link>
+    <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
+      <div className="mb-4 flex items-center justify-between">
+        <Link
+          to={`/teacher/exams/${examId}`}
+          className="inline-block text-sm text-mp-cyan hover:underline"
+        >
+          ← 試験詳細に戻る
+        </Link>
+        <ThemeToggle />
+      </div>
 
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-teal-400">
+        <h1 className="text-xl font-bold text-mp-cyan">
           成績ダッシュボード: {results.exam.title}
         </h1>
         <button
           onClick={handleDownload}
           disabled={downloading}
-          className="rounded bg-teal-500 px-4 py-2 text-sm font-bold text-gray-900 hover:bg-teal-600 disabled:opacity-50"
+          className="rounded bg-mp-cyan px-4 py-2 text-sm font-bold text-mp-ink hover:opacity-90 disabled:opacity-50"
         >
           {downloading ? 'ダウンロード中...' : '📄 CSVダウンロード'}
         </button>
       </div>
 
-      {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
+      {error && <p className="mb-4 text-sm text-mp-red">{error}</p>}
 
       {results.students.length === 0 ? (
-        <p className="text-gray-400">生徒が登録されていません。</p>
+        <p className="text-mp-muted">生徒が登録されていません。</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-gray-700">
+        <div className="overflow-x-auto rounded-lg border border-mp-border">
           <table className="w-full min-w-max text-sm">
-            <thead className="bg-gray-800 text-gray-400">
+            <thead className="bg-mp-surface text-mp-muted">
               <tr>
                 <th className="whitespace-nowrap px-3 py-2 text-left">学籍番号</th>
                 <th className="whitespace-nowrap px-3 py-2 text-left">氏名</th>
@@ -101,7 +105,7 @@ export function ExamResultsPage() {
             </thead>
             <tbody>
               {results.students.map((student) => (
-                <tr key={student.id} className="border-t border-gray-700 even:bg-gray-800/50">
+                <tr key={student.id} className="border-t border-mp-border even:bg-mp-surface/50">
                   <td className="whitespace-nowrap px-3 py-2">{student.studentNumber}</td>
                   <td className="whitespace-nowrap px-3 py-2">{student.displayName}</td>
                   {student.results.map((cell) => (
@@ -111,13 +115,13 @@ export function ExamResultsPage() {
                           {cell.status}
                         </span>
                       ) : (
-                        <span className="text-gray-500">未提出</span>
+                        <span className="text-mp-muted">未提出</span>
                       )}{' '}
-                      <span className="text-gray-400">({cell.score})</span>
+                      <span className="text-mp-muted">({cell.score})</span>
                     </td>
                   ))}
                   <td className="whitespace-nowrap px-3 py-2 font-bold">{student.totalScore}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-gray-400">
+                  <td className="whitespace-nowrap px-3 py-2 text-mp-muted">
                     {formatDateTime(student.lastSubmittedAt)}
                   </td>
                 </tr>

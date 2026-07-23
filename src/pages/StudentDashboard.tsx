@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { logOut } from '../api/auth';
+import { ThemeToggle } from '../components/ThemeToggle';
 import { getStudentExam, listStudentExams } from '../api/student';
 import { ApiError } from '../api/client';
 import type { StudentExamSummary } from '../types/student';
@@ -49,43 +50,46 @@ export function StudentDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 p-6 text-white">
+    <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
       <header className="mb-6 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-teal-400">生徒ダッシュボード</h1>
-        <button
-          onClick={() => logOut().then(refresh)}
-          className="rounded bg-gray-700 px-3 py-1.5 text-sm hover:bg-gray-600"
-        >
-          ログアウト
-        </button>
+        <h1 className="text-xl font-bold text-mp-cyan">生徒ダッシュボード</h1>
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <button
+            onClick={() => logOut().then(refresh)}
+            className="rounded bg-mp-surface px-3 py-1.5 text-sm hover:bg-mp-surface-hover"
+          >
+            ログアウト
+          </button>
+        </div>
       </header>
 
-      <p className="mb-4 text-gray-400">ようこそ、{profile?.studentNumber} さん。</p>
+      <p className="mb-4 text-mp-muted">ようこそ、{profile?.studentNumber} さん。</p>
 
       <h2 className="mb-2 text-lg font-bold">受験可能な試験</h2>
-      {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
+      {error && <p className="mb-4 text-sm text-mp-red">{error}</p>}
 
       {loading ? (
-        <p className="text-gray-400">読み込み中...</p>
+        <p className="text-mp-muted">読み込み中...</p>
       ) : exams.length === 0 ? (
-        <p className="text-gray-400">現在受験できる試験はありません。</p>
+        <p className="text-mp-muted">現在受験できる試験はありません。</p>
       ) : (
-        <ul className="divide-y divide-gray-700 rounded-lg border border-gray-700 bg-gray-800">
+        <ul className="divide-y divide-mp-border rounded-lg border border-mp-border bg-mp-surface">
           {exams.map((exam) => (
             <li key={exam.id} className="flex items-center justify-between px-4 py-3">
               <div>
                 <p className="font-bold">{exam.title}</p>
                 {exam.description && (
-                  <p className="text-sm text-gray-400">{exam.description}</p>
+                  <p className="text-sm text-mp-muted">{exam.description}</p>
                 )}
-                <p className="text-sm text-gray-400">
+                <p className="text-sm text-mp-muted">
                   問題数: {exam.taskCount} ・ 制限時間: {exam.timeLimitMinutes}分
                 </p>
               </div>
               <button
                 onClick={() => handleStart(exam.id)}
                 disabled={starting === exam.id}
-                className="rounded bg-teal-500 px-4 py-2 font-bold text-gray-900 hover:bg-teal-600 disabled:opacity-50"
+                className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-ink hover:opacity-90 disabled:opacity-50"
               >
                 {starting === exam.id ? '読み込み中...' : '受験する'}
               </button>

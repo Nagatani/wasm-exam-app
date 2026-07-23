@@ -1,4 +1,6 @@
 import Editor from '@monaco-editor/react';
+import { useTheme } from '../contexts/ThemeContext';
+import { MONACO_DARK_THEME_NAME, MONACO_LIGHT_THEME_NAME, ensureMonokaiProThemes } from '../runner/monacoThemes';
 
 interface CodeEditorProps {
   value: string;
@@ -15,12 +17,15 @@ export function CodeEditor({
   height = 300,
   readOnly = false,
 }: CodeEditorProps) {
+  const { theme } = useTheme();
+
   return (
-    <div className="overflow-hidden rounded border border-gray-600">
+    <div className="overflow-hidden rounded border border-mp-border">
       <Editor
         height={height}
         language={language}
-        theme="vs-dark"
+        theme={theme === 'dark' ? MONACO_DARK_THEME_NAME : MONACO_LIGHT_THEME_NAME}
+        beforeMount={ensureMonokaiProThemes}
         value={value}
         onChange={(v) => onChange(v ?? '')}
         options={{
