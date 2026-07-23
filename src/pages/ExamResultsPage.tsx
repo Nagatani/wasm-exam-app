@@ -18,6 +18,14 @@ function formatDateTime(iso: string | null): string {
   return new Date(iso).toLocaleString('ja-JP');
 }
 
+function formatDuration(seconds: number | null): string {
+  if (seconds === null) return '-';
+  const hours = Math.floor(seconds / 3600);
+  const minutes = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+  const secs = String(seconds % 60).padStart(2, '0');
+  return hours > 0 ? `${hours}:${minutes}:${secs}` : `${minutes}:${secs}`;
+}
+
 export function ExamResultsPage() {
   const { examId } = useParams<{ examId: string }>();
   const [results, setResults] = useState<ExamResults | null>(null);
@@ -99,7 +107,13 @@ export function ExamResultsPage() {
                     {task.title}（{task.points}点）
                   </th>
                 ))}
+                {results.tasks.map((task) => (
+                  <th key={`${task.id}-keystrokes`} className="whitespace-nowrap px-3 py-2 text-left">
+                    {task.title}（打鍵数）
+                  </th>
+                ))}
                 <th className="whitespace-nowrap px-3 py-2 text-left">合計点</th>
+                <th className="whitespace-nowrap px-3 py-2 text-left">所要時間</th>
                 <th className="whitespace-nowrap px-3 py-2 text-left">最終提出日時</th>
               </tr>
             </thead>
@@ -118,9 +132,28 @@ export function ExamResultsPage() {
                         <span className="text-mp-muted">未提出</span>
                       )}{' '}
                       <span className="text-mp-muted">({cell.score})</span>
+                      {cell.pasteCount !== null && cell.pasteCount > 0 && (
+                        <span
+                          title={`打鍵数: ${cell.keystrokeCount} / 貼り付け回数: ${cell.pasteCount} / 貼り付け文字数: ${cell.pastedCharCount}`}
+                          className="ml-1 rounded bg-mp-orange/20 px-1 text-xs font-bold text-mp-orange"
+                        >
+                          📋{cell.pasteCount}
+                        </span>
+                      )}
+                    </td>
+                  ))}
+                  {student.results.map((cell) => (
+                    <td key={`${cell.taskId}-keystrokes`} className="whitespace-nowrap px-3 py-2 text-mp-muted">
+                      {cell.keystrokeCount === null ? '-' : cell.keystrokeCount}
                     </td>
                   ))}
                   <td className="whitespace-nowrap px-3 py-2 font-bold">{student.totalScore}</td>
+                  <td
+                    className="whitespace-nowrap px-3 py-2 text-mp-muted"
+                    title={student.startedAt ? `開始: ${formatDateTime(student.startedAt)}` : undefined}
+                  >
+                    {formatDuration(student.elapsedSeconds)}
+                  </td>
                   <td className="whitespace-nowrap px-3 py-2 text-mp-muted">
                     {formatDateTime(student.lastSubmittedAt)}
                   </td>

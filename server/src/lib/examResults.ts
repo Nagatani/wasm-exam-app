@@ -13,6 +13,9 @@ export interface StudentTaskCell {
   status: SubmissionStatus | null;
   score: number;
   submittedAt: Date | null;
+  keystrokeCount: number | null;
+  pasteCount: number | null;
+  pastedCharCount: number | null;
 }
 
 export interface StudentResultRow {
@@ -22,6 +25,11 @@ export interface StudentResultRow {
   results: StudentTaskCell[];
   totalScore: number;
   lastSubmittedAt: Date | null;
+  startedAt: Date | null;
+  // Wall-clock time from this student's first open of the exam to their
+  // latest submission (elapsed so far if the exam is still in progress).
+  // null until both a start and at least one submission exist.
+  elapsedSeconds: number | null;
 }
 
 export interface ExamResults {
@@ -66,6 +74,9 @@ export async function getExamResults(examId: string): Promise<ExamResults | null
     }
   }
 
+  const attempts = await prisma.examAttempt.findMany({ where: { examId: exam.id } });
+  const startedAtByStudent = new Map(attempts.map((a) => [a.studentId, a.startedAt]));
+
   const studentRows: StudentResultRow[] = students.map((student) => {
     const results: StudentTaskCell[] = exam.tasks.map((task) => {
       const submission = latestByStudentTask.get(`${student.id}:${task.id}`);
@@ -75,8 +86,19 @@ export async function getExamResults(examId: string): Promise<ExamResults | null
             status: submission.overallStatus,
             score: submission.score,
             submittedAt: submission.submittedAt,
+            keystrokeCount: submission.keystrokeCount,
+            pasteCount: submission.pasteCount,
+            pastedCharCount: submission.pastedCharCount,
           }
-        : { taskId: task.id, status: null, score: 0, submittedAt: null };
+        : {
+            taskId: task.id,
+            status: null,
+            score: 0,
+            submittedAt: null,
+            keystrokeCount: null,
+            pasteCount: null,
+            pastedCharCount: null,
+          };
     });
 
     const totalScore = results.reduce((sum, r) => sum + r.score, 0);
@@ -86,6 +108,12 @@ export async function getExamResults(examId: string): Promise<ExamResults | null
       return latest;
     }, null);
 
+    const startedAt = startedAtByStudent.get(student.id) ?? null;
+    const elapsedSeconds =
+      startedAt && lastSubmittedAt
+        ? Math.max(0, Math.round((lastSubmittedAt.getTime() - startedAt.getTime()) / 1000))
+        : null;
+
     return {
       id: student.id,
       studentNumber: student.studentNumber,
@@ -93,6 +121,8 @@ export async function getExamResults(examId: string): Promise<ExamResults | null
       results,
       totalScore,
       lastSubmittedAt,
+      startedAt,
+      elapsedSeconds,
     };
   });
 

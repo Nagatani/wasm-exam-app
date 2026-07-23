@@ -1,5 +1,6 @@
 import { apiFetch } from './client';
 import type {
+  EditorIntegrityStats,
   JudgeOutcome,
   JudgeVerdict,
   StudentExamDetail,
@@ -34,7 +35,12 @@ export function runTask(taskId: string, input: JudgeRequest) {
   });
 }
 
-export function submitTask(taskId: string, code: string, input: JudgeRequest) {
+export function submitTask(
+  taskId: string,
+  code: string,
+  input: JudgeRequest,
+  editorStats: EditorIntegrityStats,
+) {
   return apiFetch<{
     submission: {
       id: string;
@@ -45,7 +51,7 @@ export function submitTask(taskId: string, code: string, input: JudgeRequest) {
     };
   }>('/api/student/submissions', {
     method: 'POST',
-    body: JSON.stringify({ taskId, language: 'C', code, ...input }),
+    body: JSON.stringify({ taskId, language: 'C', code, ...input, ...editorStats }),
   });
 }
 

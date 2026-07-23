@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { CodeEditor } from '../components/CodeEditor';
@@ -27,12 +27,27 @@ interface ExecutionResult {
   outcomes: JudgeOutcome[];
 }
 
+interface ExamTiming {
+  timeLimitMinutes: number;
+  startedAt: string;
+}
+
+function formatRemaining(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+  const seconds = String(totalSeconds % 60).padStart(2, '0');
+  return hours > 0 ? `${hours}:${minutes}:${seconds}` : `${minutes}:${seconds}`;
+}
+
 export function StudentTaskPage() {
   const { examId, taskId } = useParams<{ examId: string; taskId: string }>();
   const navigate = useNavigate();
 
   const [task, setTask] = useState<StudentTask | null>(null);
   const [examTasks, setExamTasks] = useState<StudentTaskSummary[]>([]);
+  const [examTiming, setExamTiming] = useState<ExamTiming | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,20 +58,39 @@ export function StudentTaskPage() {
   const [verdict, setVerdict] = useState<JudgeVerdict | null>(null);
   const [compileError, setCompileError] = useState<string | null>(null);
 
+  // Accumulated for the whole time the student spends on this task (from load
+  // to submit), not just the latest run — kept in refs since nothing needs to
+  // re-render on every keystroke, only read them when submitting.
+  const keystrokeCountRef = useRef(0);
+  const pasteCountRef = useRef(0);
+  const pastedCharCountRef = useRef(0);
+
   useEffect(() => {
     if (!taskId || !examId) return;
     setLoading(true);
     setVerdict(null);
     setCompileError(null);
+    keystrokeCountRef.current = 0;
+    pasteCountRef.current = 0;
+    pastedCharCountRef.current = 0;
     Promise.all([getStudentTask(taskId), getStudentExam(examId)])
       .then(([{ task }, { exam }]) => {
         setTask(task);
         setCode(task.starterCodeC ?? '');
         setExamTasks(exam.tasks);
+        setExamTiming({ timeLimitMinutes: exam.timeLimitMinutes, startedAt: exam.startedAt });
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : '問題の取得に失敗しました。'))
       .finally(() => setLoading(false));
   }, [taskId, examId]);
+
+  // Ticks once a second so the countdown in the header stays live; the
+  // deadline itself is anchored to the server-recorded exam start time, not
+  // to when this component happened to mount.
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   async function executeAgainstAllTestCases(currentTask: StudentTask): Promise<ExecutionResult> {
     setStatusMessage(
@@ -113,7 +147,11 @@ export function StudentTaskPage() {
         setCompileError(compileStderr);
         setVerdict({ overallStatus: 'CE', results: [], score: 0 });
       }
-      await submitTask(task.id, code, { compileFailed, outcomes });
+      await submitTask(task.id, code, { compileFailed, outcomes }, {
+        keystrokeCount: keystrokeCountRef.current,
+        pasteCount: pasteCountRef.current,
+        pastedCharCount: pastedCharCountRef.current,
+      });
 
       const idx = examTasks.findIndex((t) => t.id === task.id);
       const next = examTasks[idx + 1];
@@ -145,13 +183,34 @@ export function StudentTaskPage() {
   const sampleTestCases = task.testCases.filter((tc) => tc.isSample);
   const busy = running || submitting;
 
+  const remainingMs = examTiming
+    ? new Date(examTiming.startedAt).getTime() + examTiming.timeLimitMinutes * 60_000 - now
+    : null;
+  const timeUp = remainingMs !== null && remainingMs <= 0;
+  const timeLow = remainingMs !== null && !timeUp && remainingMs < 5 * 60_000;
+
   return (
     <div className="flex min-h-screen flex-col bg-mp-bg text-mp-fg">
       <header className="flex items-center justify-between border-b border-mp-border bg-mp-surface px-4 py-2">
         <h1 className="text-sm font-bold text-mp-cyan">
           問題 {task.order + 1}: {task.title}（{task.points}点）
         </h1>
-        <ThemeToggle />
+        <div className="flex items-center gap-3">
+          {remainingMs !== null && (
+            <span
+              className={`rounded px-2 py-1 text-sm font-bold ${
+                timeUp
+                  ? 'bg-mp-red text-mp-btn-fg'
+                  : timeLow
+                    ? 'text-mp-red'
+                    : 'text-mp-muted'
+              }`}
+            >
+              残り時間: {timeUp ? '00:00（時間切れ）' : formatRemaining(remainingMs)}
+            </span>
+          )}
+          <ThemeToggle />
+        </div>
       </header>
 
       <main className="flex flex-1 flex-col gap-4 overflow-hidden p-4 md:flex-row">
@@ -187,7 +246,19 @@ export function StudentTaskPage() {
             <span className="text-sm font-semibold">main.c</span>
           </div>
           <div className="flex-1">
-            <CodeEditor value={code} onChange={setCode} language="c" height={500} />
+            <CodeEditor
+              value={code}
+              onChange={setCode}
+              language="c"
+              height={500}
+              onKeystroke={() => {
+                keystrokeCountRef.current += 1;
+              }}
+              onPasteText={(charCount) => {
+                pasteCountRef.current += 1;
+                pastedCharCountRef.current += charCount;
+              }}
+            />
           </div>
         </div>
 

@@ -41,6 +41,7 @@ model User {
   sessions       Session[]
   examsCreated   Exam[]
   submissions    Submission[]
+  examAttempts   ExamAttempt[]
 
   @@map("users")
 }
@@ -72,11 +73,31 @@ model Exam {
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
-  createdBy   User         @relation(fields: [createdById], references: [id])
+  createdBy   User          @relation(fields: [createdById], references: [id])
   tasks       Task[]
   submissions Submission[]
+  attempts    ExamAttempt[]
 
   @@map("exams")
+}
+
+// Marks when a student first opened this exam, so the student-facing
+// countdown and the teacher-facing "time taken" column both have a fixed
+// starting point instead of guessing from submission timestamps alone.
+// Created (upserted) the first time GET /api/student/exams/:examId is called
+// for a given student — i.e. the moment they actually enter the exam, not
+// when it merely appears in their dashboard list.
+model ExamAttempt {
+  id        String   @id @default(uuid())
+  examId    String
+  studentId String
+  startedAt DateTime @default(now())
+
+  exam    Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+  student User @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, studentId])
+  @@map("exam_attempts")
 }
 
 model Task {
@@ -141,6 +162,14 @@ model Submission {
   overallStatus SubmissionStatus
   score         Int               @default(0)
   submittedAt   DateTime          @default(now())
+
+  // Captured client-side from the Monaco editor over the whole time the
+  // student spent on this task, so a teacher can spot answers that were
+  // mostly pasted in rather than typed. Self-reported by the browser like
+  // `code` itself — not a stronger integrity guarantee than that.
+  keystrokeCount  Int @default(0)
+  pasteCount      Int @default(0)
+  pastedCharCount Int @default(0)
 
   exam    Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
   task    Task @relation(fields: [taskId], references: [id], onDelete: Cascade)

@@ -141,6 +141,7 @@ examsRouter.get('/:examId/results/csv', async (req, res) => {
     '試験名',
     ...results.tasks.map((t) => t.title),
     '合計点',
+    '所要時間（秒）',
     '提出日時',
   ];
 
@@ -150,6 +151,7 @@ examsRouter.get('/:examId/results/csv', async (req, res) => {
     results.exam.title,
     ...student.results.map((r) => String(r.score)),
     String(student.totalScore),
+    student.elapsedSeconds !== null ? String(student.elapsedSeconds) : '',
     student.lastSubmittedAt ? student.lastSubmittedAt.toISOString() : '',
   ]);
 

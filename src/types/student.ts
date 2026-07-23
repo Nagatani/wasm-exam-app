@@ -19,6 +19,9 @@ export interface StudentExamDetail {
   description: string | null;
   timeLimitMinutes: number;
   tasks: StudentTaskSummary[];
+  // When this student first opened this exam — the fixed reference point the
+  // countdown displayed while taking it is computed from.
+  startedAt: string;
 }
 
 export interface StudentTestCase {
@@ -63,6 +66,15 @@ export interface JudgeOutcome {
   testCaseId: string;
   stage: 'success' | 'runtime_error';
   stdout: string;
+}
+
+// Captured client-side from the Monaco editor while a student works on a
+// task, to help a teacher spot answers that were mostly pasted in rather
+// than typed.
+export interface EditorIntegrityStats {
+  keystrokeCount: number;
+  pasteCount: number;
+  pastedCharCount: number;
 }
 
 export interface SubmissionSummary {

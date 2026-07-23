@@ -77,6 +77,9 @@ export interface StudentTaskCell {
   status: SubmissionOverallStatus | null;
   score: number;
   submittedAt: string | null;
+  keystrokeCount: number | null;
+  pasteCount: number | null;
+  pastedCharCount: number | null;
 }
 
 export interface StudentResultRow {
@@ -86,6 +89,8 @@ export interface StudentResultRow {
   results: StudentTaskCell[];
   totalScore: number;
   lastSubmittedAt: string | null;
+  startedAt: string | null;
+  elapsedSeconds: number | null;
 }
 
 export interface ExamResults {

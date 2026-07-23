@@ -54,6 +54,15 @@ studentRouter.get('/exams/:examId', async (req, res) => {
     return;
   }
 
+  // First time this student opens this exam, mark it as started — this is
+  // the fixed reference point the student-side countdown and the teacher's
+  // "所要時間" column both compute from. A no-op on every later visit.
+  const attempt = await prisma.examAttempt.upsert({
+    where: { examId_studentId: { examId: exam.id, studentId: req.user!.id } },
+    update: {},
+    create: { examId: exam.id, studentId: req.user!.id },
+  });
+
   const submissions = await prisma.submission.findMany({
     where: { examId: exam.id, studentId: req.user!.id },
     select: { taskId: true },
@@ -67,6 +76,7 @@ studentRouter.get('/exams/:examId', async (req, res) => {
       description: exam.description,
       timeLimitMinutes: exam.timeLimitMinutes,
       tasks: exam.tasks,
+      startedAt: attempt.startedAt,
     },
     submittedTaskIds: submissions.map((s) => s.taskId),
   });
@@ -139,6 +149,9 @@ const submissionRequestSchema = judgeRequestSchema.extend({
   taskId: z.string(),
   language: z.literal('C'),
   code: z.string(),
+  keystrokeCount: z.number().int().nonnegative(),
+  pasteCount: z.number().int().nonnegative(),
+  pastedCharCount: z.number().int().nonnegative(),
 });
 
 studentRouter.post('/submissions', async (req, res) => {
@@ -173,6 +186,9 @@ studentRouter.post('/submissions', async (req, res) => {
       results: verdict.results as unknown as Prisma.InputJsonValue,
       overallStatus: verdict.overallStatus,
       score: verdict.score,
+      keystrokeCount: parsed.data.keystrokeCount,
+      pasteCount: parsed.data.pasteCount,
+      pastedCharCount: parsed.data.pastedCharCount,
     },
   });
 

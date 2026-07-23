@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "submissions" ADD COLUMN     "keystrokeCount" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "pasteCount" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "pastedCharCount" INTEGER NOT NULL DEFAULT 0;
