@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { deleteStudentExamResults, downloadExamResultsCsv, getExamResults } from '../api/exams';
 import { ApiError } from '../api/client';
-import type { ExamResults, SubmissionOverallStatus } from '../types/exam';
+import type {
+  ExamResults,
+  StudentResultRow,
+  SubmissionOverallStatus,
+  TaskResultColumn,
+} from '../types/exam';
 import { ThemeToggle } from '../components/ThemeToggle';
 
 const STATUS_COLOR: Record<SubmissionOverallStatus, string> = {
@@ -33,6 +38,7 @@ export function ExamResultsPage() {
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [revertingId, setRevertingId] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   // Only show the full-page loading state on the very first fetch — a
   // post-revert refresh should update the table in place, not blank it.
   const hasLoadedOnceRef = useRef(false);
@@ -66,6 +72,18 @@ export function ExamResultsPage() {
     } finally {
       setDownloading(false);
     }
+  }
+
+  function toggleExpanded(studentId: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(studentId)) {
+        next.delete(studentId);
+      } else {
+        next.add(studentId);
+      }
+      return next;
+    });
   }
 
   async function handleRevert(studentId: string, displayName: string, studentNumber: string) {
@@ -135,23 +153,9 @@ export function ExamResultsPage() {
           <table className="w-full min-w-max text-sm">
             <thead className="bg-mp-surface text-mp-muted">
               <tr>
+                <th className="w-8 px-3 py-2"></th>
                 <th className="whitespace-nowrap px-3 py-2 text-left">学籍番号</th>
                 <th className="whitespace-nowrap px-3 py-2 text-left">氏名</th>
-                {results.tasks.map((task) => (
-                  <th key={task.id} className="whitespace-nowrap px-3 py-2 text-left">
-                    {task.title}（{task.points}点）
-                  </th>
-                ))}
-                {results.tasks.map((task) => (
-                  <th key={`${task.id}-keystrokes`} className="whitespace-nowrap px-3 py-2 text-left">
-                    {task.title}（打鍵数）
-                  </th>
-                ))}
-                {results.tasks.map((task) => (
-                  <th key={`${task.id}-time`} className="whitespace-nowrap px-3 py-2 text-left">
-                    {task.title}（解答時間）
-                  </th>
-                ))}
                 <th className="whitespace-nowrap px-3 py-2 text-left">合計点</th>
                 <th className="whitespace-nowrap px-3 py-2 text-left">所要時間</th>
                 <th className="whitespace-nowrap px-3 py-2 text-left">最終提出日時</th>
@@ -160,65 +164,127 @@ export function ExamResultsPage() {
             </thead>
             <tbody>
               {results.students.map((student) => (
-                <tr key={student.id} className="border-t border-mp-border even:bg-mp-surface/50">
-                  <td className="whitespace-nowrap px-3 py-2">{student.studentNumber}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{student.displayName}</td>
-                  {student.results.map((cell) => (
-                    <td key={cell.taskId} className="whitespace-nowrap px-3 py-2">
-                      {cell.status ? (
-                        <span className={`font-bold ${STATUS_COLOR[cell.status]}`}>
-                          {cell.status}
-                        </span>
-                      ) : (
-                        <span className="text-mp-muted">未提出</span>
-                      )}{' '}
-                      <span className="text-mp-muted">({cell.score})</span>
-                      {cell.pasteCount !== null && cell.pasteCount > 0 && (
-                        <span
-                          title={`打鍵数: ${cell.keystrokeCount} / 貼り付け回数: ${cell.pasteCount} / 貼り付け文字数: ${cell.pastedCharCount}`}
-                          className="ml-1 rounded bg-mp-orange/20 px-1 text-xs font-bold text-mp-orange"
-                        >
-                          📋{cell.pasteCount}
-                        </span>
-                      )}
-                    </td>
-                  ))}
-                  {student.results.map((cell) => (
-                    <td key={`${cell.taskId}-keystrokes`} className="whitespace-nowrap px-3 py-2 text-mp-muted">
-                      {cell.keystrokeCount === null ? '-' : cell.keystrokeCount}
-                    </td>
-                  ))}
-                  {student.results.map((cell) => (
-                    <td key={`${cell.taskId}-time`} className="whitespace-nowrap px-3 py-2 text-mp-muted">
-                      {formatDuration(cell.timeSpentSeconds)}
-                    </td>
-                  ))}
-                  <td className="whitespace-nowrap px-3 py-2 font-bold">{student.totalScore}</td>
-                  <td
-                    className="whitespace-nowrap px-3 py-2 text-mp-muted"
-                    title={student.startedAt ? `開始: ${formatDateTime(student.startedAt)}` : undefined}
-                  >
-                    {formatDuration(student.elapsedSeconds)}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-mp-muted">
-                    {formatDateTime(student.lastSubmittedAt)}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2">
-                    <button
-                      onClick={() => handleRevert(student.id, student.displayName, student.studentNumber)}
-                      disabled={!student.lastSubmittedAt || revertingId === student.id}
-                      title="この生徒の受験結果をすべて削除し、受験をなかったことにします。"
-                      className="rounded bg-mp-red px-3 py-1 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
-                    >
-                      {revertingId === student.id ? '削除中...' : '差し戻し'}
-                    </button>
-                  </td>
-                </tr>
+                <StudentResultRowGroup
+                  key={student.id}
+                  student={student}
+                  tasks={results.tasks}
+                  expanded={expandedIds.has(student.id)}
+                  onToggle={() => toggleExpanded(student.id)}
+                  onRevert={() => handleRevert(student.id, student.displayName, student.studentNumber)}
+                  reverting={revertingId === student.id}
+                />
               ))}
             </tbody>
           </table>
         </div>
       )}
     </div>
+  );
+}
+
+interface StudentResultRowGroupProps {
+  student: StudentResultRow;
+  tasks: TaskResultColumn[];
+  expanded: boolean;
+  onToggle: () => void;
+  onRevert: () => void;
+  reverting: boolean;
+}
+
+function StudentResultRowGroup({
+  student,
+  tasks,
+  expanded,
+  onToggle,
+  onRevert,
+  reverting,
+}: StudentResultRowGroupProps) {
+  return (
+    <Fragment>
+      <tr
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="cursor-pointer border-t border-mp-border even:bg-mp-surface/50 hover:bg-mp-surface-hover"
+      >
+        <td className="px-3 py-2 text-center text-mp-muted">{expanded ? '▼' : '▶'}</td>
+        <td className="whitespace-nowrap px-3 py-2">{student.studentNumber}</td>
+        <td className="whitespace-nowrap px-3 py-2">{student.displayName}</td>
+        <td className="whitespace-nowrap px-3 py-2 font-bold">{student.totalScore}</td>
+        <td
+          className="whitespace-nowrap px-3 py-2 text-mp-muted"
+          title={student.startedAt ? `開始: ${formatDateTime(student.startedAt)}` : undefined}
+        >
+          {formatDuration(student.elapsedSeconds)}
+        </td>
+        <td className="whitespace-nowrap px-3 py-2 text-mp-muted">
+          {formatDateTime(student.lastSubmittedAt)}
+        </td>
+        <td className="whitespace-nowrap px-3 py-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onRevert();
+            }}
+            disabled={!student.lastSubmittedAt || reverting}
+            title="この生徒の受験結果をすべて削除し、受験をなかったことにします。"
+            className="rounded bg-mp-red px-3 py-1 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
+          >
+            {reverting ? '削除中...' : '差し戻し'}
+          </button>
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="border-t border-mp-border bg-mp-bg">
+          <td colSpan={7} className="px-3 py-3">
+            <table className="w-full min-w-max text-xs">
+              <thead className="text-mp-muted">
+                <tr>
+                  <th className="whitespace-nowrap px-2 py-1 text-left">設問</th>
+                  <th className="whitespace-nowrap px-2 py-1 text-left">結果</th>
+                  <th className="whitespace-nowrap px-2 py-1 text-left">打鍵数</th>
+                  <th className="whitespace-nowrap px-2 py-1 text-left">解答時間</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tasks.map((task) => {
+                  const cell = student.results.find((r) => r.taskId === task.id);
+                  return (
+                    <tr key={task.id} className="border-t border-mp-border/50">
+                      <td className="whitespace-nowrap px-2 py-1.5">
+                        {task.title}（{task.points}点）
+                      </td>
+                      <td className="whitespace-nowrap px-2 py-1.5">
+                        {cell?.status ? (
+                          <span className={`font-bold ${STATUS_COLOR[cell.status]}`}>
+                            {cell.status}
+                          </span>
+                        ) : (
+                          <span className="text-mp-muted">未提出</span>
+                        )}{' '}
+                        <span className="text-mp-muted">({cell?.score ?? 0})</span>
+                        {cell?.pasteCount !== null && cell?.pasteCount !== undefined && cell.pasteCount > 0 && (
+                          <span
+                            title={`打鍵数: ${cell.keystrokeCount} / 貼り付け回数: ${cell.pasteCount} / 貼り付け文字数: ${cell.pastedCharCount}`}
+                            className="ml-1 rounded bg-mp-orange/20 px-1 text-xs font-bold text-mp-orange"
+                          >
+                            📋{cell.pasteCount}
+                          </span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-2 py-1.5 text-mp-muted">
+                        {cell?.keystrokeCount ?? '-'}
+                      </td>
+                      <td className="whitespace-nowrap px-2 py-1.5 text-mp-muted">
+                        {formatDuration(cell?.timeSpentSeconds ?? null)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      )}
+    </Fragment>
   );
 }

@@ -135,16 +135,19 @@ examsRouter.get('/:examId/results/csv', async (req, res) => {
     return;
   }
 
+  // Mirrors the dashboard: the summary columns (matching its collapsed row)
+  // come first, then the per-task detail (matching its accordion contents)
+  // is appended at the tail rather than interleaved with the summary.
   const header = [
     '学籍番号',
     '氏名',
     '試験名',
     ...results.tasks.map((t) => t.title),
-    ...results.tasks.map((t) => `${t.title}（打鍵数）`),
-    ...results.tasks.map((t) => `${t.title}（解答時間・秒）`),
     '合計点',
-    '所要時間（秒）',
     '提出日時',
+    '所要時間（秒）',
+    ...results.tasks.map((t) => `${t.title}（解答時間・秒）`),
+    ...results.tasks.map((t) => `${t.title}（打鍵数）`),
   ];
 
   const rows = results.students.map((student) => [
@@ -152,11 +155,11 @@ examsRouter.get('/:examId/results/csv', async (req, res) => {
     student.displayName,
     results.exam.title,
     ...student.results.map((r) => String(r.score)),
-    ...student.results.map((r) => (r.keystrokeCount !== null ? String(r.keystrokeCount) : '')),
-    ...student.results.map((r) => (r.timeSpentSeconds !== null ? String(r.timeSpentSeconds) : '')),
     String(student.totalScore),
-    student.elapsedSeconds !== null ? String(student.elapsedSeconds) : '',
     student.lastSubmittedAt ? student.lastSubmittedAt.toISOString() : '',
+    student.elapsedSeconds !== null ? String(student.elapsedSeconds) : '',
+    ...student.results.map((r) => (r.timeSpentSeconds !== null ? String(r.timeSpentSeconds) : '')),
+    ...student.results.map((r) => (r.keystrokeCount !== null ? String(r.keystrokeCount) : '')),
   ]);
 
   const csv = UTF8_BOM + toCsv([header, ...rows]);
