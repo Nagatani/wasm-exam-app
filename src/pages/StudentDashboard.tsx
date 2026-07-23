@@ -57,7 +57,7 @@ export function StudentDashboard() {
           <ThemeToggle />
           <button
             onClick={() => logOut().then(refresh)}
-            className="rounded bg-mp-surface px-3 py-1.5 text-sm hover:bg-mp-surface-hover"
+            className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm hover:bg-mp-surface-hover"
           >
             ログアウト
           </button>

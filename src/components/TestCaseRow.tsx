@@ -72,13 +72,13 @@ export function TestCaseRow({ testCase, onUpdated, onDeleted }: TestCaseRowProps
           <button
             onClick={handleSave}
             disabled={saving}
-            className="rounded bg-mp-surface-hover px-3 py-1 text-sm hover:opacity-90 disabled:opacity-50"
+            className="rounded border border-mp-border bg-mp-surface-hover px-3 py-1 text-sm hover:opacity-90 disabled:opacity-50"
           >
             {saving ? '保存中...' : '保存'}
           </button>
           <button
             onClick={handleDelete}
-            className="rounded bg-mp-red/20 px-3 py-1 text-sm text-mp-red hover:bg-mp-red/30"
+            className="rounded bg-mp-red px-3 py-1 text-sm font-bold text-mp-ink hover:opacity-90"
           >
             削除
           </button>

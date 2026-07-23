@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { CodeEditor } from '../components/CodeEditor';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { useTheme } from '../contexts/ThemeContext';
 import { getStudentExam, getStudentTask, runTask, submitTask } from '../api/student';
 import { compileC, runCompiledC } from '../runner/cRunner';
 import { ApiError } from '../api/client';
@@ -16,9 +17,9 @@ const STATUS_LABEL: Record<JudgeVerdict['overallStatus'], string> = {
 };
 
 const STATUS_COLOR: Record<JudgeVerdict['overallStatus'], string> = {
-  AC: 'bg-mp-green/15 text-mp-green border-mp-green/40',
-  WA: 'bg-mp-red/15 text-mp-red border-mp-red/40',
-  CE: 'bg-mp-yellow/15 text-mp-yellow border-mp-yellow/40',
+  AC: 'bg-mp-green text-mp-ink',
+  WA: 'bg-mp-red text-mp-ink',
+  CE: 'bg-mp-yellow text-mp-ink',
 };
 
 interface ExecutionResult {
@@ -30,6 +31,7 @@ interface ExecutionResult {
 export function StudentTaskPage() {
   const { examId, taskId } = useParams<{ examId: string; taskId: string }>();
   const navigate = useNavigate();
+  const { theme } = useTheme();
 
   const [task, setTask] = useState<StudentTask | null>(null);
   const [examTasks, setExamTasks] = useState<StudentTaskSummary[]>([]);
@@ -204,7 +206,7 @@ export function StudentTaskPage() {
             <button
               onClick={handleSubmit}
               disabled={busy}
-              className="flex-1 rounded bg-mp-purple px-3 py-2 text-sm font-bold text-mp-ink hover:opacity-90 disabled:opacity-50"
+              className={`flex-1 rounded bg-mp-purple px-3 py-2 text-sm font-bold hover:opacity-90 disabled:opacity-50 ${theme === 'light' ? 'text-white' : 'text-mp-ink'}`}
             >
               {submitting ? '提出中...' : '送信（解答提出）'}
             </button>

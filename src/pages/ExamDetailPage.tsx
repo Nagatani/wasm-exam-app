@@ -84,7 +84,7 @@ export function ExamDetailPage() {
   return (
     <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
       <div className="mb-4 flex items-center justify-between">
-        <Link to="/teacher" className="inline-block text-sm text-mp-cyan hover:underline">
+        <Link to="/teacher" className="inline-block text-sm font-semibold text-mp-cyan hover:underline">
           ← 試験一覧に戻る
         </Link>
         <ThemeToggle />
@@ -160,7 +160,7 @@ export function ExamDetailPage() {
           <button
             type="button"
             onClick={handleDelete}
-            className="rounded bg-mp-red/20 px-4 py-2 font-bold text-mp-red hover:bg-mp-red/30"
+            className="rounded bg-mp-red px-4 py-2 font-bold text-mp-ink hover:opacity-90"
           >
             試験を削除
           </button>
@@ -172,7 +172,7 @@ export function ExamDetailPage() {
         <div className="flex gap-2">
           <Link
             to={`/teacher/exams/${exam.id}/results`}
-            className="rounded bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover"
+            className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover"
           >
             成績を見る
           </Link>

@@ -41,7 +41,7 @@ export function SandboxPage() {
   return (
     <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
       <div className="mb-4 flex items-center justify-between">
-        <Link to="/teacher" className="inline-block text-sm text-mp-cyan hover:underline">
+        <Link to="/teacher" className="inline-block text-sm font-semibold text-mp-cyan hover:underline">
           ← 講師管理画面に戻る
         </Link>
         <ThemeToggle />

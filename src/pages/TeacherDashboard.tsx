@@ -43,13 +43,13 @@ export function TeacherDashboard() {
           <ThemeToggle />
           <Link
             to="/teacher/sandbox"
-            className="rounded bg-mp-surface px-3 py-1.5 text-sm hover:bg-mp-surface-hover"
+            className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm hover:bg-mp-surface-hover"
           >
             サンドボックス動作確認
           </Link>
           <button
             onClick={() => logOut().then(refresh)}
-            className="rounded bg-mp-surface px-3 py-1.5 text-sm hover:bg-mp-surface-hover"
+            className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm hover:bg-mp-surface-hover"
           >
             ログアウト
           </button>
@@ -99,8 +99,8 @@ export function TeacherDashboard() {
                 <span
                   className={
                     exam.status === 'PUBLISHED'
-                      ? 'rounded bg-mp-green/15 px-2 py-1 text-xs text-mp-green'
-                      : 'rounded bg-mp-surface-hover px-2 py-1 text-xs text-mp-muted'
+                      ? 'rounded bg-mp-green px-2 py-1 text-xs font-bold text-mp-ink'
+                      : 'rounded border border-mp-border bg-mp-surface-hover px-2 py-1 text-xs text-mp-muted'
                   }
                 >
                   {STATUS_LABEL[exam.status]}

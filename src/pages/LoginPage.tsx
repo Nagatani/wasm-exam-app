@@ -78,7 +78,7 @@ export function LoginPage() {
 
         <p className="mt-4 text-center text-sm text-mp-muted">
           アカウントをお持ちでない方は{' '}
-          <Link to="/signup" className="text-mp-cyan hover:underline">
+          <Link to="/signup" className="font-semibold text-mp-cyan hover:underline">
             新規登録
           </Link>
         </p>

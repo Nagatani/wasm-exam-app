@@ -102,7 +102,7 @@ export function SignupPage() {
 
         <p className="mt-4 text-center text-sm text-mp-muted">
           既にアカウントをお持ちの方は{' '}
-          <Link to="/login" className="text-mp-cyan hover:underline">
+          <Link to="/login" className="font-semibold text-mp-cyan hover:underline">
             ログイン
           </Link>
         </p>

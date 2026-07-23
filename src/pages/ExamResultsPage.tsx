@@ -63,7 +63,7 @@ export function ExamResultsPage() {
       <div className="mb-4 flex items-center justify-between">
         <Link
           to={`/teacher/exams/${examId}`}
-          className="inline-block text-sm text-mp-cyan hover:underline"
+          className="inline-block text-sm font-semibold text-mp-cyan hover:underline"
         >
           ← 試験詳細に戻る
         </Link>

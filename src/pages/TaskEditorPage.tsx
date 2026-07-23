@@ -96,7 +96,7 @@ export function TaskEditorPage() {
       <div className="mb-4 flex items-center justify-between">
         <Link
           to={`/teacher/exams/${examId}`}
-          className="inline-block text-sm text-mp-cyan hover:underline"
+          className="inline-block text-sm font-semibold text-mp-cyan hover:underline"
         >
           ← 試験詳細に戻る
         </Link>
@@ -153,7 +153,7 @@ export function TaskEditorPage() {
           <button
             type="button"
             onClick={() => setShowPreview((v) => !v)}
-            className="text-xs text-mp-cyan hover:underline"
+            className="text-xs font-semibold text-mp-cyan hover:underline"
           >
             {showPreview ? '編集に戻る' : 'プレビュー'}
           </button>
@@ -206,7 +206,7 @@ export function TaskEditorPage() {
           <button
             type="button"
             onClick={handleDelete}
-            className="rounded bg-mp-red/20 px-4 py-2 font-bold text-mp-red hover:bg-mp-red/30"
+            className="rounded bg-mp-red px-4 py-2 font-bold text-mp-ink hover:opacity-90"
           >
             問題を削除
           </button>
@@ -309,7 +309,7 @@ function SolutionEditor({
       <button
         onClick={handleSave}
         disabled={saving}
-        className="rounded bg-mp-surface-hover px-3 py-1.5 text-sm hover:opacity-90 disabled:opacity-50"
+        className="rounded border border-mp-border bg-mp-surface-hover px-3 py-1.5 text-sm hover:opacity-90 disabled:opacity-50"
       >
         {saving ? '保存中...' : saved ? '保存しました' : '保存'}
       </button>
