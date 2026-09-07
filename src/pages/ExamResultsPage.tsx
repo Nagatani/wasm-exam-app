@@ -9,6 +9,7 @@ import type {
   TaskResultColumn,
 } from '../types/exam';
 import { BackHeader } from '../components/BackHeader';
+import { PageSkeleton } from '../components/Skeleton';
 import { statusGlyph } from '../lib/status';
 
 const STATUS_COLOR: Record<SubmissionOverallStatus, string> = {
@@ -205,7 +206,7 @@ export function ExamResultsPage() {
   }
 
   if (loading) {
-    return <div className="min-h-screen bg-mp-bg p-6 text-mp-muted">読み込み中...</div>;
+    return <PageSkeleton />;
   }
 
   if (!results) {

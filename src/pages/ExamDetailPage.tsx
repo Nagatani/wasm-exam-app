@@ -1,10 +1,23 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { deleteExam, getExam, updateExam } from '../api/exams';
 import { createTask } from '../api/tasks';
 import { ApiError } from '../api/client';
 import type { ExamDetail, ExamStatus } from '../types/exam';
 import { BackHeader } from '../components/BackHeader';
+import { PageSkeleton } from '../components/Skeleton';
+import { EmptyState } from '../components/EmptyState';
+import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
+
+// The exam fields the metadata form persists — used to detect unsaved edits.
+function examFormKey(e: ExamDetail): string {
+  return JSON.stringify({
+    title: e.title,
+    description: e.description,
+    timeLimitMinutes: e.timeLimitMinutes,
+    status: e.status,
+  });
+}
 
 export function ExamDetailPage() {
   const { examId } = useParams<{ examId: string }>();
@@ -13,6 +26,8 @@ export function ExamDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const savedSnapshotRef = useRef('');
 
   async function load() {
     if (!examId) return;
@@ -20,6 +35,7 @@ export function ExamDetailPage() {
     try {
       const { exam } = await getExam(examId);
       setExam(exam);
+      savedSnapshotRef.current = examFormKey(exam);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '試験の取得に失敗しました。');
     } finally {
@@ -44,7 +60,13 @@ export function ExamDetailPage() {
         timeLimitMinutes: exam.timeLimitMinutes,
         status: exam.status,
       });
-      setExam((prev) => (prev ? { ...prev, ...updated } : prev));
+      setExam((prev) => {
+        const next = prev ? { ...prev, ...updated } : prev;
+        if (next) savedSnapshotRef.current = examFormKey(next);
+        return next;
+      });
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 2000);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '保存に失敗しました。');
     } finally {
@@ -69,8 +91,11 @@ export function ExamDetailPage() {
     navigate(`/teacher/exams/${exam.id}/tasks/${task.id}`);
   }
 
+  const dirty = exam ? examFormKey(exam) !== savedSnapshotRef.current : false;
+  useUnsavedGuard(dirty);
+
   if (loading) {
-    return <div className="min-h-screen bg-mp-bg p-6 text-mp-muted">読み込み中...</div>;
+    return <PageSkeleton />;
   }
 
   if (!exam) {
@@ -144,10 +169,10 @@ export function ExamDetailPage() {
 
         {error && <p className="mb-3 text-sm text-mp-red">{error}</p>}
 
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || !dirty}
             className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
           >
             {saving ? '保存中...' : '保存'}
@@ -159,6 +184,11 @@ export function ExamDetailPage() {
           >
             試験を削除
           </button>
+          {dirty ? (
+            <span className="text-xs font-bold text-mp-orange">● 未保存の変更があります</span>
+          ) : savedFlash ? (
+            <span className="text-xs font-bold text-mp-green">保存しました</span>
+          ) : null}
         </div>
       </form>
 
@@ -181,7 +211,17 @@ export function ExamDetailPage() {
       </div>
 
       {exam.tasks.length === 0 ? (
-        <p className="text-mp-muted">まだ問題が登録されていません。</p>
+        <EmptyState
+          message="まだ問題が登録されていません。"
+          action={
+            <button
+              onClick={handleAddTask}
+              className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90"
+            >
+              + 問題を追加
+            </button>
+          }
+        />
       ) : (
         <ul className="divide-y divide-mp-border rounded-lg border border-mp-border bg-mp-surface">
           {exam.tasks.map((task) => (

@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { AppHeader } from '../components/AppHeader';
+import { SkeletonRows } from '../components/Skeleton';
+import { EmptyState } from '../components/EmptyState';
 import { createExam, listExams } from '../api/exams';
 import { ApiError } from '../api/client';
 import type { ExamSummary, ExamStatus } from '../types/exam';
@@ -71,9 +73,19 @@ export function TeacherDashboard() {
 
       {error && <p className="mb-4 text-sm text-mp-red">{error}</p>}
       {loading ? (
-        <p className="text-mp-muted">読み込み中...</p>
+        <SkeletonRows />
       ) : exams.length === 0 ? (
-        <p className="text-mp-muted">まだ試験が登録されていません。</p>
+        <EmptyState
+          message="まだ試験が登録されていません。"
+          action={
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90"
+            >
+              + 新規試験作成
+            </button>
+          }
+        />
       ) : (
         <ul className="divide-y divide-mp-border rounded-lg border border-mp-border bg-mp-surface">
           {exams.map((exam) => (

@@ -7,6 +7,8 @@ import type { Language, TaskDetail } from '../types/exam';
 import { TestCaseRow } from '../components/TestCaseRow';
 import { CodeEditor } from '../components/CodeEditor';
 import { BackHeader } from '../components/BackHeader';
+import { PageSkeleton } from '../components/Skeleton';
+import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 
 const inputClass =
   'w-full rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg';
@@ -105,8 +107,11 @@ export function TaskEditorPage() {
     setTask((prev) => (prev ? { ...prev, testCases: [...prev.testCases, testCase] } : prev));
   }
 
+  const dirty = task ? taskFormKey(task) !== savedSnapshotRef.current : false;
+  useUnsavedGuard(dirty);
+
   if (loading) {
-    return <div className="min-h-screen bg-mp-bg p-6 text-mp-muted">読み込み中...</div>;
+    return <PageSkeleton />;
   }
 
   if (!task) {
@@ -116,8 +121,6 @@ export function TaskEditorPage() {
       </div>
     );
   }
-
-  const dirty = taskFormKey(task) !== savedSnapshotRef.current;
 
   return (
     <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">

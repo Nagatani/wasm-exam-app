@@ -4,6 +4,7 @@ import { getExamSubmissions, getStudentExam } from '../api/student';
 import { ApiError } from '../api/client';
 import type { StudentExamDetail, SubmissionSummary } from '../types/student';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { PageSkeleton } from '../components/Skeleton';
 import { statusGlyph } from '../lib/status';
 
 const STATUS_LABEL: Record<SubmissionSummary['overallStatus'], string> = {
@@ -37,7 +38,7 @@ export function StudentExamFinishedPage() {
   }, [examId]);
 
   if (loading) {
-    return <div className="min-h-screen bg-mp-bg p-6 text-mp-muted">読み込み中...</div>;
+    return <PageSkeleton />;
   }
 
   if (!exam) {

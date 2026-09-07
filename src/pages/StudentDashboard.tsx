@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { AppHeader } from '../components/AppHeader';
+import { SkeletonRows } from '../components/Skeleton';
+import { EmptyState } from '../components/EmptyState';
 import { getStudentExam, listStudentExams } from '../api/student';
 import { prewarmCRunner } from '../runner/cRunner';
 import { ApiError } from '../api/client';
@@ -68,9 +70,9 @@ export function StudentDashboard() {
       {error && <p className="mb-4 text-sm text-mp-red">{error}</p>}
 
       {loading ? (
-        <p className="text-mp-muted">読み込み中...</p>
+        <SkeletonRows />
       ) : exams.length === 0 ? (
-        <p className="text-mp-muted">現在受験できる試験はありません。</p>
+        <EmptyState message="現在受験できる試験はありません。" />
       ) : (
         <>
           <h2 className="mb-2 text-lg font-bold">未受験の試験</h2>

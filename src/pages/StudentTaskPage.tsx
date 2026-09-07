@@ -6,6 +6,8 @@ import { ThemeToggle } from '../components/ThemeToggle';
 import { getStudentExam, getStudentTask, runTask, submitTask } from '../api/student';
 import { compileC, prewarmCRunner, runCompiledC } from '../runner/cRunner';
 import { statusGlyph } from '../lib/status';
+import { PageSkeleton } from '../components/Skeleton';
+import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { ApiError } from '../api/client';
 import type { JudgeOutcome, JudgeVerdict } from '../types/student';
 import type { StudentTask, StudentTaskSummary } from '../types/student';
@@ -128,6 +130,10 @@ export function StudentTaskPage() {
     prewarmCRunner();
   }, []);
 
+  // Guard against losing in-progress answer code to an accidental refresh /
+  // tab close. In-app navigation (stepper, submit) is handled separately.
+  useUnsavedGuard(code !== initialCodeRef.current);
+
   async function executeAgainstAllTestCases(currentTask: StudentTask): Promise<ExecutionResult> {
     setProgress({ phase: 'compiling' });
     const compileResult = await compileC(code);
@@ -216,7 +222,7 @@ export function StudentTaskPage() {
   }
 
   if (loading) {
-    return <div className="min-h-screen bg-mp-bg p-6 text-mp-muted">読み込み中...</div>;
+    return <PageSkeleton />;
   }
 
   if (!task) {
