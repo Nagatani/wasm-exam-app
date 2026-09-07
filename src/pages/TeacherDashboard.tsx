@@ -1,8 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { logOut } from '../api/auth';
-import { ThemeToggle } from '../components/ThemeToggle';
+import { AppHeader } from '../components/AppHeader';
 import { createExam, listExams } from '../api/exams';
 import { ApiError } from '../api/client';
 import type { ExamSummary, ExamStatus } from '../types/exam';
@@ -13,7 +12,7 @@ const STATUS_LABEL: Record<ExamStatus, string> = {
 };
 
 export function TeacherDashboard() {
-  const { profile, refresh } = useAuth();
+  const { profile } = useAuth();
   const [exams, setExams] = useState<ExamSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,26 +36,19 @@ export function TeacherDashboard() {
 
   return (
     <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
-      <header className="mb-6 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-mp-cyan">講師管理画面</h1>
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
+      <AppHeader
+        title="講師管理画面"
+        actions={
           <Link
             to="/teacher/sandbox"
             className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm hover:bg-mp-surface-hover"
           >
             サンドボックス動作確認
           </Link>
-          <button
-            onClick={() => logOut().then(refresh)}
-            className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm hover:bg-mp-surface-hover"
-          >
-            ログアウト
-          </button>
-        </div>
-      </header>
+        }
+      />
 
-      <p className="mb-4 text-mp-muted">ようこそ、{profile?.studentNumber} さん。</p>
+      <p className="mb-4 text-mp-muted">ようこそ、{profile?.displayName} さん。</p>
 
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-bold">試験一覧</h2>

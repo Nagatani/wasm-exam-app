@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { deleteStudentExamResults, downloadExamResultsCsv, getExamResults } from '../api/exams';
 import { ApiError } from '../api/client';
 import type {
@@ -8,7 +8,7 @@ import type {
   SubmissionOverallStatus,
   TaskResultColumn,
 } from '../types/exam';
-import { ThemeToggle } from '../components/ThemeToggle';
+import { BackHeader } from '../components/BackHeader';
 
 const STATUS_COLOR: Record<SubmissionOverallStatus, string> = {
   AC: 'text-mp-green',
@@ -121,15 +121,7 @@ export function ExamResultsPage() {
 
   return (
     <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
-      <div className="mb-4 flex items-center justify-between">
-        <Link
-          to={`/teacher/exams/${examId}`}
-          className="inline-block text-sm font-semibold text-mp-cyan hover:underline"
-        >
-          ← 試験詳細に戻る
-        </Link>
-        <ThemeToggle />
-      </div>
+      <BackHeader to={`/teacher/exams/${examId}`} label="試験詳細に戻る" />
 
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-bold text-mp-cyan">

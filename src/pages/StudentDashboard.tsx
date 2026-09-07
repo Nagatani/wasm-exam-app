@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { logOut } from '../api/auth';
-import { ThemeToggle } from '../components/ThemeToggle';
+import { AppHeader } from '../components/AppHeader';
 import { getStudentExam, listStudentExams } from '../api/student';
+import { prewarmCRunner } from '../runner/cRunner';
 import { ApiError } from '../api/client';
 import type { StudentExamSummary } from '../types/student';
 
@@ -12,7 +12,7 @@ function isCompleted(exam: StudentExamSummary): boolean {
 }
 
 export function StudentDashboard() {
-  const { profile, refresh } = useAuth();
+  const { profile } = useAuth();
   const navigate = useNavigate();
   const [exams, setExams] = useState<StudentExamSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,6 +24,9 @@ export function StudentDashboard() {
       .then(({ exams }) => setExams(exams))
       .catch((err) => setError(err instanceof ApiError ? err.message : '試験一覧の取得に失敗しました。'))
       .finally(() => setLoading(false));
+    // Begin fetching the ~100MB C toolchain now so it's likely cached by the
+    // time the student actually opens a task and hits "実行".
+    prewarmCRunner();
   }, []);
 
   async function handleStart(examId: string) {
@@ -58,20 +61,9 @@ export function StudentDashboard() {
 
   return (
     <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
-      <header className="mb-6 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-mp-cyan">生徒ダッシュボード</h1>
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
-          <button
-            onClick={() => logOut().then(refresh)}
-            className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm hover:bg-mp-surface-hover"
-          >
-            ログアウト
-          </button>
-        </div>
-      </header>
+      <AppHeader title="生徒ダッシュボード" />
 
-      <p className="mb-4 text-mp-muted">ようこそ、{profile?.studentNumber} さん。</p>
+      <p className="mb-4 text-mp-muted">ようこそ、{profile?.displayName} さん。</p>
 
       {error && <p className="mb-4 text-sm text-mp-red">{error}</p>}
 

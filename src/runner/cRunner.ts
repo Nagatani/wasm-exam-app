@@ -20,6 +20,15 @@ function loadClang(): Promise<Wasmer> {
   return clangPromise;
 }
 
+// Kick off the SDK init + ~100MB clang toolchain download ahead of time (e.g.
+// on the student dashboard / when a task page mounts) so the first real
+// compile isn't the thing that pays for it. Safe to call repeatedly — the
+// underlying promise is memoized — and failures are swallowed here since this
+// is only an optimization; the actual compile path surfaces real errors.
+export function prewarmCRunner(): void {
+  loadClang().catch(() => {});
+}
+
 export type RunCStage = 'compile_error' | 'runtime_error' | 'success';
 
 export interface CompileResult {

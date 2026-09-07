@@ -1,12 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { getTask, updateTask, deleteTask, createTestCase, upsertSolution } from '../api/tasks';
 import { ApiError } from '../api/client';
 import type { Language, TaskDetail } from '../types/exam';
 import { TestCaseRow } from '../components/TestCaseRow';
 import { CodeEditor } from '../components/CodeEditor';
-import { ThemeToggle } from '../components/ThemeToggle';
+import { BackHeader } from '../components/BackHeader';
 
 const inputClass =
   'w-full rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg';
@@ -93,15 +93,7 @@ export function TaskEditorPage() {
 
   return (
     <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
-      <div className="mb-4 flex items-center justify-between">
-        <Link
-          to={`/teacher/exams/${examId}`}
-          className="inline-block text-sm font-semibold text-mp-cyan hover:underline"
-        >
-          ← 試験詳細に戻る
-        </Link>
-        <ThemeToggle />
-      </div>
+      <BackHeader to={`/teacher/exams/${examId}`} label="試験詳細に戻る" />
 
       <form
         onSubmit={handleSave}
@@ -159,7 +151,7 @@ export function TaskEditorPage() {
           </button>
         </div>
         {showPreview ? (
-          <div className="prose prose-invert mb-3 max-w-none rounded border border-mp-border bg-mp-bg p-3">
+          <div className="markdown-body mb-3 rounded border border-mp-border bg-mp-bg p-3">
             <ReactMarkdown>{task.statementMarkdown}</ReactMarkdown>
           </div>
         ) : (

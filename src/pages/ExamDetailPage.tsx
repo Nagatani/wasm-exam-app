@@ -4,7 +4,7 @@ import { deleteExam, getExam, updateExam } from '../api/exams';
 import { createTask } from '../api/tasks';
 import { ApiError } from '../api/client';
 import type { ExamDetail, ExamStatus } from '../types/exam';
-import { ThemeToggle } from '../components/ThemeToggle';
+import { BackHeader } from '../components/BackHeader';
 
 export function ExamDetailPage() {
   const { examId } = useParams<{ examId: string }>();
@@ -83,12 +83,7 @@ export function ExamDetailPage() {
 
   return (
     <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
-      <div className="mb-4 flex items-center justify-between">
-        <Link to="/teacher" className="inline-block text-sm font-semibold text-mp-cyan hover:underline">
-          ← 試験一覧に戻る
-        </Link>
-        <ThemeToggle />
-      </div>
+      <BackHeader to="/teacher" label="試験一覧に戻る" />
 
       <form
         onSubmit={handleSave}

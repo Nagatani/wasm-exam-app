@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import { CodeEditor } from '../components/CodeEditor';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { getStudentExam, getStudentTask, runTask, submitTask } from '../api/student';
-import { compileC, runCompiledC } from '../runner/cRunner';
+import { compileC, prewarmCRunner, runCompiledC } from '../runner/cRunner';
 import { ApiError } from '../api/client';
 import type { JudgeOutcome, JudgeVerdict } from '../types/student';
 import type { StudentTask, StudentTaskSummary } from '../types/student';
@@ -32,6 +32,14 @@ interface ExamTiming {
   startedAt: string;
 }
 
+// Structured progress for the run/submit path so the UI can show a real bar
+// instead of a single status string. 'compiling' is indeterminate (the first
+// compile may pull a ~100MB toolchain); 'running' is proportional.
+type RunProgress =
+  | { phase: 'compiling' }
+  | { phase: 'running'; current: number; total: number }
+  | null;
+
 function formatRemaining(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const hours = Math.floor(totalSeconds / 3600);
@@ -54,7 +62,7 @@ export function StudentTaskPage() {
 
   const [running, setRunning] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [statusMessage, setStatusMessage] = useState('');
+  const [progress, setProgress] = useState<RunProgress>(null);
   const [verdict, setVerdict] = useState<JudgeVerdict | null>(null);
   const [compileError, setCompileError] = useState<string | null>(null);
   const [submittedTaskIds, setSubmittedTaskIds] = useState<string[]>([]);
@@ -107,18 +115,24 @@ export function StudentTaskPage() {
     return () => clearInterval(id);
   }, []);
 
+  // Start the SDK init + big toolchain download as soon as the page opens, so
+  // it overlaps with the student reading the statement and writing code rather
+  // than blocking the first "実行" click.
+  useEffect(() => {
+    prewarmCRunner();
+  }, []);
+
   async function executeAgainstAllTestCases(currentTask: StudentTask): Promise<ExecutionResult> {
-    setStatusMessage(
-      'コンパイル中です（初回はclangパッケージのダウンロードのため数十秒〜数分かかることがあります）...',
-    );
+    setProgress({ phase: 'compiling' });
     const compileResult = await compileC(code);
     if (!compileResult.ok || !compileResult.wasmBinary) {
       return { compileFailed: true, compileStderr: compileResult.stderr, outcomes: [] };
     }
 
     const outcomes: JudgeOutcome[] = [];
-    for (const tc of currentTask.testCases) {
-      setStatusMessage(`テストケース ${tc.order + 1} を実行中...`);
+    const total = currentTask.testCases.length;
+    for (const [index, tc] of currentTask.testCases.entries()) {
+      setProgress({ phase: 'running', current: index + 1, total });
       const runResult = await runCompiledC(compileResult.wasmBinary, tc.input);
       outcomes.push({
         testCaseId: tc.id,
@@ -148,7 +162,7 @@ export function StudentTaskPage() {
       setError(err instanceof Error ? err.message : '実行に失敗しました。');
     } finally {
       setRunning(false);
-      setStatusMessage('');
+      setProgress(null);
     }
   }
 
@@ -191,7 +205,7 @@ export function StudentTaskPage() {
       setError(err instanceof Error ? err.message : '提出に失敗しました。');
     } finally {
       setSubmitting(false);
-      setStatusMessage('');
+      setProgress(null);
     }
   }
 
@@ -284,7 +298,7 @@ export function StudentTaskPage() {
         {/* 左カラム: 問題文 + サンプルテストケース */}
         <div className="flex w-full flex-col overflow-y-auto rounded-lg border border-mp-border bg-mp-surface p-4 md:w-1/3">
           <h2 className="mb-2 text-sm font-bold text-mp-muted">問題文</h2>
-          <div className="prose prose-invert mb-4 max-w-none text-sm">
+          <div className="markdown-body mb-4 text-sm">
             <ReactMarkdown>{task.statementMarkdown}</ReactMarkdown>
           </div>
 
@@ -349,7 +363,27 @@ export function StudentTaskPage() {
             </button>
           </div>
 
-          {busy && statusMessage && <p className="text-xs text-mp-muted">{statusMessage}</p>}
+          {busy && progress && (
+            <div className="space-y-1">
+              <div className="h-1.5 w-full overflow-hidden rounded bg-mp-bg">
+                <div
+                  className={`h-full bg-mp-cyan transition-[width] duration-300 ${
+                    progress.phase === 'compiling' ? 'mp-progress-indeterminate' : ''
+                  }`}
+                  style={
+                    progress.phase === 'running'
+                      ? { width: `${(progress.current / Math.max(1, progress.total)) * 100}%` }
+                      : undefined
+                  }
+                />
+              </div>
+              <p className="text-xs text-mp-muted">
+                {progress.phase === 'compiling'
+                  ? 'コンパイル中...（初回はコンパイラのダウンロードのため数十秒〜数分かかることがあります）'
+                  : `テストケース ${progress.current}/${progress.total} を実行中...`}
+              </p>
+            </div>
+          )}
           {error && <p className="text-sm text-mp-red">{error}</p>}
 
           {verdict && (
