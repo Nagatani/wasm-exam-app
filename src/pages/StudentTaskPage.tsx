@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { CodeEditor } from '../components/CodeEditor';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { getStudentExam, getStudentTask, runTask, submitTask } from '../api/student';
 import { compileC, prewarmCRunner, runCompiledC } from '../runner/cRunner';
+import { statusGlyph } from '../lib/status';
 import { ApiError } from '../api/client';
 import type { JudgeOutcome, JudgeVerdict } from '../types/student';
 import type { StudentTask, StudentTaskSummary } from '../types/student';
@@ -67,6 +68,11 @@ export function StudentTaskPage() {
   const [compileError, setCompileError] = useState<string | null>(null);
   const [submittedTaskIds, setSubmittedTaskIds] = useState<string[]>([]);
   const [showConfirm, setShowConfirm] = useState(false);
+  // Ctrl/Cmd+Enter in the editor triggers a run. The Monaco action is
+  // registered once on mount, so it calls through this ref to always see the
+  // current busy/timeUp state and the latest handleRun.
+  const runActionRef = useRef<() => void>(() => {});
+  const handleCmdEnter = useCallback(() => runActionRef.current(), []);
   // The editor content this task loaded with — used to warn before navigating
   // to another problem while there are unsaved edits (there's no draft
   // persistence, so leaving loses the work).
@@ -232,6 +238,11 @@ export function StudentTaskPage() {
   const timeLow = remainingMs !== null && !timeUp && !timeCritical && remainingMs < 5 * 60_000;
   const submittedInExam = examTasks.filter((t) => submittedTaskIds.includes(t.id)).length;
 
+  runActionRef.current = () => {
+    if (busy || timeUp) return;
+    void handleRun();
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-mp-bg text-mp-fg">
       <header className="flex flex-col gap-2 border-b border-mp-border bg-mp-surface px-4 py-2">
@@ -325,6 +336,7 @@ export function StudentTaskPage() {
         <div className="flex w-full flex-col md:w-1/3">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-sm font-semibold">main.c</span>
+            <span className="text-xs text-mp-muted">Ctrl / ⌘ + Enter で実行</span>
           </div>
           <div className="flex-1">
             <CodeEditor
@@ -333,6 +345,7 @@ export function StudentTaskPage() {
               language="c"
               height={500}
               readOnly={timeUp}
+              onCmdEnter={handleCmdEnter}
               onKeystroke={() => {
                 keystrokeCountRef.current += 1;
               }}
@@ -418,7 +431,7 @@ export function StudentTaskPage() {
                               : 'text-mp-red'
                         }
                       >
-                        {result?.status ?? '-'}
+                        {result?.status ? `${statusGlyph(result.status)} ${result.status}` : '-'}
                       </span>
                     </div>
                     {tc.isSample && result && (

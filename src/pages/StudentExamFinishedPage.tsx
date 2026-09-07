@@ -4,6 +4,7 @@ import { getExamSubmissions, getStudentExam } from '../api/student';
 import { ApiError } from '../api/client';
 import type { StudentExamDetail, SubmissionSummary } from '../types/student';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { statusGlyph } from '../lib/status';
 
 const STATUS_LABEL: Record<SubmissionSummary['overallStatus'], string> = {
   AC: 'AC',
@@ -76,7 +77,9 @@ export function StudentExamFinishedPage() {
                     {task.order + 1}. {task.title}
                   </td>
                   <td className={`py-2 font-bold ${submission ? STATUS_COLOR[submission.overallStatus] : 'text-mp-muted'}`}>
-                    {submission ? STATUS_LABEL[submission.overallStatus] : '未提出'}
+                    {submission
+                      ? `${statusGlyph(submission.overallStatus)} ${STATUS_LABEL[submission.overallStatus]}`
+                      : '未提出'}
                   </td>
                   <td className="py-2 text-right">
                     {submission ? submission.score : 0} / {task.points}

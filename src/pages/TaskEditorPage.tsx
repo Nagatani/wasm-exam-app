@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { getTask, updateTask, deleteTask, createTestCase, upsertSolution } from '../api/tasks';
@@ -13,6 +13,20 @@ const inputClass =
 const codeClass =
   'w-full rounded border border-mp-border bg-mp-bg px-3 py-2 font-mono text-sm text-mp-fg';
 
+// The subset of task fields the main form's "保存" persists — used to detect
+// unsaved edits (test cases and solutions save independently via their own
+// rows, so they're deliberately excluded here).
+function taskFormKey(t: TaskDetail): string {
+  return JSON.stringify({
+    title: t.title,
+    order: t.order,
+    points: t.points,
+    statementMarkdown: t.statementMarkdown,
+    starterCodeC: t.starterCodeC,
+    starterCodeJava: t.starterCodeJava,
+  });
+}
+
 export function TaskEditorPage() {
   const { examId, taskId } = useParams<{ examId: string; taskId: string }>();
   const navigate = useNavigate();
@@ -20,7 +34,12 @@ export function TaskEditorPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  // Snapshot (taskFormKey) of the last server-persisted state of the main
+  // form, so an "unsaved changes" hint can be shown while the current fields
+  // differ from it.
+  const savedSnapshotRef = useRef('');
 
   async function load() {
     if (!taskId) return;
@@ -28,6 +47,7 @@ export function TaskEditorPage() {
     try {
       const { task } = await getTask(taskId);
       setTask(task);
+      savedSnapshotRef.current = taskFormKey(task);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '問題の取得に失敗しました。');
     } finally {
@@ -54,7 +74,13 @@ export function TaskEditorPage() {
         starterCodeC: task.starterCodeC,
         starterCodeJava: task.starterCodeJava,
       });
-      setTask((prev) => (prev ? { ...prev, ...updated } : prev));
+      setTask((prev) => {
+        const next = prev ? { ...prev, ...updated } : prev;
+        if (next) savedSnapshotRef.current = taskFormKey(next);
+        return next;
+      });
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 2000);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '保存に失敗しました。');
     } finally {
@@ -90,6 +116,8 @@ export function TaskEditorPage() {
       </div>
     );
   }
+
+  const dirty = taskFormKey(task) !== savedSnapshotRef.current;
 
   return (
     <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
@@ -187,10 +215,10 @@ export function TaskEditorPage() {
 
         {error && <p className="mb-3 text-sm text-mp-red">{error}</p>}
 
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || !dirty}
             className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
           >
             {saving ? '保存中...' : '保存'}
@@ -202,6 +230,11 @@ export function TaskEditorPage() {
           >
             問題を削除
           </button>
+          {dirty ? (
+            <span className="text-xs font-bold text-mp-orange">● 未保存の変更があります</span>
+          ) : savedFlash ? (
+            <span className="text-xs font-bold text-mp-green">保存しました</span>
+          ) : null}
         </div>
       </form>
 

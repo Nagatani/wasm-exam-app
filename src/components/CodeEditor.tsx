@@ -16,6 +16,10 @@ interface CodeEditorProps {
   // Fired once per paste action with the number of characters that landed in
   // the model, so paste volume can be distinguished from a few keystrokes.
   onPasteText?: (charCount: number) => void;
+  // Bound to Ctrl/Cmd+Enter inside the editor. Registered once on mount, so
+  // the callback must stay valid for the editor's lifetime (wrap a ref if it
+  // needs to see fresh state).
+  onCmdEnter?: () => void;
 }
 
 // Modifier keys fire their own onKeyDown when pressed alone (e.g. tapping
@@ -39,6 +43,7 @@ export function CodeEditor({
   readOnly = false,
   onKeystroke,
   onPasteText,
+  onCmdEnter,
 }: CodeEditorProps) {
   const { theme } = useTheme();
 
@@ -52,6 +57,14 @@ export function CodeEditor({
       const pastedText = model ? model.getValueInRange(e.range) : '';
       onPasteText?.(pastedText.length);
     });
+    if (onCmdEnter) {
+      editor.addAction({
+        id: 'code-editor-cmd-enter',
+        label: 'コンパイル＆テスト実行',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+        run: () => onCmdEnter(),
+      });
+    }
   };
 
   return (

@@ -4,6 +4,7 @@ import { logIn } from '../api/auth';
 import { ApiError } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { PasswordField } from '../components/PasswordField';
 
 export function LoginPage() {
   const [studentId, setStudentId] = useState('');
@@ -53,15 +54,11 @@ export function LoginPage() {
           required
         />
 
-        <label className="mb-1 block text-sm text-mp-muted" htmlFor="password">
-          パスワード
-        </label>
-        <input
+        <PasswordField
           id="password"
-          type="password"
-          className="mb-4 w-full rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+          label="パスワード"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={setPassword}
           autoComplete="current-password"
           required
         />
