@@ -57,6 +57,12 @@ export function StudentTaskPage() {
   const [statusMessage, setStatusMessage] = useState('');
   const [verdict, setVerdict] = useState<JudgeVerdict | null>(null);
   const [compileError, setCompileError] = useState<string | null>(null);
+  const [submittedTaskIds, setSubmittedTaskIds] = useState<string[]>([]);
+  const [showConfirm, setShowConfirm] = useState(false);
+  // The editor content this task loaded with — used to warn before navigating
+  // to another problem while there are unsaved edits (there's no draft
+  // persistence, so leaving loses the work).
+  const initialCodeRef = useRef('');
 
   // Accumulated for the whole time the student spends on this task (from load
   // to submit), not just the latest run — kept in refs since nothing needs to
@@ -80,10 +86,13 @@ export function StudentTaskPage() {
     pastedCharCountRef.current = 0;
     taskStartTimeRef.current = Date.now();
     Promise.all([getStudentTask(taskId), getStudentExam(examId)])
-      .then(([{ task }, { exam }]) => {
+      .then(([{ task }, { exam, submittedTaskIds }]) => {
         setTask(task);
-        setCode(task.starterCodeC ?? '');
+        const starter = task.starterCodeC ?? '';
+        setCode(starter);
+        initialCodeRef.current = starter;
         setExamTasks(exam.tasks);
+        setSubmittedTaskIds(submittedTaskIds);
         setExamTiming({ timeLimitMinutes: exam.timeLimitMinutes, startedAt: exam.startedAt });
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : '問題の取得に失敗しました。'))
@@ -143,6 +152,17 @@ export function StudentTaskPage() {
     }
   }
 
+  function goToTask(targetId: string) {
+    if (!examId || targetId === task?.id) return;
+    if (
+      code !== initialCodeRef.current &&
+      !window.confirm('このページで編集した内容は保存されません。ほかの問題に移動しますか？')
+    ) {
+      return;
+    }
+    navigate(`/student/exams/${examId}/tasks/${targetId}`);
+  }
+
   async function handleSubmit() {
     if (!task || !examId) return;
     setSubmitting(true);
@@ -194,31 +214,71 @@ export function StudentTaskPage() {
     ? new Date(examTiming.startedAt).getTime() + examTiming.timeLimitMinutes * 60_000 - now
     : null;
   const timeUp = remainingMs !== null && remainingMs <= 0;
-  const timeLow = remainingMs !== null && !timeUp && remainingMs < 5 * 60_000;
+  const timeCritical = remainingMs !== null && !timeUp && remainingMs < 60_000;
+  const timeLow = remainingMs !== null && !timeUp && !timeCritical && remainingMs < 5 * 60_000;
+  const submittedInExam = examTasks.filter((t) => submittedTaskIds.includes(t.id)).length;
 
   return (
     <div className="flex min-h-screen flex-col bg-mp-bg text-mp-fg">
-      <header className="flex items-center justify-between border-b border-mp-border bg-mp-surface px-4 py-2">
-        <h1 className="text-sm font-bold text-mp-cyan">
-          問題 {task.order + 1}: {task.title}（{task.points}点）
-        </h1>
-        <div className="flex items-center gap-3">
-          {remainingMs !== null && (
-            <span
-              className={`rounded px-2 py-1 text-sm font-bold ${
-                timeUp
-                  ? 'bg-mp-red text-mp-btn-fg'
-                  : timeLow
-                    ? 'text-mp-red'
-                    : 'text-mp-muted'
-              }`}
-            >
-              残り時間: {timeUp ? '00:00（時間切れ）' : formatRemaining(remainingMs)}
-            </span>
-          )}
-          <ThemeToggle />
+      <header className="flex flex-col gap-2 border-b border-mp-border bg-mp-surface px-4 py-2">
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-sm font-bold text-mp-cyan">
+            問題 {task.order + 1}: {task.title}（{task.points}点）
+          </h1>
+          <div className="flex items-center gap-3">
+            {remainingMs !== null && (
+              <span
+                className={`rounded px-2 py-1 text-sm font-bold ${
+                  timeUp || timeCritical
+                    ? 'bg-mp-red text-mp-btn-fg'
+                    : timeLow
+                      ? 'text-mp-red'
+                      : 'text-mp-muted'
+                }`}
+              >
+                残り時間: {timeUp ? '00:00（時間切れ）' : formatRemaining(remainingMs)}
+              </span>
+            )}
+            <ThemeToggle />
+          </div>
         </div>
+
+        {examTasks.length > 1 && (
+          <nav className="flex flex-wrap items-center gap-1.5" aria-label="問題一覧">
+            {examTasks.map((t) => {
+              const isCurrent = t.id === task.id;
+              const isDone = submittedTaskIds.includes(t.id);
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => goToTask(t.id)}
+                  disabled={busy || isCurrent}
+                  aria-current={isCurrent ? 'page' : undefined}
+                  title={`問題 ${t.order + 1}: ${t.title}${isDone ? '（提出済み）' : ''}`}
+                  className={`rounded px-2 py-0.5 text-xs font-bold disabled:cursor-default ${
+                    isCurrent
+                      ? 'bg-mp-cyan text-mp-btn-fg'
+                      : isDone
+                        ? 'bg-mp-green/20 text-mp-green hover:bg-mp-green/30'
+                        : 'border border-mp-border text-mp-muted hover:bg-mp-surface-hover'
+                  }`}
+                >
+                  {isDone ? '✓ ' : ''}問題 {t.order + 1}
+                </button>
+              );
+            })}
+            <span className="ml-1 text-xs text-mp-muted">
+              提出 {submittedInExam}/{examTasks.length}
+            </span>
+          </nav>
+        )}
       </header>
+
+      {timeUp && (
+        <div className="border-b border-mp-border bg-mp-red px-4 py-2 text-center text-sm font-bold text-mp-btn-fg">
+          試験時間が終了しました。コードの編集はできません。まだ提出していない場合は「送信」で現在の内容を提出できます。
+        </div>
+      )}
 
       <main className="flex flex-1 flex-col gap-4 overflow-hidden p-4 md:flex-row">
         {/* 左カラム: 問題文 + サンプルテストケース */}
@@ -258,6 +318,7 @@ export function StudentTaskPage() {
               onChange={setCode}
               language="c"
               height={500}
+              readOnly={timeUp}
               onKeystroke={() => {
                 keystrokeCountRef.current += 1;
               }}
@@ -274,13 +335,13 @@ export function StudentTaskPage() {
           <div className="flex gap-2">
             <button
               onClick={handleRun}
-              disabled={busy}
+              disabled={busy || timeUp}
               className="flex-1 rounded bg-mp-cyan px-3 py-2 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
             >
               {running ? '実行中...' : '▶ コンパイル＆テスト実行'}
             </button>
             <button
-              onClick={handleSubmit}
+              onClick={() => setShowConfirm(true)}
               disabled={busy}
               className="flex-1 rounded bg-mp-purple px-3 py-2 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
             >
@@ -340,6 +401,41 @@ export function StudentTaskPage() {
           )}
         </div>
       </main>
+
+      {showConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-sm rounded-lg border border-mp-border bg-mp-surface p-5">
+            <h2 className="mb-2 text-base font-bold text-mp-fg">この解答を提出しますか？</h2>
+            <p className="mb-4 text-sm text-mp-muted">
+              「問題 {task.order + 1}: {task.title}」を提出します。提出後の修正・再提出はできません。
+              現在のエディタの内容がコンパイル・採点されます。
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowConfirm(false)}
+                disabled={submitting}
+                className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover disabled:opacity-50"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={() => {
+                  setShowConfirm(false);
+                  void handleSubmit();
+                }}
+                disabled={submitting}
+                className="rounded bg-mp-purple px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
+              >
+                提出する
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
