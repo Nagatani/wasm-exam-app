@@ -6,9 +6,16 @@ import { ThemeToggle } from '../components/ThemeToggle';
 import { getStudentExam, getStudentTask, runTask, submitTask } from '../api/student';
 import { compileC, prewarmCRunner, runCompiledC } from '../runner/cRunner';
 import { statusGlyph } from '../lib/status';
+import {
+  LANGUAGE_FILENAME,
+  LANGUAGE_LABEL,
+  MONACO_LANGUAGE,
+  RUNNABLE_LANGUAGES,
+} from '../lib/language';
 import { PageSkeleton } from '../components/Skeleton';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { ApiError } from '../api/client';
+import type { Language } from '../types/exam';
 import type { JudgeOutcome, JudgeVerdict } from '../types/student';
 import type { StudentTask, StudentTaskSummary } from '../types/student';
 
@@ -60,6 +67,7 @@ export function StudentTaskPage() {
   const [examTiming, setExamTiming] = useState<ExamTiming | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [code, setCode] = useState('');
+  const [selectedLanguage, setSelectedLanguage] = useState<Language>('C');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -104,7 +112,12 @@ export function StudentTaskPage() {
     Promise.all([getStudentTask(taskId), getStudentExam(examId)])
       .then(([{ task }, { exam, submittedTaskIds }]) => {
         setTask(task);
-        const starter = task.starterCodeC ?? '';
+        // Prefer a language the client can actually run; fall back to the
+        // first allowed one just so the picker has a sensible selection.
+        const runnable = task.allowedLanguages.filter((l) => RUNNABLE_LANGUAGES.includes(l));
+        const initialLang = runnable[0] ?? task.allowedLanguages[0] ?? 'C';
+        setSelectedLanguage(initialLang);
+        const starter = task.starterCodes.find((s) => s.language === initialLang)?.code ?? '';
         setCode(starter);
         initialCodeRef.current = starter;
         setExamTasks(exam.tasks);
@@ -189,6 +202,22 @@ export function StudentTaskPage() {
     navigate(`/student/exams/${examId}/tasks/${targetId}`);
   }
 
+  function changeLanguage(lang: Language) {
+    if (!task || lang === selectedLanguage) return;
+    if (
+      code !== initialCodeRef.current &&
+      !window.confirm('言語を切り替えると、このページで編集した内容は失われます。切り替えますか？')
+    ) {
+      return;
+    }
+    setSelectedLanguage(lang);
+    const starter = task.starterCodes.find((s) => s.language === lang)?.code ?? '';
+    setCode(starter);
+    initialCodeRef.current = starter;
+    setVerdict(null);
+    setCompileError(null);
+  }
+
   async function handleSubmit() {
     if (!task || !examId) return;
     setSubmitting(true);
@@ -199,7 +228,7 @@ export function StudentTaskPage() {
         setCompileError(compileStderr);
         setVerdict({ overallStatus: 'CE', results: [], score: 0 });
       }
-      await submitTask(task.id, code, { compileFailed, outcomes }, {
+      await submitTask(task.id, selectedLanguage, code, { compileFailed, outcomes }, {
         keystrokeCount: keystrokeCountRef.current,
         pasteCount: pasteCountRef.current,
         pastedCharCount: pastedCharCountRef.current,
@@ -235,6 +264,7 @@ export function StudentTaskPage() {
 
   const sampleTestCases = task.testCases.filter((tc) => tc.isSample);
   const busy = running || submitting;
+  const languageRunnable = RUNNABLE_LANGUAGES.includes(selectedLanguage);
 
   const remainingMs = examTiming
     ? new Date(examTiming.startedAt).getTime() + examTiming.timeLimitMinutes * 60_000 - now
@@ -245,7 +275,7 @@ export function StudentTaskPage() {
   const submittedInExam = examTasks.filter((t) => submittedTaskIds.includes(t.id)).length;
 
   runActionRef.current = () => {
-    if (busy || timeUp) return;
+    if (busy || timeUp || !languageRunnable) return;
     void handleRun();
   };
 
@@ -340,15 +370,43 @@ export function StudentTaskPage() {
 
         {/* 中央カラム: エディタ */}
         <div className="flex w-full flex-col md:w-1/3">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-semibold">main.c</span>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              {task.allowedLanguages.length > 1 ? (
+                <div className="flex gap-1" role="group" aria-label="解答する言語">
+                  {task.allowedLanguages.map((lang) => {
+                    const runnable = RUNNABLE_LANGUAGES.includes(lang);
+                    const isCurrent = lang === selectedLanguage;
+                    return (
+                      <button
+                        key={lang}
+                        onClick={() => changeLanguage(lang)}
+                        disabled={busy || isCurrent}
+                        title={runnable ? undefined : '実行環境は準備中です'}
+                        className={`rounded px-2 py-0.5 text-xs font-bold disabled:cursor-default ${
+                          isCurrent
+                            ? 'bg-mp-cyan text-mp-btn-fg'
+                            : 'border border-mp-border text-mp-muted hover:bg-mp-surface-hover'
+                        }`}
+                      >
+                        {LANGUAGE_LABEL[lang]}
+                        {runnable ? '' : '（準備中）'}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <span className="text-sm font-semibold">{LANGUAGE_LABEL[selectedLanguage]}</span>
+              )}
+              <span className="text-xs text-mp-muted">{LANGUAGE_FILENAME[selectedLanguage]}</span>
+            </div>
             <span className="text-xs text-mp-muted">Ctrl / ⌘ + Enter で実行</span>
           </div>
           <div className="flex-1">
             <CodeEditor
               value={code}
               onChange={setCode}
-              language="c"
+              language={MONACO_LANGUAGE[selectedLanguage]}
               height={500}
               readOnly={timeUp}
               onCmdEnter={handleCmdEnter}
@@ -368,19 +426,26 @@ export function StudentTaskPage() {
           <div className="flex gap-2">
             <button
               onClick={handleRun}
-              disabled={busy || timeUp}
+              disabled={busy || timeUp || !languageRunnable}
               className="flex-1 rounded bg-mp-cyan px-3 py-2 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
             >
               {running ? '実行中...' : '▶ コンパイル＆テスト実行'}
             </button>
             <button
               onClick={() => setShowConfirm(true)}
-              disabled={busy}
+              disabled={busy || !languageRunnable}
               className="flex-1 rounded bg-mp-purple px-3 py-2 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
             >
               {submitting ? '提出中...' : '送信（解答提出）'}
             </button>
           </div>
+
+          {!languageRunnable && (
+            <p className="rounded border border-mp-border bg-mp-bg p-2 text-xs text-mp-muted">
+              {LANGUAGE_LABEL[selectedLanguage]}
+              の実行環境は現在準備中です。この問題で他に選べる言語がある場合は切り替えてください。
+            </p>
+          )}
 
           {busy && progress && (
             <div className="space-y-1">

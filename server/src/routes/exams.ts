@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { getExamResults } from '../lib/examResults';
 import { toCsv, UTF8_BOM } from '../lib/csv';
+import { languageSchema } from '../lib/language';
 
 export const examsRouter = Router();
 
@@ -23,8 +24,7 @@ const taskInputSchema = z.object({
   order: z.number().int(),
   title: z.string().min(1, 'タイトルは必須です。'),
   statementMarkdown: z.string().default(''),
-  starterCodeC: z.string().nullable().optional(),
-  starterCodeJava: z.string().nullable().optional(),
+  allowedLanguages: languageSchema.array().min(1).default(['C']),
   points: z.number().int().nonnegative().default(0),
 });
 
@@ -222,8 +222,7 @@ examsRouter.post('/:examId/tasks', async (req, res) => {
       order: parsed.data.order,
       title: parsed.data.title,
       statementMarkdown: parsed.data.statementMarkdown,
-      starterCodeC: parsed.data.starterCodeC ?? null,
-      starterCodeJava: parsed.data.starterCodeJava ?? null,
+      allowedLanguages: parsed.data.allowedLanguages,
       points: parsed.data.points,
     },
   });

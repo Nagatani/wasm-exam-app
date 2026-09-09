@@ -102,6 +102,7 @@ studentRouter.get('/tasks/:taskId', async (req, res) => {
     include: {
       exam: { select: { id: true, status: true, title: true } },
       testCases: { orderBy: { order: 'asc' } },
+      starterCodes: true,
     },
   });
 
@@ -117,7 +118,8 @@ studentRouter.get('/tasks/:taskId', async (req, res) => {
       order: task.order,
       title: task.title,
       statementMarkdown: task.statementMarkdown,
-      starterCodeC: task.starterCodeC,
+      allowedLanguages: task.allowedLanguages,
+      starterCodes: task.starterCodes.map((s) => ({ language: s.language, code: s.code })),
       points: task.points,
       // Hidden (non-sample) test cases only ever expose `input` — the client
       // needs it to feed the student's program, but expectedOutput must never

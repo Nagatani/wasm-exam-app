@@ -5,7 +5,7 @@ import { MONACO_DARK_THEME_NAME, MONACO_LIGHT_THEME_NAME, ensureMonokaiProThemes
 interface CodeEditorProps {
   value: string;
   onChange: (value: string) => void;
-  language?: 'c' | 'plaintext';
+  language?: 'c' | 'java' | 'javascript' | 'typescript' | 'python' | 'plaintext';
   height?: string | number;
   readOnly?: boolean;
   // Fired per physical keydown that can produce/modify content (modifier-only

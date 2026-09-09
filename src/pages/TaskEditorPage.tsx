@@ -1,9 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import { getTask, updateTask, deleteTask, createTestCase, upsertSolution } from '../api/tasks';
+import {
+  getTask,
+  updateTask,
+  deleteTask,
+  createTestCase,
+  upsertSolution,
+  upsertStarterCode,
+} from '../api/tasks';
 import { ApiError } from '../api/client';
 import type { Language, TaskDetail } from '../types/exam';
+import { ALL_LANGUAGES, LANGUAGE_LABEL, MONACO_LANGUAGE } from '../lib/language';
 import { TestCaseRow } from '../components/TestCaseRow';
 import { CodeEditor } from '../components/CodeEditor';
 import { BackHeader } from '../components/BackHeader';
@@ -16,16 +24,15 @@ const codeClass =
   'w-full rounded border border-mp-border bg-mp-bg px-3 py-2 font-mono text-sm text-mp-fg';
 
 // The subset of task fields the main form's "保存" persists — used to detect
-// unsaved edits (test cases and solutions save independently via their own
-// rows, so they're deliberately excluded here).
+// unsaved edits (test cases, starter code and solutions save independently
+// via their own rows, so they're deliberately excluded here).
 function taskFormKey(t: TaskDetail): string {
   return JSON.stringify({
     title: t.title,
     order: t.order,
     points: t.points,
     statementMarkdown: t.statementMarkdown,
-    starterCodeC: t.starterCodeC,
-    starterCodeJava: t.starterCodeJava,
+    allowedLanguages: [...t.allowedLanguages].sort(),
   });
 }
 
@@ -73,8 +80,7 @@ export function TaskEditorPage() {
         order: task.order,
         points: task.points,
         statementMarkdown: task.statementMarkdown,
-        starterCodeC: task.starterCodeC,
-        starterCodeJava: task.starterCodeJava,
+        allowedLanguages: task.allowedLanguages,
       });
       setTask((prev) => {
         const next = prev ? { ...prev, ...updated } : prev;
@@ -109,6 +115,10 @@ export function TaskEditorPage() {
 
   const dirty = task ? taskFormKey(task) !== savedSnapshotRef.current : false;
   useUnsavedGuard(dirty);
+
+  const orderedAllowed = task
+    ? ALL_LANGUAGES.filter((l) => task.allowedLanguages.includes(l))
+    : [];
 
   if (loading) {
     return <PageSkeleton />;
@@ -195,26 +205,41 @@ export function TaskEditorPage() {
           />
         )}
 
-        <label className="mb-1 block text-sm text-mp-muted">初期テンプレートコード（C言語）</label>
-        <div className="mb-3">
-          <CodeEditor
-            value={task.starterCodeC ?? ''}
-            onChange={(v) => setTask({ ...task, starterCodeC: v })}
-            language="c"
-            height={220}
-          />
-        </div>
-
-        <label className="mb-1 block text-sm text-mp-muted" htmlFor="starter-java">
-          初期テンプレートコード（Java）
-        </label>
-        <textarea
-          id="starter-java"
-          rows={6}
-          className={`mb-3 ${codeClass}`}
-          value={task.starterCodeJava ?? ''}
-          onChange={(e) => setTask({ ...task, starterCodeJava: e.target.value })}
-        />
+        <fieldset className="mb-3">
+          <legend className="mb-1 text-sm text-mp-muted">解答可能な言語</legend>
+          <div className="flex flex-wrap gap-3">
+            {ALL_LANGUAGES.map((lang) => {
+              const checked = task.allowedLanguages.includes(lang);
+              const isLastChecked = checked && task.allowedLanguages.length === 1;
+              return (
+                <label
+                  key={lang}
+                  className={`flex items-center gap-1.5 text-sm ${
+                    isLastChecked ? 'opacity-60' : ''
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={isLastChecked}
+                    onChange={(e) => {
+                      const next = e.target.checked
+                        ? ALL_LANGUAGES.filter(
+                            (l) => l === lang || task.allowedLanguages.includes(l),
+                          )
+                        : task.allowedLanguages.filter((l) => l !== lang);
+                      setTask({ ...task, allowedLanguages: next });
+                    }}
+                  />
+                  {LANGUAGE_LABEL[lang]}
+                </label>
+              );
+            })}
+          </div>
+          <p className="mt-1 text-xs text-mp-muted">
+            少なくとも1つ選択してください。初期テンプレートコードは下の「初期テンプレートコード」欄で言語ごとに保存します。
+          </p>
+        </fieldset>
 
         {error && <p className="mb-3 text-sm text-mp-red">{error}</p>}
 
@@ -276,13 +301,28 @@ export function TaskEditorPage() {
         </div>
       </div>
 
-      <SolutionEditor
-        taskId={task.id}
-        language="C"
-        initialCode={findSolution(task, 'C')}
-        useMonaco
-      />
-      <SolutionEditor taskId={task.id} language="JAVA" initialCode={findSolution(task, 'JAVA')} />
+      <div className="space-y-4">
+        {orderedAllowed.map((lang) => (
+          <div
+            key={`${task.id}-${lang}`}
+            className="rounded-lg border border-mp-border bg-mp-surface p-4"
+          >
+            <h2 className="mb-3 text-base font-bold text-mp-cyan">{LANGUAGE_LABEL[lang]}</h2>
+            <LanguageCodeEditor
+              kind="starter"
+              taskId={task.id}
+              language={lang}
+              initialCode={findStarterCode(task, lang)}
+            />
+            <LanguageCodeEditor
+              kind="solution"
+              taskId={task.id}
+              language={lang}
+              initialCode={findSolution(task, lang)}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -291,16 +331,24 @@ function findSolution(task: TaskDetail, language: Language): string {
   return task.solutions.find((s) => s.language === language)?.code ?? '';
 }
 
-function SolutionEditor({
+function findStarterCode(task: TaskDetail, language: Language): string {
+  return task.starterCodes.find((s) => s.language === language)?.code ?? '';
+}
+
+// One editor + independent "保存" button for either the student-facing starter
+// template ('starter') or the teacher-only reference solution ('solution') of
+// a single language. Both persist per (task, language) row, separately from
+// the task metadata form.
+function LanguageCodeEditor({
+  kind,
   taskId,
   language,
   initialCode,
-  useMonaco = false,
 }: {
+  kind: 'starter' | 'solution';
   taskId: string;
   language: Language;
   initialCode: string;
-  useMonaco?: boolean;
 }) {
   const [code, setCode] = useState(initialCode);
   const [saving, setSaving] = useState(false);
@@ -309,7 +357,11 @@ function SolutionEditor({
   async function handleSave() {
     setSaving(true);
     try {
-      await upsertSolution(taskId, language, code);
+      if (kind === 'starter') {
+        await upsertStarterCode(taskId, language, code);
+      } else {
+        await upsertSolution(taskId, language, code);
+      }
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } finally {
@@ -318,22 +370,18 @@ function SolutionEditor({
   }
 
   return (
-    <div className="mb-4 rounded-lg border border-mp-border bg-mp-surface p-4">
+    <div className="mb-3">
       <h3 className="mb-2 text-sm font-bold text-mp-muted">
-        解答例コード（{language === 'C' ? 'C言語' : 'Java'}） — 生徒には非公開
+        {kind === 'starter' ? '初期テンプレートコード' : '解答例コード（生徒には非公開）'}
       </h3>
-      {useMonaco ? (
-        <div className="mb-2">
-          <CodeEditor value={code} onChange={setCode} language="c" height={220} />
-        </div>
-      ) : (
-        <textarea
-          rows={6}
-          className={`mb-2 ${codeClass}`}
+      <div className="mb-2">
+        <CodeEditor
           value={code}
-          onChange={(e) => setCode(e.target.value)}
+          onChange={setCode}
+          language={MONACO_LANGUAGE[language]}
+          height={220}
         />
-      )}
+      </div>
       <button
         onClick={handleSave}
         disabled={saving}

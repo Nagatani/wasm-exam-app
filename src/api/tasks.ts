@@ -1,12 +1,11 @@
 import { apiFetch } from './client';
-import type { Language, Solution, TaskDetail, TestCase } from '../types/exam';
+import type { Language, Solution, TaskDetail, TaskStarterCode, TestCase } from '../types/exam';
 
 interface TaskInput {
   order: number;
   title: string;
   statementMarkdown?: string;
-  starterCodeC?: string | null;
-  starterCodeJava?: string | null;
+  allowedLanguages?: Language[];
   points?: number;
 }
 
@@ -68,4 +67,15 @@ export function upsertSolution(taskId: string, language: Language, code: string)
 
 export function deleteSolution(taskId: string, language: Language) {
   return apiFetch<void>(`/api/tasks/${taskId}/solutions/${language}`, { method: 'DELETE' });
+}
+
+export function upsertStarterCode(taskId: string, language: Language, code: string) {
+  return apiFetch<{ starterCode: TaskStarterCode }>(
+    `/api/tasks/${taskId}/starter-code/${language}`,
+    { method: 'PUT', body: JSON.stringify({ code }) },
+  );
+}
+
+export function deleteStarterCode(taskId: string, language: Language) {
+  return apiFetch<void>(`/api/tasks/${taskId}/starter-code/${language}`, { method: 'DELETE' });
 }

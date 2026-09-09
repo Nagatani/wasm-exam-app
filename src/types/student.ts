@@ -9,6 +9,8 @@ export interface StudentExamSummary {
   submittedTaskCount: number;
 }
 
+import type { Language } from './exam';
+
 export interface StudentTaskSummary {
   id: string;
   order: number;
@@ -37,13 +39,21 @@ export interface StudentTestCase {
   expectedOutput?: string;
 }
 
+export interface StudentStarterCode {
+  language: Language;
+  code: string;
+}
+
 export interface StudentTask {
   id: string;
   examId: string;
   order: number;
   title: string;
   statementMarkdown: string;
-  starterCodeC: string | null;
+  // Languages the problem author allows for this task. The page further
+  // narrows this to languages the client can actually run.
+  allowedLanguages: Language[];
+  starterCodes: StudentStarterCode[];
   points: number;
   testCases: StudentTestCase[];
 }
