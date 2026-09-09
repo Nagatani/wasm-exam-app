@@ -24,7 +24,8 @@ const taskInputSchema = z.object({
   order: z.number().int(),
   title: z.string().min(1, 'タイトルは必須です。'),
   statementMarkdown: z.string().default(''),
-  allowedLanguages: languageSchema.array().min(1).default(['C']),
+  language: languageSchema.default('C'),
+  starterCode: z.string().nullable().optional(),
   points: z.number().int().nonnegative().default(0),
 });
 
@@ -222,7 +223,8 @@ examsRouter.post('/:examId/tasks', async (req, res) => {
       order: parsed.data.order,
       title: parsed.data.title,
       statementMarkdown: parsed.data.statementMarkdown,
-      allowedLanguages: parsed.data.allowedLanguages,
+      language: parsed.data.language,
+      starterCode: parsed.data.starterCode ?? null,
       points: parsed.data.points,
     },
   });

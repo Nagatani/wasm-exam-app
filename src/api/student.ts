@@ -1,5 +1,4 @@
 import { apiFetch } from './client';
-import type { Language } from '../types/exam';
 import type {
   TaskSubmissionMetrics,
   JudgeOutcome,
@@ -10,10 +9,23 @@ import type {
   SubmissionSummary,
 } from '../types/student';
 
-interface JudgeRequest {
+// The answer language is fixed by the task, so run/submit bodies carry no
+// language field — only the per-mode payload differs.
+//
+// Client-executed languages (C): the browser ran the program and reports what
+// it printed per test case.
+interface ClientExecInput {
   compileFailed: boolean;
   outcomes: JudgeOutcome[];
 }
+
+// Server-executed languages (Java): the browser sends the source; the judge
+// container compiles + runs it.
+interface ServerExecInput {
+  code: string;
+}
+
+type RunInput = ClientExecInput | ServerExecInput;
 
 export function listStudentExams() {
   return apiFetch<{ exams: StudentExamSummary[] }>('/api/student/exams');
@@ -29,19 +41,20 @@ export function getStudentTask(taskId: string) {
   return apiFetch<{ task: StudentTask }>(`/api/student/tasks/${taskId}`);
 }
 
-export function runTask(taskId: string, input: JudgeRequest) {
-  return apiFetch<{ verdict: JudgeVerdict }>(`/api/student/tasks/${taskId}/run`, {
-    method: 'POST',
-    body: JSON.stringify(input),
-  });
+export function runTask(taskId: string, input: RunInput) {
+  return apiFetch<{ verdict: JudgeVerdict; compileStderr?: string }>(
+    `/api/student/tasks/${taskId}/run`,
+    { method: 'POST', body: JSON.stringify(input) },
+  );
 }
 
 export function submitTask(
   taskId: string,
-  language: Language,
   code: string,
-  input: JudgeRequest,
   metrics: TaskSubmissionMetrics,
+  // Only for client-executed languages (C). Server-exec languages (Java)
+  // re-run everything server-side and ignore these.
+  clientOutcomes?: { compileFailed: boolean; outcomes: JudgeOutcome[] },
 ) {
   return apiFetch<{
     submission: {
@@ -51,9 +64,10 @@ export function submitTask(
       results: JudgeVerdict['results'];
       submittedAt: string;
     };
+    compileStderr?: string;
   }>('/api/student/submissions', {
     method: 'POST',
-    body: JSON.stringify({ taskId, language, code, ...input, ...metrics }),
+    body: JSON.stringify({ taskId, code, ...metrics, ...(clientOutcomes ?? {}) }),
   });
 }
 

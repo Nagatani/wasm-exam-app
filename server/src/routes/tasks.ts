@@ -12,10 +12,11 @@ const taskUpdateSchema = z.object({
   order: z.number().int().optional(),
   title: z.string().min(1).optional(),
   statementMarkdown: z.string().optional(),
-  // The problem author's choice of which languages this task may be answered
-  // in. Per-language starter code lives in its own route (see below), not
-  // here, so this stays a metadata-only patch.
-  allowedLanguages: languageSchema.array().min(1).optional(),
+  // The single language this task must be answered in, and its editor
+  // template. Both save as part of this task PATCH (unlike the reference
+  // solution, which has its own route).
+  language: languageSchema.optional(),
+  starterCode: z.string().nullable().optional(),
   points: z.number().int().nonnegative().optional(),
 });
 
@@ -38,7 +39,6 @@ tasksRouter.get('/:taskId', async (req, res) => {
     include: {
       testCases: { orderBy: { order: 'asc' } },
       solutions: true,
-      starterCodes: true,
     },
   });
 
@@ -138,50 +138,6 @@ tasksRouter.delete('/:taskId/solutions/:language', async (req, res) => {
   }
 
   await prisma.solution
-    .delete({ where: { taskId_language: { taskId: req.params.taskId, language } } })
-    .catch(() => null);
-
-  res.status(204).end();
-});
-
-// Per-language starter template. Same one-row-per-(task, language) shape as
-// solutions, saved independently of the task metadata PATCH above.
-tasksRouter.put('/:taskId/starter-code/:language', async (req, res) => {
-  const language = parseLanguageParam(req.params.language);
-  if (!language) {
-    res.status(400).json({ error: 'language の指定が不正です。' });
-    return;
-  }
-
-  const task = await prisma.task.findUnique({ where: { id: req.params.taskId } });
-  if (!task) {
-    res.status(404).json({ error: '問題が見つかりません。' });
-    return;
-  }
-
-  const parsed = solutionInputSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'invalid_request' });
-    return;
-  }
-
-  const starterCode = await prisma.taskStarterCode.upsert({
-    where: { taskId_language: { taskId: task.id, language } },
-    create: { taskId: task.id, language, code: parsed.data.code },
-    update: { code: parsed.data.code },
-  });
-
-  res.json({ starterCode });
-});
-
-tasksRouter.delete('/:taskId/starter-code/:language', async (req, res) => {
-  const language = parseLanguageParam(req.params.language);
-  if (!language) {
-    res.status(400).json({ error: 'language の指定が不正です。' });
-    return;
-  }
-
-  await prisma.taskStarterCode
     .delete({ where: { taskId_language: { taskId: req.params.taskId, language } } })
     .catch(() => null);
 

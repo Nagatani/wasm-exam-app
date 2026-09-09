@@ -1,11 +1,24 @@
 import type { Language } from '../types/exam';
 
+// Every language a teacher can assign to a task (task.language). The student
+// answers in exactly that language — there is no student-side picker.
 export const ALL_LANGUAGES: Language[] = ['C', 'JAVA'];
 
-// Languages a student can actually compile/run right now. A task may allow
-// more than this (the teacher picks freely); the student UI only offers the
-// intersection. Java joins this list in Increment 2 (server-side judge).
-export const RUNNABLE_LANGUAGES: Language[] = ['C'];
+// Languages that can actually be compiled/run. If a task's language isn't here
+// (e.g. its `judge` service is down / not configured), the student UI disables
+// run+submit. C runs in the browser (@wasmer/sdk); Java is compiled and run
+// server-side in the sandboxed judge container.
+export const RUNNABLE_LANGUAGES: Language[] = ['C', 'JAVA'];
+
+// Languages the browser cannot execute — the client sends source to the
+// server, which compiles and runs it in the judge sandbox and returns the
+// verdict directly. Everything else runs client-side and the client reports
+// per-test outcomes.
+export const SERVER_EXEC_LANGUAGES: Language[] = ['JAVA'];
+
+export function isServerExec(language: Language): boolean {
+  return SERVER_EXEC_LANGUAGES.includes(language);
+}
 
 export const LANGUAGE_LABEL: Record<Language, string> = {
   C: 'C言語',
@@ -23,7 +36,3 @@ export const LANGUAGE_FILENAME: Record<Language, string> = {
   C: 'main.c',
   JAVA: 'Main.java',
 };
-
-export function isRunnable(language: Language): boolean {
-  return RUNNABLE_LANGUAGES.includes(language);
-}

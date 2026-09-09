@@ -39,21 +39,16 @@ export interface StudentTestCase {
   expectedOutput?: string;
 }
 
-export interface StudentStarterCode {
-  language: Language;
-  code: string;
-}
-
 export interface StudentTask {
   id: string;
   examId: string;
   order: number;
   title: string;
   statementMarkdown: string;
-  // Languages the problem author allows for this task. The page further
-  // narrows this to languages the client can actually run.
-  allowedLanguages: Language[];
-  starterCodes: StudentStarterCode[];
+  // The single language this task must be answered in (teacher-set; the
+  // student has no choice).
+  language: Language;
+  starterCode: string | null;
   points: number;
   testCases: StudentTestCase[];
 }

@@ -1,13 +1,22 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { Prisma } from '@prisma/client';
+import type { Language, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../middleware/auth';
-import { judgeSubmission } from '../lib/judge';
+import { judgeSubmission, type JudgeInput } from '../lib/judge';
+import { isJudgeConfigured, runOnJudge, JudgeError } from '../lib/judgeClient';
+import { withJudgeSlot, QueueRejectedError } from '../lib/executionQueue';
 
 export const studentRouter = Router();
 
 studentRouter.use(requireAuth);
+
+// Languages the server compiles+runs itself (in the sandboxed judge
+// container). Everything else is executed in the student's browser and the
+// client reports the per-test outcomes back.
+const SERVER_EXEC_LANGUAGES: ReadonlySet<Language> = new Set<Language>(['JAVA']);
+
+const MAX_CODE_LENGTH = 200_000;
 
 const outcomeSchema = z.object({
   testCaseId: z.string(),
@@ -15,10 +24,111 @@ const outcomeSchema = z.object({
   stdout: z.string(),
 });
 
-const judgeRequestSchema = z.object({
+// The answer language is fixed by the task (task.language) — the student has
+// no picker — so a run/submit body carries no language field; only the
+// per-mode payload differs.
+//
+// Client-executed languages (C, later JS/TS): the browser compiled and ran the
+// program and reports what it printed per test case. Never a self-declared
+// verdict — judgeSubmission still decides AC/WA/CE.
+const clientExecSchema = z.object({
   compileFailed: z.boolean(),
   outcomes: z.array(outcomeSchema),
 });
+
+// Server-executed languages (Java): the browser can't run it, so it sends the
+// source and the judge container compiles + runs it against every test case.
+const serverExecSchema = z.object({
+  code: z.string().min(1).max(MAX_CODE_LENGTH),
+});
+
+interface ResolvedOutcomes {
+  judgeInput: JudgeInput;
+  compileStderr: string;
+}
+
+type TaskWithTestCases = Prisma.TaskGetPayload<{ include: { testCases: true } }>;
+
+// Turns a run/submit request body into the { compileFailed, outcomes } shape
+// judgeSubmission consumes — either straight from the client (client-exec) or
+// by calling the sandboxed judge (server-exec). Throws a RunRequestError with
+// an HTTP status for anything the caller should surface as-is.
+class RunRequestError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+async function resolveOutcomes(
+  body: unknown,
+  task: TaskWithTestCases,
+  userId: string,
+): Promise<ResolvedOutcomes> {
+  // Authoritative — the task, not the request, decides the language.
+  const language = task.language;
+
+  if (!SERVER_EXEC_LANGUAGES.has(language)) {
+    const parsed = clientExecSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new RunRequestError(400, parsed.error.issues[0]?.message ?? 'invalid_request');
+    }
+    return {
+      judgeInput: { compileFailed: parsed.data.compileFailed, outcomes: parsed.data.outcomes },
+      compileStderr: '',
+    };
+  }
+
+  // ---- server-exec (Java) ----
+  if (!isJudgeConfigured()) {
+    throw new RunRequestError(503, 'この言語の実行環境が現在利用できません。');
+  }
+  const parsed = serverExecSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new RunRequestError(400, parsed.error.issues[0]?.message ?? 'invalid_request');
+  }
+
+  const tests = task.testCases.map((tc) => ({
+    id: tc.id,
+    stdin: tc.input,
+    timeLimitMs: tc.timeLimitMs,
+    memoryLimitMb: tc.memoryLimitMb,
+  }));
+
+  let judgeResult;
+  try {
+    judgeResult = await withJudgeSlot(userId, () =>
+      runOnJudge({ code: parsed.data.code, tests }),
+    );
+  } catch (err) {
+    if (err instanceof QueueRejectedError) {
+      throw new RunRequestError(429, err.message);
+    }
+    if (err instanceof JudgeError) {
+      throw new RunRequestError(502, '実行環境でエラーが発生しました。しばらくして再度お試しください。');
+    }
+    throw err;
+  }
+
+  if (!judgeResult.compile.ok) {
+    return { judgeInput: { compileFailed: true, outcomes: [] }, compileStderr: judgeResult.compile.stderr };
+  }
+
+  const outcomes = judgeResult.results.map((r) => ({
+    testCaseId: r.id,
+    // TLE/MLE aren't distinct verdicts yet (Phase 6) — a timeout, an OOM or a
+    // non-zero exit all surface as a per-test 'runtime_error' → RE badge → WA.
+    stage:
+      r.timedOut || r.oom || (r.exitCode ?? 1) !== 0
+        ? ('runtime_error' as const)
+        : ('success' as const),
+    stdout: r.stdout,
+  }));
+
+  return { judgeInput: { compileFailed: false, outcomes }, compileStderr: '' };
+}
 
 studentRouter.get('/exams', async (req, res) => {
   const exams = await prisma.exam.findMany({
@@ -102,7 +212,6 @@ studentRouter.get('/tasks/:taskId', async (req, res) => {
     include: {
       exam: { select: { id: true, status: true, title: true } },
       testCases: { orderBy: { order: 'asc' } },
-      starterCodes: true,
     },
   });
 
@@ -118,8 +227,8 @@ studentRouter.get('/tasks/:taskId', async (req, res) => {
       order: task.order,
       title: task.title,
       statementMarkdown: task.statementMarkdown,
-      allowedLanguages: task.allowedLanguages,
-      starterCodes: task.starterCodes.map((s) => ({ language: s.language, code: s.code })),
+      language: task.language,
+      starterCode: task.starterCode,
       points: task.points,
       // Hidden (non-sample) test cases only ever expose `input` — the client
       // needs it to feed the student's program, but expectedOutput must never
@@ -149,22 +258,26 @@ studentRouter.post('/tasks/:taskId/run', async (req, res) => {
     return;
   }
 
-  const parsed = judgeRequestSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'invalid_request' });
-    return;
+  let resolved: ResolvedOutcomes;
+  try {
+    resolved = await resolveOutcomes(req.body, task, req.user!.id);
+  } catch (err) {
+    if (err instanceof RunRequestError) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    throw err;
   }
 
-  const verdict = judgeSubmission(task.testCases, task.points, parsed.data);
+  const verdict = judgeSubmission(task.testCases, task.points, resolved.judgeInput);
 
   // Ephemeral: this is the "try it out" run, nothing is persisted.
-  res.json({ verdict });
+  res.json({ verdict, compileStderr: resolved.compileStderr });
 });
 
-const submissionRequestSchema = judgeRequestSchema.extend({
+const submissionMetadataSchema = z.object({
   taskId: z.string(),
-  language: z.literal('C'),
-  code: z.string(),
+  code: z.string().min(1).max(MAX_CODE_LENGTH),
   keystrokeCount: z.number().int().nonnegative(),
   pasteCount: z.number().int().nonnegative(),
   pastedCharCount: z.number().int().nonnegative(),
@@ -172,14 +285,14 @@ const submissionRequestSchema = judgeRequestSchema.extend({
 });
 
 studentRouter.post('/submissions', async (req, res) => {
-  const parsed = submissionRequestSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'invalid_request' });
+  const meta = submissionMetadataSchema.safeParse(req.body);
+  if (!meta.success) {
+    res.status(400).json({ error: meta.error.issues[0]?.message ?? 'invalid_request' });
     return;
   }
 
   const task = await prisma.task.findUnique({
-    where: { id: parsed.data.taskId },
+    where: { id: meta.data.taskId },
     include: {
       exam: { select: { id: true, status: true } },
       testCases: true,
@@ -191,22 +304,35 @@ studentRouter.post('/submissions', async (req, res) => {
     return;
   }
 
-  const verdict = judgeSubmission(task.testCases, task.points, parsed.data);
+  // Re-derives the verdict server-side (for Java, by actually compiling and
+  // running in the sandbox) rather than trusting anything the client computed.
+  let resolved: ResolvedOutcomes;
+  try {
+    resolved = await resolveOutcomes(req.body, task, req.user!.id);
+  } catch (err) {
+    if (err instanceof RunRequestError) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+
+  const verdict = judgeSubmission(task.testCases, task.points, resolved.judgeInput);
 
   const submission = await prisma.submission.create({
     data: {
       examId: task.exam.id,
       taskId: task.id,
       studentId: req.user!.id,
-      language: 'C',
-      code: parsed.data.code,
+      language: task.language,
+      code: meta.data.code,
       results: verdict.results as unknown as Prisma.InputJsonValue,
       overallStatus: verdict.overallStatus,
       score: verdict.score,
-      keystrokeCount: parsed.data.keystrokeCount,
-      pasteCount: parsed.data.pasteCount,
-      pastedCharCount: parsed.data.pastedCharCount,
-      timeSpentSeconds: parsed.data.timeSpentSeconds,
+      keystrokeCount: meta.data.keystrokeCount,
+      pasteCount: meta.data.pasteCount,
+      pastedCharCount: meta.data.pastedCharCount,
+      timeSpentSeconds: meta.data.timeSpentSeconds,
     },
   });
 
@@ -218,6 +344,7 @@ studentRouter.post('/submissions', async (req, res) => {
       results: verdict.results,
       submittedAt: submission.submittedAt,
     },
+    compileStderr: resolved.compileStderr,
   });
 });
 

@@ -49,25 +49,19 @@ export interface Solution {
   code: string;
 }
 
-export interface TaskStarterCode {
-  id: string;
-  taskId: string;
-  language: Language;
-  code: string;
-}
-
 export interface TaskDetail {
   id: string;
   examId: string;
   order: number;
   title: string;
   statementMarkdown: string;
-  allowedLanguages: Language[];
+  // The single language this task must be answered in.
+  language: Language;
+  starterCode: string | null;
   points: number;
   createdAt: string;
   testCases: TestCase[];
   solutions: Solution[];
-  starterCodes: TaskStarterCode[];
 }
 
 export type SubmissionOverallStatus = 'AC' | 'WA' | 'CE' | 'TLE' | 'MLE';

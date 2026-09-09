@@ -106,38 +106,20 @@ model Task {
   order            Int
   title            String
   statementMarkdown String
-  // Which languages a student may answer this task in. The problem author
-  // picks these; the student-facing UI only offers the intersection of this
-  // list and the languages the runner can actually execute.
-  allowedLanguages Language[] @default([C])
+  // The single language a student must answer this task in — chosen by the
+  // problem author. There is no student-side language picker.
+  language         Language @default(C)
+  starterCode      String?
   points           Int     @default(0)
   createdAt        DateTime @default(now())
 
-  exam         Exam              @relation(fields: [examId], references: [id], onDelete: Cascade)
-  testCases    TestCase[]
-  solutions    Solution[]
-  starterCodes TaskStarterCode[]
-  submissions  Submission[]
+  exam        Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  testCases   TestCase[]
+  solutions   Solution[]
+  submissions Submission[]
 
   @@index([examId])
   @@map("tasks")
-}
-
-// Per-language starter template shown in the editor when a student picks that
-// language. Mirrors the shape of Solution (one row per task+language); split
-// out of the old scalar starterCodeC/starterCodeJava columns so adding a
-// language doesn't need a schema change.
-model TaskStarterCode {
-  id       String   @id @default(uuid())
-  taskId   String
-  language Language
-  code     String
-
-  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-
-  @@unique([taskId, language])
-  @@index([taskId])
-  @@map("task_starter_codes")
 }
 
 model TestCase {

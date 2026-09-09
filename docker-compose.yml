@@ -11,5 +11,33 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  # Sandboxed Java compile/run service (Increment 2). Compilation and student
+  # code execution happen only inside this container — never on the host — so
+  # it behaves the same on macOS and Linux. The container itself is the
+  # sandbox: no Linux capabilities, read-only root fs, tmpfs scratch, capped
+  # process count / memory / CPU. Reached only by the app server over
+  # loopback (JUDGE_URL), never exposed publicly.
+  judge:
+    build: ./judge
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    mem_limit: 1g
+    cpus: 2.0
+    tmpfs:
+      - /work:size=192m,mode=1777
+      - /tmp:size=64m,mode=1777
+    environment:
+      JUDGE_MAX_CONCURRENT: '2'
+    ports:
+      # Loopback only. In the two-terminal dev workflow the app server runs on
+      # the host and reaches the judge here; set JUDGE_URL=http://localhost:4001.
+      - '127.0.0.1:4001:8080'
+
 volumes:
   pgdata:
