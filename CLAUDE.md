@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. It is the developer/architecture reference; user-facing docs live in [`README.md`](./README.md) and [`docs/`](./docs/) (`languages.md` = per-language I/O & limits, `teacher-guide.md` = authoring & grading, `operations.md` = deployment & headers & judge). Keep those in sync when behavior changes.
 
 ## What this is
 

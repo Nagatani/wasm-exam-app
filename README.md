@@ -1,91 +1,109 @@
 # wasm-exam-app
 
-ブラウザ完結型のC言語プログラミング演習・オンライン採点システム（学内LMS）。
-学生が書いたコードはブラウザ内（C: WASI/Wasmer）でコンパイル・実行され、サーバーには送信されません。
-個人情報（学籍番号・成績等）を外部SaaSに預けない方針のため、認証・データベースは自前のExpress + PostgreSQLサーバーで運用します。
+ブラウザ完結型のプログラミング演習・オンライン採点システム（学内LMS）。
 
-現在の実装状況: **フェーズ1〜5（認証・講師用試験管理・C言語実行サンドボックス・生徒受験フロー・成績ダッシュボード/CSV出力）まで完了**。フェーズ6（無限ループ対策等のエラーハンドリング強化）は未実装。
-Java対応はCheerpJが講義で使うJava 25（JEP 512）に未対応のため保留中（詳細は [`CLAUDE.md`](./CLAUDE.md) 参照）。
+学生がMonacoエディタで書いたコードを、**問題ごとに指定された言語**でコンパイル・実行し、テストケースと突き合わせて自動採点します。個人情報（学籍番号・氏名・成績）を外部SaaSに預けない方針のため、認証とデータベースは自前のExpress + PostgreSQLサーバーで運用します。
+
+## 対応言語
+
+| 言語 | 実行場所 | ランタイム | 備考 |
+|---|---|---|---|
+| **C** | ブラウザ | WASI / `@wasmer/sdk`（clang） | 初回のみ ~106MBのツールチェインを取得（ブラウザキャッシュされます） |
+| **JavaScript** | ブラウザ | Web Worker | `readline()` / `print()` などの入出力ヘルパーを注入 |
+| **TypeScript** | ブラウザ | Web Worker（`sucrase` で型除去） | 型エラーは採点に影響せず、構文エラーのみコンパイルエラー扱い |
+| **Python** | ブラウザ | Pyodide（CPython → WASM、Web Worker） | 初回のみ ~10MBをCDNから取得 |
+| **Java** | サーバー | サンドボックスDockerコンテナ（`judge` サービス、JDK 24 + `--enable-preview`） | ブラウザで実行できないため唯一サーバーにソースを送ります。詳細は [`docs/operations.md`](./docs/operations.md) |
+
+言語ごとの入出力の作法・制限は **[`docs/languages.md`](./docs/languages.md)** にまとめています（問題作成時・受験時とも必読）。
+
+## 実装状況
+
+- フェーズ1〜5（認証・講師用試験管理・実行サンドボックス・受験フロー・成績ダッシュボード / CSV出力）完了
+- 多言語対応（1問1言語・生徒に言語選択なし / Javaサーバーサイドjudge / JS・TS・Pythonクライアントサイド）完了
+- フェーズ6（TLE/MLEの厳密化、エラーフィードバック改善）未着手
+
+設計判断の背景は [`CLAUDE.md`](./CLAUDE.md)を参照してください。
 
 ## 構成
 
 ```
 .
-├── src/            # フロントエンド (React + Vite + TypeScript + Tailwind CSS v4)
-├── server/         # バックエンド (Express + TypeScript + Prisma + PostgreSQL)
-├── docker-compose.yml   # ローカル用PostgreSQL
-└── legacy/         # 初期モックプロトタイプ（参考用、未使用）
+├── src/                  # フロントエンド (React + Vite + TypeScript + Tailwind CSS v4)
+│   └── runner/           # 各言語のクライアントサイド実行ランナー
+├── server/               # バックエンド (Express + TypeScript + Prisma + PostgreSQL)
+├── judge/                # Java 用サンドボックス実行サービス (Docker, 単一ファイルの Judge.java)
+├── docker-compose.yml    # ローカル用 PostgreSQL + judge サービス
+├── docs/                 # 利用ドキュメント
+└── legacy/               # 初期モックプロトタイプ（参考用、未使用）
 ```
 
 ## 必要環境
 
-- Node.js **22.12+** 推奨（22.11以下だと `npm install` 時にネイティブバイナリの依存が一部スキップされ、`build`/`lint` が失敗することがあります）
-- Docker（ローカルPostgreSQL起動用）
+- Node.js **22.12+** 推奨（22.11以下だと `npm install` 時にネイティブバイナリの依存が一部スキップされ、`build` / `lint` が失敗することがあります）
+- Docker（ローカルPostgreSQLとJava judgeの起動用）
 - npm
 
 ## セットアップ
 
 ```bash
-# 1. 依存関係インストール（フロントエンド）
+# 1. 依存関係インストール
 npm install
+npm --prefix server install
 
-# 2. 依存関係インストール（サーバー）
-cd server && npm install && cd ..
-
-# 3. 環境変数ファイルを用意
+# 2. 環境変数ファイルを用意
 cp .env.example .env
 cp server/.env.example server/.env
 
-# 4. ローカルPostgreSQLを起動
-docker compose up -d db
+# 3. ローカル PostgreSQL と Java judge を起動
+docker compose up -d db judge
 
-# 5. DBマイグレーションを適用
-cd server && npm run prisma:migrate && cd ..
+# 4. DB マイグレーションを適用
+npm --prefix server run prisma:migrate
 ```
 
-> **ポート注意**: `docker-compose.yml` はホスト側 **5433番ポート** をPostgreSQLコンテナにマッピングしています（本機で稼働中のHomebrew版PostgreSQLが5432番を使用しているため）。`server/.env` の `DATABASE_URL` も5433番を指すようになっています。
+> **ポート注意**: `docker-compose.yml` はホスト側 **5433番** をPostgreSQLコンテナに、**127.0.0.1:4001** をjudgeコンテナにマッピングしています（本機で稼働中のHomebrew版PostgreSQLが5432番を使うため）。`server/.env` の `DATABASE_URL` は5433、`JUDGE_URL` は4001を指すようになっています。
+>
+> Java問題を使わない場合は `judge` の起動は不要で、`server/.env` の `JUDGE_URL` を空にしておけばJavaは「準備中」表示になります。
 
 ## 起動方法
 
-### 開発時（コード編集しながら動かす場合）
+### 開発時（コードを編集しながら動かす）
 
-ターミナルを2つ開いて、それぞれで起動します（フロントエンドはHMRが効きます）。
+ターミナルを2つ開きます（フロントエンドはHMRが効きます）。
 
 ```bash
 # ターミナル1: バックエンド (http://localhost:4000)
-cd server && npm run dev
+npm --prefix server run dev
 
 # ターミナル2: フロントエンド (http://localhost:5173)
 npm run dev
 ```
 
-ブラウザで `http://localhost:5173` を開き、学籍番号とパスワードで新規登録／ログインできます。
+ブラウザで `http://localhost:5173` を開き、学籍番号とパスワードで新規登録／ログインします。
 
-### 運用時（1コマンド・1プロセスで動かす場合）
+### 運用時（1コマンド・1プロセス）
 
-コードを編集しない通常運用（講義中など）では、サーバー1つだけを起動すればフロントエンドの配信もAPIも両方まかなえます。
+コードを編集しない通常運用（講義中など）では、サーバー1つでフロントエンド配信もAPIも両方まかなえます。`judge` コンテナは別途起動しておきます。
 
 ```bash
-# 1. フロントエンドを本番設定でビルド（同一オリジン配信用に .env.production を使用）
 cp .env.production.example .env.production   # 初回のみ
-npm run build:full   # フロントエンドビルド + サーバービルド
-
-# 2. サーバーを起動（http://localhost:4000 でフロントエンド配信 + API の両方に応答）
-npm start
+npm run build:full                            # フロントエンド本番ビルド + サーバービルド
+docker compose up -d db judge
+npm start                                     # http://localhost:4000 で配信 + API
 ```
 
-`http://localhost:4000` を開けばそのままアプリが使えます。ソースコードを変更した場合は `npm run build:full` を再実行してください。
+詳細（本番でのリバースプロキシ設定・必須HTTPヘッダー・judgeの運用）は **[`docs/operations.md`](./docs/operations.md)** を参照してください。
 
 ## 最初の講師アカウントの作成
 
-サインアップ画面から作成したアカウントは常に `role: STUDENT` になります。最初の講師アカウントは、DBに直接SQLを実行して昇格させてください（以降はアプリ内の講師昇格APIで対応可能）。
+サインアップ画面から作成したアカウントは常に `role: STUDENT` です。最初の講師アカウントだけDBに直接SQLを実行して昇格させます（以降はアプリ内の講師昇格APIで対応可能）。
 
 ```bash
-docker exec <postgresコンテナ名> psql -U wasm_exam -d wasm_exam \
+docker exec wasm-exam-app-db-1 psql -U wasm_exam -d wasm_exam \
   -c "update users set role='TEACHER' where \"studentNumber\"='<学籍番号>';"
 ```
 
-コンテナ名は `docker ps` で確認できます（例: `wasm-exam-app-db-1`）。
+コンテナ名は `docker compose ps` で確認できます。講師の操作手順は **[`docs/teacher-guide.md`](./docs/teacher-guide.md)** にあります。
 
 ## よく使うコマンド
 
@@ -95,8 +113,8 @@ docker exec <postgresコンテナ名> psql -U wasm_exam -d wasm_exam \
 |---|---|
 | `npm run dev` | 開発サーバー起動 |
 | `npm run build` | 型チェック + 本番ビルド |
-| `npm run build:full` | フロントエンド本番ビルド + サーバービルド（`npm start` で1プロセス運用する場合） |
-| `npm start` | `server/` のビルド済みサーバーを起動（フロントエンド配信 + API を1プロセスで） |
+| `npm run build:full` | フロントエンド本番ビルド + サーバービルド |
+| `npm start` | ビルド済みサーバーを起動（フロントエンド配信 + APIを1プロセスで） |
 | `npm run lint` | oxlintによる静的解析 |
 | `npm run preview` | 本番ビルドをローカルでプレビュー |
 
@@ -107,9 +125,23 @@ docker exec <postgresコンテナ名> psql -U wasm_exam -d wasm_exam \
 | `npm run dev` | 開発サーバー起動（`tsx watch`） |
 | `npm run build` / `npm run start` | ビルド / ビルド済みコード実行 |
 | `npm run prisma:migrate` | スキーマ変更後のマイグレーション作成・適用 |
-| `npm run prisma:deploy` | 本番環境等でのマイグレーション適用 |
+| `npm run prisma:deploy` | 本番環境等でのマイグレーション適用（ドリフト確認なし） |
 | `npm run prisma:generate` | Prisma Clientの再生成 |
 
-## 詳細ドキュメント
+### Docker
 
-アーキテクチャや設計判断の背景（なぜ自前サーバーなのか、セッション管理の方式など）は [`CLAUDE.md`](./CLAUDE.md) を参照してください。
+| コマンド | 内容 |
+|---|---|
+| `docker compose up -d db judge` | PostgreSQLとJava judgeを起動 |
+| `docker compose ps` | コンテナの稼働状況 |
+| `docker compose logs -f judge` | judgeのログ |
+| `docker compose build judge` | `judge/` を変更したときの再ビルド |
+
+## ドキュメント一覧
+
+| ファイル | 内容 |
+|---|---|
+| [`docs/languages.md`](./docs/languages.md) | 対応言語ごとの実行モデル・標準入出力の作法・制限・注意点 |
+| [`docs/teacher-guide.md`](./docs/teacher-guide.md) | 講師向け：試験・問題・テストケース・解答例の作成、成績確認、CSV出力 |
+| [`docs/operations.md`](./docs/operations.md) | 本番デプロイ、必須HTTPヘッダー、judgeサービスの運用、トラブルシューティング |
+| [`CLAUDE.md`](./CLAUDE.md) | アーキテクチャと設計判断の背景（開発者向け） |
