@@ -20,6 +20,9 @@ enum ExamStatus {
 enum Language {
   C
   JAVA
+  JS
+  TS
+  PYTHON
 }
 
 enum SubmissionStatus {

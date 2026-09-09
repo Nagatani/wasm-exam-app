@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import { CodeEditor } from '../components/CodeEditor';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { getStudentExam, getStudentTask, runTask, submitTask } from '../api/student';
-import { compileC, prewarmCRunner, runCompiledC } from '../runner/cRunner';
+import { prewarmClientRunner, runClientSide } from '../runner/clientRunner';
 import { statusGlyph } from '../lib/status';
 import {
   isServerExec,
@@ -133,14 +133,13 @@ export function StudentTaskPage() {
     return () => clearInterval(id);
   }, []);
 
-  // Start the SDK init + big toolchain download as soon as the page opens, so
-  // it overlaps with the student reading the statement and writing code rather
-  // than blocking the first "実行" click.
+  // Start any heavy runtime download (clang toolchain for C, Pyodide for
+  // Python) as soon as the page opens, so it overlaps with the student reading
+  // the statement rather than blocking the first "実行" click. No-op for
+  // JS/TS, and for Java (server-executed).
   useEffect(() => {
-    // Only pull the ~100MB clang toolchain for a C task — a Java task doesn't
-    // touch the client-side runner at all.
-    if (task?.language === 'C') {
-      prewarmCRunner();
+    if (task) {
+      prewarmClientRunner(task.language);
     }
   }, [task]);
 
@@ -149,24 +148,12 @@ export function StudentTaskPage() {
   useUnsavedGuard(code !== initialCodeRef.current);
 
   async function executeAgainstAllTestCases(currentTask: StudentTask): Promise<ExecutionResult> {
-    setProgress({ phase: 'compiling' });
-    const compileResult = await compileC(code);
-    if (!compileResult.ok || !compileResult.wasmBinary) {
-      return { compileFailed: true, compileStderr: compileResult.stderr, outcomes: [] };
-    }
-
-    const outcomes: JudgeOutcome[] = [];
-    const total = currentTask.testCases.length;
-    for (const [index, tc] of currentTask.testCases.entries()) {
-      setProgress({ phase: 'running', current: index + 1, total });
-      const runResult = await runCompiledC(compileResult.wasmBinary, tc.input);
-      outcomes.push({
-        testCaseId: tc.id,
-        stage: runResult.ok ? 'success' : 'runtime_error',
-        stdout: runResult.stdout,
-      });
-    }
-    return { compileFailed: false, compileStderr: '', outcomes };
+    return runClientSide(
+      currentTask.language,
+      code,
+      currentTask.testCases.map((tc) => ({ id: tc.id, input: tc.input })),
+      setProgress,
+    );
   }
 
   async function handleRun() {
@@ -270,6 +257,13 @@ export function StudentTaskPage() {
   const sampleTestCases = task.testCases.filter((tc) => tc.isSample);
   const busy = running || submitting;
   const languageRunnable = RUNNABLE_LANGUAGES.includes(task.language);
+
+  const compilingMessage =
+    task.language === 'C'
+      ? 'コンパイル中...（初回はコンパイラのダウンロードのため数十秒〜数分かかることがあります）'
+      : task.language === 'PYTHON'
+        ? 'Python 実行環境を読み込み中...（初回は数十秒かかることがあります）'
+        : 'コンパイル中...';
 
   const remainingMs = examTiming
     ? new Date(examTiming.startedAt).getTime() + examTiming.timeLimitMinutes * 60_000 - now
@@ -442,7 +436,7 @@ export function StudentTaskPage() {
               </div>
               <p className="text-xs text-mp-muted">
                 {progress.phase === 'compiling'
-                  ? 'コンパイル中...（初回はコンパイラのダウンロードのため数十秒〜数分かかることがあります）'
+                  ? compilingMessage
                   : progress.phase === 'server'
                     ? 'サーバーでコンパイル・実行しています...'
                     : `テストケース ${progress.current}/${progress.total} を実行中...`}

@@ -1,5 +1,5 @@
 export type ExamStatus = 'DRAFT' | 'PUBLISHED';
-export type Language = 'C' | 'JAVA';
+export type Language = 'C' | 'JAVA' | 'JS' | 'TS' | 'PYTHON';
 
 export interface ExamSummary {
   id: string;
