@@ -67,6 +67,7 @@ model User {
   examAttempts     ExamAttempt[]
   coursesCreated   Course[]
   enrollments      Enrollment[]
+  timeExtensions   ExamTimeExtension[]
 
   @@map("users")
 }
@@ -99,6 +100,23 @@ model Enrollment {
   @@unique([courseId, userId])
   @@index([userId])
   @@map("enrollments")
+}
+
+// A per-student accommodation for one exam: extra minutes added to that
+// student's per-attempt time limit (and to their personal `closesAt`).
+model ExamTimeExtension {
+  id           String   @id @default(uuid())
+  examId       String
+  studentId    String
+  extraMinutes Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  exam    Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+  student User @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, studentId])
+  @@map("exam_time_extensions")
 }
 
 // Server-side session store: possessing the raw token isn't enough to prove
@@ -140,11 +158,12 @@ model Exam {
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
-  createdBy   User          @relation(fields: [createdById], references: [id])
-  course      Course?       @relation(fields: [courseId], references: [id])
-  tasks       Task[]
-  submissions Submission[]
-  attempts    ExamAttempt[]
+  createdBy      User                @relation(fields: [createdById], references: [id])
+  course         Course?             @relation(fields: [courseId], references: [id])
+  tasks          Task[]
+  submissions    Submission[]
+  attempts       ExamAttempt[]
+  timeExtensions ExamTimeExtension[]
 
   @@index([courseId])
   @@map("exams")

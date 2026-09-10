@@ -278,6 +278,39 @@ examsRouter.get('/:examId/results/csv', async (req, res) => {
   res.send(csv);
 });
 
+// Per-student time accommodation for this exam (extra minutes added to the
+// student's time limit and personal closesAt). `extraMinutes: 0` removes it.
+const timeExtensionSchema = z.object({ extraMinutes: z.number().int().min(0).max(600) });
+
+examsRouter.put('/:examId/students/:studentId/time-extension', async (req, res) => {
+  const { examId, studentId } = req.params;
+  const parsed = timeExtensionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'invalid_request' });
+    return;
+  }
+  const exam = await prisma.exam.findUnique({ where: { id: examId } });
+  const student = await prisma.user.findUnique({ where: { id: studentId } });
+  if (!exam || !student || student.role !== 'STUDENT') {
+    res.status(404).json({ error: '試験または生徒が見つかりません。' });
+    return;
+  }
+
+  const { extraMinutes } = parsed.data;
+  if (extraMinutes === 0) {
+    await prisma.examTimeExtension
+      .delete({ where: { examId_studentId: { examId, studentId } } })
+      .catch(() => null);
+  } else {
+    await prisma.examTimeExtension.upsert({
+      where: { examId_studentId: { examId, studentId } },
+      create: { examId, studentId, extraMinutes },
+      update: { extraMinutes },
+    });
+  }
+  res.json({ extraMinutes });
+});
+
 // The submitted code + per-test-case outcomes for one student's *latest
 // submitted attempt* — so a teacher can see why a submission got its verdict.
 // Mirrors `getExamResults`'s "latest SUBMITTED attempt" rule.

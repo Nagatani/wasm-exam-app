@@ -111,6 +111,8 @@ export interface StudentResultRow {
   // Number of finished (submitted) attempts. The row's status/score reflect
   // the latest one.
   attemptCount: number;
+  // Per-student time accommodation for this exam, in minutes (0 if none).
+  extraMinutes: number;
 }
 
 export interface ExamResults {

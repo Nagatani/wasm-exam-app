@@ -69,6 +69,14 @@ export function duplicateTask(taskId: string, examId?: string) {
   });
 }
 
+// Re-run every existing submission for this task through the judge (Java only).
+export function regradeTask(taskId: string) {
+  return apiFetch<{ regraded: number; changed: number; failed: number }>(
+    `/api/tasks/${taskId}/regrade`,
+    { method: 'POST' },
+  );
+}
+
 export function updateTestCase(testCaseId: string, input: Partial<TestCaseInput>) {
   return apiFetch<{ testCase: TestCase }>(`/api/test-cases/${testCaseId}`, {
     method: 'PATCH',

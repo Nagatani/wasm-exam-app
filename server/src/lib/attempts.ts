@@ -14,21 +14,34 @@ export function isServerExec(language: Language): boolean {
 }
 
 // The wall-clock deadline of an attempt: a fixed offset from when it started,
-// clamped to the exam's `closesAt` if one is set. The countdown the student
-// sees and the "所要時間" a teacher sees both derive from this.
+// clamped to the exam's `closesAt` if one is set. `extraMinutes` is a
+// per-student accommodation added to both the limit and this student's
+// personal `closesAt`. The countdown the student sees and the "所要時間" a
+// teacher sees both derive from this.
 export function attemptDeadline(
   startedAt: Date,
   timeLimitMinutes: number,
   closesAt?: Date | null,
+  extraMinutes = 0,
 ): Date {
-  const byLimit = startedAt.getTime() + timeLimitMinutes * 60_000;
-  const byClose = closesAt ? closesAt.getTime() : Number.POSITIVE_INFINITY;
+  const byLimit = startedAt.getTime() + (timeLimitMinutes + extraMinutes) * 60_000;
+  const byClose = closesAt
+    ? closesAt.getTime() + extraMinutes * 60_000
+    : Number.POSITIVE_INFINITY;
   return new Date(Math.min(byLimit, byClose));
+}
+
+// Per-student time accommodation for an exam, in minutes (0 if none).
+export async function extraMinutesFor(examId: string, studentId: string): Promise<number> {
+  const row = await prisma.examTimeExtension.findUnique({
+    where: { examId_studentId: { examId, studentId } },
+  });
+  return row?.extraMinutes ?? 0;
 }
 
 // Turn a judge-container run response into the { compileFailed, outcomes }
 // shape judgeSubmission consumes.
-function judgeInputFromContainer(jr: Awaited<ReturnType<typeof runOnJudge>>): JudgeInput {
+export function judgeInputFromContainer(jr: Awaited<ReturnType<typeof runOnJudge>>): JudgeInput {
   if (!jr.compile.ok) {
     return { compileFailed: true, outcomes: [] };
   }
@@ -71,6 +84,7 @@ export async function maybeSettleAttempt(attemptId: string): Promise<boolean> {
     attempt.startedAt,
     attempt.exam.timeLimitMinutes,
     attempt.exam.closesAt,
+    await extraMinutesFor(attempt.examId, attempt.studentId),
   );
   if (Date.now() < deadline.getTime()) return false;
 

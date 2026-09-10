@@ -6,7 +6,12 @@ import { requireAuth } from '../middleware/auth';
 import { judgeSubmission, type JudgeInput } from '../lib/judge';
 import { isJudgeConfigured, runOnJudge, JudgeError } from '../lib/judgeClient';
 import { withJudgeSlot, QueueRejectedError } from '../lib/executionQueue';
-import { attemptDeadline, isServerExec, maybeSettleAttempt } from '../lib/attempts';
+import {
+  attemptDeadline,
+  extraMinutesFor,
+  isServerExec,
+  maybeSettleAttempt,
+} from '../lib/attempts';
 
 export const studentRouter = Router();
 
@@ -67,11 +72,12 @@ async function attemptView(attemptId: string): Promise<AttemptView> {
       drafts: { select: { taskId: true } },
     },
   });
+  const extra = await extraMinutesFor(a.examId, a.studentId);
   return {
     id: a.id,
     attemptNumber: a.attemptNumber,
     startedAt: a.startedAt,
-    deadline: attemptDeadline(a.startedAt, a.exam.timeLimitMinutes, a.exam.closesAt),
+    deadline: attemptDeadline(a.startedAt, a.exam.timeLimitMinutes, a.exam.closesAt, extra),
     draftedTaskIds: a.drafts.map((d) => d.taskId),
   };
 }
@@ -551,13 +557,14 @@ studentRouter.get('/exams/:examId/attempt', async (req, res) => {
 
   const drafts = await prisma.taskDraft.findMany({ where: { attemptId: latest.id } });
   const draftByTask = new Map(drafts.map((d) => [d.taskId, d]));
+  const extra = await extraMinutesFor(exam.id, userId);
 
   res.json({
     attempt: {
       id: latest.id,
       attemptNumber: latest.attemptNumber,
       startedAt: latest.startedAt,
-      deadline: attemptDeadline(latest.startedAt, exam.timeLimitMinutes, exam.closesAt),
+      deadline: attemptDeadline(latest.startedAt, exam.timeLimitMinutes, exam.closesAt, extra),
     },
     exam: {
       id: exam.id,

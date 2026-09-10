@@ -36,6 +36,8 @@ export interface StudentResultRow {
   elapsedSeconds: number | null;
   // How many times this student has submitted this exam (finished attempts).
   attemptCount: number;
+  // Per-student time accommodation (minutes; 0 if none).
+  extraMinutes: number;
 }
 
 export interface ExamResults {
@@ -105,6 +107,9 @@ export async function getExamResults(examId: string): Promise<ExamResults | null
     }
   }
 
+  const extensions = await prisma.examTimeExtension.findMany({ where: { examId } });
+  const extraByStudent = new Map(extensions.map((e) => [e.studentId, e.extraMinutes]));
+
   const attemptIds = [...latestByStudent.values()].map((a) => a.id);
   const submissions = attemptIds.length
     ? await prisma.submission.findMany({ where: { attemptId: { in: attemptIds } } })
@@ -161,6 +166,7 @@ export async function getExamResults(examId: string): Promise<ExamResults | null
       startedAt,
       elapsedSeconds,
       attemptCount: countByStudent.get(student.id) ?? 0,
+      extraMinutes: extraByStudent.get(student.id) ?? 0,
     };
   });
 

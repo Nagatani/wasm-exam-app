@@ -63,6 +63,14 @@ export function getPublishCheck(examId: string) {
   return apiFetch<{ issues: PublishIssue[] }>(`/api/exams/${examId}/publish-check`);
 }
 
+// Per-student time accommodation (minutes; 0 removes it).
+export function setTimeExtension(examId: string, studentId: string, extraMinutes: number) {
+  return apiFetch<{ extraMinutes: number }>(
+    `/api/exams/${examId}/students/${studentId}/time-extension`,
+    { method: 'PUT', body: JSON.stringify({ extraMinutes }) },
+  );
+}
+
 // A student's submitted code + per-test-case outcomes for their latest
 // submitted attempt (teacher review).
 export function getSubmissionDetail(examId: string, studentId: string) {

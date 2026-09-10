@@ -10,6 +10,7 @@ import {
   updateTestCase,
   upsertSolution,
   checkSolution,
+  regradeTask,
 } from '../api/tasks';
 import { ApiError } from '../api/client';
 import type { ComparisonMode, Language, TaskDetail } from '../types/exam';
@@ -110,6 +111,8 @@ export function TaskEditorPage() {
   const [showBulk, setShowBulk] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const [regrading, setRegrading] = useState(false);
+  const [regradeMsg, setRegradeMsg] = useState<string | null>(null);
 
   async function load() {
     if (!taskId) return;
@@ -181,6 +184,29 @@ export function TaskEditorPage() {
       order: task.testCases.length,
     });
     setTask((prev) => (prev ? { ...prev, testCases: [...prev.testCases, testCase] } : prev));
+  }
+
+  async function handleRegrade() {
+    if (!task) return;
+    if (
+      !confirm(
+        'この問題の既存の提出をすべて、現在のテストケース・比較設定で再採点します。提出の判定・得点が上書きされます。よろしいですか？',
+      )
+    ) {
+      return;
+    }
+    setRegrading(true);
+    setRegradeMsg(null);
+    try {
+      const { regraded, changed, failed } = await regradeTask(task.id);
+      setRegradeMsg(
+        `${regraded} 件を再採点、${changed} 件で判定が変化${failed > 0 ? `（${failed} 件は失敗）` : ''}。`,
+      );
+    } catch (err) {
+      setRegradeMsg(err instanceof ApiError ? err.message : '再採点に失敗しました。');
+    } finally {
+      setRegrading(false);
+    }
   }
 
   async function handleBulkImport(text: string) {
@@ -518,9 +544,19 @@ export function TaskEditorPage() {
       </form>
 
       <div className="mb-6">
-        <div className="mb-2 flex items-center justify-between">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-bold">テストケース</h2>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {task.language === 'JAVA' && (
+              <button
+                onClick={handleRegrade}
+                disabled={regrading}
+                className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover disabled:opacity-50"
+                title="このテストケースで既存の提出を再採点します（Java）"
+              >
+                {regrading ? '再採点中...' : '既存の提出を再採点'}
+              </button>
+            )}
             <button
               onClick={() => setShowBulk((v) => !v)}
               className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover"
@@ -535,6 +571,7 @@ export function TaskEditorPage() {
             </button>
           </div>
         </div>
+        {regradeMsg && <p className="mb-2 text-sm text-mp-cyan">{regradeMsg}</p>}
 
         {showBulk && (
           <BulkTestCasePanel

@@ -5,6 +5,7 @@ import {
   downloadExamResultsCsv,
   getExamResults,
   getSubmissionDetail,
+  setTimeExtension,
 } from '../api/exams';
 import { ApiError } from '../api/client';
 import type {
@@ -343,6 +344,9 @@ export function ExamResultsPage() {
                     <SortHeader label="氏名" sortKey="displayName" sort={sort} onSort={handleSort} />
                     <SortHeader label="合計点" sortKey="totalScore" sort={sort} onSort={handleSort} />
                     <th className="whitespace-nowrap px-3 py-2 text-left font-bold">受験</th>
+                    <th className="whitespace-nowrap px-3 py-2 text-left font-bold" title="時間延長（分）">
+                      延長
+                    </th>
                     <SortHeader label="所要時間" sortKey="elapsedSeconds" sort={sort} onSort={handleSort} />
                     <SortHeader
                       label="最終提出日時"
@@ -415,6 +419,54 @@ function SortHeader({
   );
 }
 
+function TimeExtensionCell({
+  examId,
+  studentId,
+  value,
+}: {
+  examId: string;
+  studentId: string;
+  value: number;
+}) {
+  const [text, setText] = useState(String(value));
+  const [saving, setSaving] = useState(false);
+  const [flash, setFlash] = useState(false);
+
+  async function commit() {
+    const n = Math.max(0, Math.min(600, Math.floor(Number(text) || 0)));
+    setText(String(n));
+    if (n === value) return;
+    setSaving(true);
+    try {
+      await setTimeExtension(examId, studentId, n);
+      setFlash(true);
+      setTimeout(() => setFlash(false), 1500);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <span className="flex items-center gap-1">
+      <input
+        type="number"
+        min={0}
+        max={600}
+        value={text}
+        disabled={saving}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        }}
+        className="w-14 rounded border border-mp-border bg-mp-bg px-1 py-0.5 text-xs text-mp-fg"
+        title="時間延長（分）— 0で解除"
+      />
+      <span className="text-xs text-mp-muted">分{flash ? ' ✓' : ''}</span>
+    </span>
+  );
+}
+
 interface StudentResultRowGroupProps {
   examId: string;
   student: StudentResultRow;
@@ -476,6 +528,13 @@ function StudentResultRowGroup({
         <td className="whitespace-nowrap px-3 py-2 text-mp-muted">
           {student.attemptCount > 0 ? `${student.attemptCount}回` : '-'}
         </td>
+        <td className="whitespace-nowrap px-3 py-2" onClick={(e) => e.stopPropagation()}>
+          <TimeExtensionCell
+            examId={examId}
+            studentId={student.id}
+            value={student.extraMinutes}
+          />
+        </td>
         <td
           className="whitespace-nowrap px-3 py-2 text-mp-muted"
           title={student.startedAt ? `開始: ${formatDateTime(student.startedAt)}` : undefined}
@@ -501,7 +560,7 @@ function StudentResultRowGroup({
       </tr>
       {expanded && (
         <tr className="border-t border-mp-border bg-mp-bg">
-          <td colSpan={8} className="px-3 py-3">
+          <td colSpan={9} className="px-3 py-3">
             <table className="w-full min-w-max text-xs">
               <thead className="text-mp-muted">
                 <tr>

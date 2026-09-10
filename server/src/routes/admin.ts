@@ -3,8 +3,25 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { toPublicUser } from '../lib/publicUser';
 import { requireAuth, requireRole } from '../middleware/auth';
+import { isJudgeConfigured, judgeHealthy } from '../lib/judgeClient';
 
 export const adminRouter = Router();
+
+// Quick liveness of the backing services, for the teacher dashboard.
+adminRouter.get('/service-health', requireAuth, requireRole('TEACHER'), async (_req, res) => {
+  let db: 'ok' | 'error' = 'ok';
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+  } catch {
+    db = 'error';
+  }
+  const judge: 'ok' | 'error' | 'disabled' = !isJudgeConfigured()
+    ? 'disabled'
+    : (await judgeHealthy())
+      ? 'ok'
+      : 'error';
+  res.json({ db, judge });
+});
 
 const promoteSchema = z.object({
   targetStudentNumber: z.string().min(1),

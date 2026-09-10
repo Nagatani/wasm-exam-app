@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { languageSchema, parseLanguageParam } from '../lib/language';
-import { isServerExec } from '../lib/attempts';
+import { isServerExec, judgeInputFromContainer } from '../lib/attempts';
 import { isJudgeConfigured, runOnJudge, JudgeError } from '../lib/judgeClient';
 import { withJudgeSlot, QueueRejectedError } from '../lib/executionQueue';
+import { judgeSubmission } from '../lib/judge';
 
 export const tasksRouter = Router();
 
@@ -231,6 +233,81 @@ tasksRouter.post('/:taskId/test-cases/bulk', async (req, res) => {
     orderBy: { order: 'asc' },
   });
   res.status(201).json({ testCases });
+});
+
+// Re-grade every existing submission for this task against its *current* test
+// cases + comparison settings. Java only — client-executed languages can't be
+// re-run server-side. Mutates otherwise-immutable submissions (a
+// teacher-initiated correction, like 差し戻し) and recomputes affected attempt
+// scores. Runs sequentially through the judge queue.
+tasksRouter.post('/:taskId/regrade', async (req, res) => {
+  const task = await prisma.task.findUnique({
+    where: { id: req.params.taskId },
+    include: { testCases: true },
+  });
+  if (!task) {
+    res.status(404).json({ error: '問題が見つかりません。' });
+    return;
+  }
+  if (!isServerExec(task.language)) {
+    res.status(400).json({ error: 'サーバー側で再採点できるのは Java のみです。' });
+    return;
+  }
+  if (!isJudgeConfigured()) {
+    res.status(503).json({ error: 'judge が未設定です。' });
+    return;
+  }
+
+  const submissions = await prisma.submission.findMany({ where: { taskId: task.id } });
+  const tests = task.testCases.map((tc) => ({
+    id: tc.id,
+    stdin: tc.input,
+    timeLimitMs: tc.timeLimitMs,
+    memoryLimitMb: tc.memoryLimitMb,
+  }));
+
+  let changed = 0;
+  let failed = 0;
+  const affectedAttemptIds = new Set<string>();
+
+  for (const sub of submissions) {
+    let jr;
+    try {
+      jr = await withJudgeSlot(req.user!.id, () => runOnJudge({ code: sub.code, tests }));
+    } catch {
+      failed += 1;
+      continue;
+    }
+    const verdict = judgeSubmission(task.testCases, task.points, judgeInputFromContainer(jr), {
+      mode: task.comparisonMode,
+      floatTolerance: task.floatTolerance,
+    });
+    if (verdict.overallStatus !== sub.overallStatus || verdict.score !== sub.score) {
+      changed += 1;
+    }
+    await prisma.submission.update({
+      where: { id: sub.id },
+      data: {
+        overallStatus: verdict.overallStatus,
+        score: verdict.score,
+        results: verdict.results as unknown as Prisma.InputJsonValue,
+      },
+    });
+    if (sub.attemptId) affectedAttemptIds.add(sub.attemptId);
+  }
+
+  for (const attemptId of affectedAttemptIds) {
+    const subs = await prisma.submission.findMany({
+      where: { attemptId },
+      select: { score: true },
+    });
+    await prisma.examAttempt.update({
+      where: { id: attemptId },
+      data: { score: subs.reduce((s, x) => s + x.score, 0) },
+    });
+  }
+
+  res.json({ regraded: submissions.length - failed, changed, failed });
 });
 
 // Duplicate a task (with its test cases + reference solutions) into the same
