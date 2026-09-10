@@ -63,10 +63,20 @@ export async function getExamResults(examId: string): Promise<ExamResults | null
     return null;
   }
 
-  const students = await prisma.user.findMany({
-    where: { role: 'STUDENT' },
-    orderBy: { studentNumber: 'asc' },
-  });
+  // A course-scoped exam is graded against its enrolled students only; an
+  // unscoped one against every STUDENT (the pre-course behaviour).
+  const students = exam.courseId
+    ? (
+        await prisma.enrollment.findMany({
+          where: { courseId: exam.courseId },
+          include: { user: true },
+          orderBy: { user: { studentNumber: 'asc' } },
+        })
+      ).map((e) => e.user)
+    : await prisma.user.findMany({
+        where: { role: 'STUDENT' },
+        orderBy: { studentNumber: 'asc' },
+      });
 
   // Settle any attempt whose time is up but which was never submitted, so its
   // (auto-finalized) result shows here rather than as "未提出".

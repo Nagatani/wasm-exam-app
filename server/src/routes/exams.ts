@@ -28,6 +28,8 @@ const examInputSchema = z.object({
   // Optional scheduling window. `null` clears; omit to keep.
   opensAt: z.coerce.date().nullable().optional(),
   closesAt: z.coerce.date().nullable().optional(),
+  // Class scoping. `null` → visible to every student; omit to keep.
+  courseId: z.string().nullable().optional(),
   status: z.enum(['DRAFT', 'PUBLISHED']).optional(),
 });
 
@@ -52,7 +54,10 @@ const taskInputSchema = z.object({
 examsRouter.get('/', async (_req, res) => {
   const exams = await prisma.exam.findMany({
     orderBy: { createdAt: 'desc' },
-    include: { _count: { select: { tasks: true } } },
+    include: {
+      _count: { select: { tasks: true } },
+      course: { select: { id: true, name: true } },
+    },
   });
 
   res.json({
@@ -65,6 +70,8 @@ examsRouter.get('/', async (_req, res) => {
       createdAt: exam.createdAt,
       updatedAt: exam.updatedAt,
       taskCount: exam._count.tasks,
+      courseId: exam.courseId,
+      courseName: exam.course?.name ?? null,
     })),
   });
 });
@@ -87,6 +94,7 @@ examsRouter.post('/', async (req, res) => {
         : {}),
       ...(parsed.data.opensAt !== undefined ? { opensAt: parsed.data.opensAt } : {}),
       ...(parsed.data.closesAt !== undefined ? { closesAt: parsed.data.closesAt } : {}),
+      ...(parsed.data.courseId !== undefined ? { courseId: parsed.data.courseId } : {}),
       status: parsed.data.status ?? 'DRAFT',
       createdById: req.user!.id,
     },

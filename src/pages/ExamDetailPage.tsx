@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { deleteExam, getExam, updateExam } from '../api/exams';
-import { createTask } from '../api/tasks';
+import { createTask, duplicateTask } from '../api/tasks';
+import { listCourses } from '../api/courses';
 import { ApiError } from '../api/client';
 import type { ExamDetail, ExamStatus } from '../types/exam';
+import type { CourseSummary } from '../types/course';
 import { BackHeader } from '../components/BackHeader';
 import { PageSkeleton } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState';
@@ -19,6 +21,7 @@ function examFormKey(e: ExamDetail): string {
     maxAttempts: e.maxAttempts,
     opensAt: e.opensAt,
     closesAt: e.closesAt,
+    courseId: e.courseId,
     status: e.status,
   });
 }
@@ -31,7 +34,15 @@ export function ExamDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+  const [courses, setCourses] = useState<CourseSummary[]>([]);
   const savedSnapshotRef = useRef('');
+
+  useEffect(() => {
+    listCourses()
+      .then(({ courses }) => setCourses(courses))
+      .catch(() => setCourses([]));
+  }, []);
 
   async function load() {
     if (!examId) return;
@@ -65,6 +76,7 @@ export function ExamDetailPage() {
         maxAttempts: exam.maxAttempts,
         opensAt: exam.opensAt,
         closesAt: exam.closesAt,
+        courseId: exam.courseId,
         status: exam.status,
       });
       setExam((prev) => {
@@ -96,6 +108,19 @@ export function ExamDetailPage() {
       title: `問題${nextOrder + 1}`,
     });
     navigate(`/teacher/exams/${exam.id}/tasks/${task.id}`);
+  }
+
+  async function handleDuplicateTask(taskId: string) {
+    setDuplicatingId(taskId);
+    setError(null);
+    try {
+      await duplicateTask(taskId);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '問題の複製に失敗しました。');
+    } finally {
+      setDuplicatingId(null);
+    }
   }
 
   const dirty = exam ? examFormKey(exam) !== savedSnapshotRef.current : false;
@@ -205,6 +230,24 @@ export function ExamDetailPage() {
           複数回受験できる場合、最後に提出した回の点数が成績になります。各回とも制限時間は受験開始からのカウントダウンです。
         </p>
 
+        <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-course">
+          クラス（任意）
+        </label>
+        <select
+          id="exam-course"
+          className="mb-3 rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+          value={exam.courseId ?? ''}
+          onChange={(e) => setExam({ ...exam, courseId: e.target.value || null })}
+        >
+          <option value="">（クラスなし・全生徒に公開）</option>
+          {courses.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+              {c.term ? `（${c.term}）` : ''}
+            </option>
+          ))}
+        </select>
+
         <div className="mb-3 flex flex-wrap gap-4">
           <div>
             <label className="mb-1 block text-sm text-mp-muted" htmlFor="opens-at">
@@ -297,16 +340,26 @@ export function ExamDetailPage() {
       ) : (
         <ul className="divide-y divide-mp-border rounded-lg border border-mp-border bg-mp-surface">
           {exam.tasks.map((task) => (
-            <li key={task.id}>
+            <li
+              key={task.id}
+              className="flex items-center justify-between gap-2 px-4 py-3 hover:bg-mp-surface-hover"
+            >
               <Link
                 to={`/teacher/exams/${exam.id}/tasks/${task.id}`}
-                className="flex items-center justify-between px-4 py-3 hover:bg-mp-surface-hover"
+                className="flex flex-1 items-center justify-between gap-2"
               >
                 <span>
                   {task.order + 1}. {task.title}
                 </span>
                 <span className="text-sm text-mp-muted">{task.points}点</span>
               </Link>
+              <button
+                onClick={() => handleDuplicateTask(task.id)}
+                disabled={duplicatingId === task.id}
+                className="shrink-0 rounded border border-mp-border bg-mp-surface px-2 py-1 text-xs font-bold hover:bg-mp-surface-hover disabled:opacity-50"
+              >
+                {duplicatingId === task.id ? '複製中...' : '複製'}
+              </button>
             </li>
           ))}
         </ul>

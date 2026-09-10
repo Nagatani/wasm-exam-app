@@ -10,6 +10,8 @@ export interface ExamSummary {
   createdAt: string;
   updatedAt: string;
   taskCount: number;
+  courseId: string | null;
+  courseName: string | null;
 }
 
 export interface TaskSummary {
@@ -32,6 +34,8 @@ export interface ExamDetail {
   // startable; after closesAt no new attempt may start.
   opensAt: string | null;
   closesAt: string | null;
+  // Class scoping. null → visible to every student.
+  courseId: string | null;
   status: ExamStatus;
   createdById: string;
   createdAt: string;

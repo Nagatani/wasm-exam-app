@@ -5,9 +5,11 @@ import { AppHeader } from '../components/AppHeader';
 import { SkeletonRows } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState';
 import { createExam, listExams } from '../api/exams';
+import { listCourses } from '../api/courses';
 import { ApiError } from '../api/client';
 import { datetimeLocalToIso } from '../lib/datetime';
 import type { ExamSummary, ExamStatus } from '../types/exam';
+import type { CourseSummary } from '../types/course';
 
 const STATUS_LABEL: Record<ExamStatus, string> = {
   DRAFT: '非公開',
@@ -42,12 +44,20 @@ export function TeacherDashboard() {
       <AppHeader
         title="講師管理画面"
         actions={
-          <Link
-            to="/teacher/sandbox"
-            className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm hover:bg-mp-surface-hover"
-          >
-            サンドボックス動作確認
-          </Link>
+          <div className="flex gap-2">
+            <Link
+              to="/teacher/courses"
+              className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm hover:bg-mp-surface-hover"
+            >
+              クラス管理
+            </Link>
+            <Link
+              to="/teacher/sandbox"
+              className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm hover:bg-mp-surface-hover"
+            >
+              サンドボックス動作確認
+            </Link>
+          </div>
         }
       />
 
@@ -99,6 +109,7 @@ export function TeacherDashboard() {
                   <p className="font-bold">{exam.title}</p>
                   <p className="text-sm text-mp-muted">
                     問題数: {exam.taskCount} ・ 制限時間: {exam.timeLimitMinutes}分
+                    {exam.courseName && ` ・ クラス: ${exam.courseName}`}
                   </p>
                 </div>
                 <span
@@ -127,8 +138,16 @@ function CreateExamForm({ onCreated }: { onCreated: () => void }) {
   const [maxAttempts, setMaxAttempts] = useState(1);
   const [opensAt, setOpensAt] = useState('');
   const [closesAt, setClosesAt] = useState('');
+  const [courseId, setCourseId] = useState('');
+  const [courses, setCourses] = useState<CourseSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    listCourses()
+      .then(({ courses }) => setCourses(courses))
+      .catch(() => setCourses([]));
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -142,6 +161,7 @@ function CreateExamForm({ onCreated }: { onCreated: () => void }) {
         maxAttempts: unlimitedAttempts ? null : maxAttempts,
         opensAt: datetimeLocalToIso(opensAt),
         closesAt: datetimeLocalToIso(closesAt),
+        courseId: courseId || null,
       });
       onCreated();
     } catch (err) {
@@ -216,6 +236,24 @@ function CreateExamForm({ onCreated }: { onCreated: () => void }) {
       <p className="mb-3 text-xs text-mp-muted">
         複数回受験できる場合、最後に提出した回の点数が成績になります。
       </p>
+
+      <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-course">
+        クラス（任意）
+      </label>
+      <select
+        id="exam-course"
+        className="mb-3 rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+        value={courseId}
+        onChange={(e) => setCourseId(e.target.value)}
+      >
+        <option value="">（クラスなし・全生徒に公開）</option>
+        {courses.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+            {c.term ? `（${c.term}）` : ''}
+          </option>
+        ))}
+      </select>
 
       <div className="mb-3 flex flex-wrap gap-4">
         <div>

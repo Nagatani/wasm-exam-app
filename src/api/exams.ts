@@ -18,6 +18,8 @@ interface ExamInput {
   // ISO datetime strings or null (clear). Omit to keep.
   opensAt?: string | null;
   closesAt?: string | null;
+  // Course id or null (unscope). Omit to keep.
+  courseId?: string | null;
   status?: ExamStatus;
 }
 

@@ -54,12 +54,44 @@ model User {
   role          Role     @default(STUDENT)
   createdAt     DateTime @default(now())
 
-  sessions       Session[]
-  examsCreated   Exam[]
-  submissions    Submission[]
-  examAttempts   ExamAttempt[]
+  sessions        Session[]
+  examsCreated     Exam[]
+  submissions      Submission[]
+  examAttempts     ExamAttempt[]
+  coursesCreated   Course[]
+  enrollments      Enrollment[]
 
   @@map("users")
+}
+
+// A class/section. Optionally scopes an exam to its enrolled students (an exam
+// with no course stays visible to every STUDENT, the pre-course behaviour).
+model Course {
+  id          String   @id @default(uuid())
+  name        String
+  term        String?
+  createdById String
+  createdAt   DateTime @default(now())
+
+  createdBy   User         @relation(fields: [createdById], references: [id])
+  enrollments Enrollment[]
+  exams       Exam[]
+
+  @@map("courses")
+}
+
+model Enrollment {
+  id        String   @id @default(uuid())
+  courseId  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, userId])
+  @@index([userId])
+  @@map("enrollments")
 }
 
 // Server-side session store: possessing the raw token isn't enough to prove
@@ -93,16 +125,21 @@ model Exam {
   // in-progress attempt's effective deadline is clamped to it.
   opensAt          DateTime?
   closesAt         DateTime?
+  // Optional class scoping. null → visible to every STUDENT (pre-course
+  // behaviour); set → only students enrolled in that course.
+  courseId         String?
   status           ExamStatus @default(DRAFT)
   createdById      String
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
   createdBy   User          @relation(fields: [createdById], references: [id])
+  course      Course?       @relation(fields: [courseId], references: [id])
   tasks       Task[]
   submissions Submission[]
   attempts    ExamAttempt[]
 
+  @@index([courseId])
   @@map("exams")
 }
 

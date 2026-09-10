@@ -6,6 +6,7 @@ import cors from 'cors';
 import { authRouter } from './routes/auth';
 import { adminRouter } from './routes/admin';
 import { examsRouter } from './routes/exams';
+import { coursesRouter } from './routes/courses';
 import { tasksRouter } from './routes/tasks';
 import { testCasesRouter } from './routes/testCases';
 import { studentRouter } from './routes/student';
@@ -41,6 +42,7 @@ app.get('/health', (_req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/exams', examsRouter);
+app.use('/api/courses', coursesRouter);
 app.use('/api/tasks', tasksRouter);
 app.use('/api/test-cases', testCasesRouter);
 app.use('/api/student', studentRouter);

@@ -37,6 +37,20 @@ function canStartAnother(maxAttempts: number | null, submittedCount: number): bo
   return maxAttempts === null || submittedCount < maxAttempts;
 }
 
+// Course scoping: a course-bound exam is only visible to its enrolled
+// students; an exam with no course is visible to everyone (pre-course).
+async function enrolledCourseIds(userId: string): Promise<Set<string>> {
+  const rows = await prisma.enrollment.findMany({
+    where: { userId },
+    select: { courseId: true },
+  });
+  return new Set(rows.map((r) => r.courseId));
+}
+
+function examVisible(courseId: string | null, enrolled: Set<string>): boolean {
+  return courseId === null || enrolled.has(courseId);
+}
+
 interface AttemptView {
   id: string;
   attemptNumber: number;
@@ -167,14 +181,17 @@ async function resolveOutcomes(
 
 studentRouter.get('/exams', async (req, res) => {
   const userId = req.user!.id;
-  const exams = await prisma.exam.findMany({
-    where: { status: 'PUBLISHED' },
-    orderBy: { createdAt: 'desc' },
-    include: {
-      _count: { select: { tasks: true } },
-      tasks: { select: { points: true } },
-    },
-  });
+  const enrolled = await enrolledCourseIds(userId);
+  const exams = (
+    await prisma.exam.findMany({
+      where: { status: 'PUBLISHED' },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        _count: { select: { tasks: true } },
+        tasks: { select: { points: true } },
+      },
+    })
+  ).filter((e) => examVisible(e.courseId, enrolled));
 
   const examIds = exams.map((e) => e.id);
   let attempts = await prisma.examAttempt.findMany({
@@ -246,7 +263,7 @@ studentRouter.post('/exams/:examId/attempts', async (req, res) => {
     where: { id: req.params.examId, status: 'PUBLISHED' },
     include: { _count: { select: { tasks: true } } },
   });
-  if (!exam) {
+  if (!exam || !examVisible(exam.courseId, await enrolledCourseIds(userId))) {
     res.status(404).json({ error: '試験が見つかりません。' });
     return;
   }
@@ -325,7 +342,7 @@ studentRouter.get('/exams/:examId', async (req, res) => {
       },
     },
   });
-  if (!exam) {
+  if (!exam || !examVisible(exam.courseId, await enrolledCourseIds(userId))) {
     res.status(404).json({ error: '試験が見つかりません。' });
     return;
   }
@@ -376,11 +393,15 @@ studentRouter.get('/tasks/:taskId', async (req, res) => {
   const task = await prisma.task.findUnique({
     where: { id: req.params.taskId },
     include: {
-      exam: { select: { id: true, status: true } },
+      exam: { select: { id: true, status: true, courseId: true } },
       testCases: { orderBy: { order: 'asc' } },
     },
   });
-  if (!task || task.exam.status !== 'PUBLISHED') {
+  if (
+    !task ||
+    task.exam.status !== 'PUBLISHED' ||
+    !examVisible(task.exam.courseId, await enrolledCourseIds(userId))
+  ) {
     res.status(404).json({ error: '問題が見つかりません。' });
     return;
   }

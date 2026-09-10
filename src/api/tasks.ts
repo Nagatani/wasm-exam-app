@@ -50,6 +50,25 @@ export function createTestCase(taskId: string, input: TestCaseInput) {
   });
 }
 
+export function bulkCreateTestCases(
+  taskId: string,
+  cases: { input: string; expectedOutput: string; isSample: boolean }[],
+) {
+  return apiFetch<{ testCases: TestCase[] }>(`/api/tasks/${taskId}/test-cases/bulk`, {
+    method: 'POST',
+    body: JSON.stringify({ cases }),
+  });
+}
+
+// Copies the task (with test cases + solutions) into the same exam, or into
+// `examId` when given. Returns the new task.
+export function duplicateTask(taskId: string, examId?: string) {
+  return apiFetch<{ task: TaskDetail }>(`/api/tasks/${taskId}/duplicate`, {
+    method: 'POST',
+    body: JSON.stringify(examId ? { examId } : {}),
+  });
+}
+
 export function updateTestCase(testCaseId: string, input: Partial<TestCaseInput>) {
   return apiFetch<{ testCase: TestCase }>(`/api/test-cases/${testCaseId}`, {
     method: 'PATCH',

@@ -15,6 +15,8 @@ import {
 } from '../lib/language';
 import { PageSkeleton } from '../components/Skeleton';
 import { SampleDiff } from '../components/SampleDiff';
+import type { EditorMarker } from '../components/CodeEditor';
+import { parseCompileErrors } from '../lib/compileErrors';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { ApiError } from '../api/client';
 import type { JudgeOutcome, JudgeVerdict } from '../types/student';
@@ -90,6 +92,7 @@ export function StudentTaskPage() {
   const [progress, setProgress] = useState<RunProgress>(null);
   const [verdict, setVerdict] = useState<JudgeVerdict | null>(null);
   const [compileError, setCompileError] = useState<string | null>(null);
+  const [compileMarkers, setCompileMarkers] = useState<EditorMarker[]>([]);
   const [draftedTaskIds, setDraftedTaskIds] = useState<string[]>([]);
 
   // Ctrl/Cmd+Enter in the editor triggers a preview run. Registered once on
@@ -187,23 +190,29 @@ export function StudentTaskPage() {
     );
   }
 
+  function showCompileError(stderr: string) {
+    setCompileError(stderr);
+    setCompileMarkers(task ? parseCompileErrors(task.language, stderr) : []);
+  }
+
   async function handleRun() {
     if (!task) return;
     setRunning(true);
     setError(null);
     setVerdict(null);
     setCompileError(null);
+    setCompileMarkers([]);
     try {
       if (isServerExec(task.language)) {
         setProgress({ phase: 'server' });
         const { verdict, compileStderr } = await runTask(task.id, { code });
-        if (verdict.overallStatus === 'CE') setCompileError(compileStderr ?? '');
+        if (verdict.overallStatus === 'CE') showCompileError(compileStderr ?? '');
         setVerdict(verdict);
         return;
       }
       const { compileFailed, compileStderr, outcomes } = await executeAgainstAllTestCases(task);
       if (compileFailed) {
-        setCompileError(compileStderr);
+        showCompileError(compileStderr);
         setVerdict({ overallStatus: 'CE', results: [], score: 0 });
         return;
       }
@@ -414,9 +423,13 @@ export function StudentTaskPage() {
           <div className="flex-1">
             <CodeEditor
               value={code}
-              onChange={setCode}
+              onChange={(v) => {
+                setCode(v);
+                if (compileMarkers.length > 0) setCompileMarkers([]);
+              }}
               language={MONACO_LANGUAGE[task.language]}
               height={500}
+              markers={compileMarkers}
               readOnly={timeUp}
               onCmdEnter={handleCmdEnter}
               onKeystroke={() => {

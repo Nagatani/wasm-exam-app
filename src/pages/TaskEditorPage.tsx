@@ -6,6 +6,7 @@ import {
   updateTask,
   deleteTask,
   createTestCase,
+  bulkCreateTestCases,
   updateTestCase,
   upsertSolution,
   checkSolution,
@@ -27,6 +28,34 @@ import { CodeEditor } from '../components/CodeEditor';
 import { BackHeader } from '../components/BackHeader';
 import { PageSkeleton } from '../components/Skeleton';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
+
+// Bulk import format: cases separated by a line that is exactly `===`; within
+// a case, input and expected are separated by a line that is exactly `---`; a
+// first line of exactly `@sample` marks the case as a sample.
+function parseBulkCases(
+  text: string,
+): { input: string; expectedOutput: string; isSample: boolean }[] {
+  return text
+    .split(/\r?\n===\r?\n/)
+    .map((block) => block.replace(/\s+$/, ''))
+    .filter((block) => block.trim() !== '')
+    .map((block) => {
+      let body = block;
+      let isSample = false;
+      const nl = body.indexOf('\n');
+      const firstLine = (nl === -1 ? body : body.slice(0, nl)).trim();
+      if (firstLine === '@sample') {
+        isSample = true;
+        body = nl === -1 ? '' : body.slice(nl + 1);
+      }
+      const parts = body.split(/\r?\n---\r?\n/);
+      return {
+        input: parts[0] ?? '',
+        expectedOutput: parts.slice(1).join('\n---\n'),
+        isSample,
+      };
+    });
+}
 
 type SolutionCheckStatus = 'match' | 'mismatch' | 'error' | 'timeout' | 'missing';
 
@@ -78,6 +107,9 @@ export function TaskEditorPage() {
   // form, so an "unsaved changes" hint can be shown while the current fields
   // differ from it.
   const savedSnapshotRef = useRef('');
+  const [showBulk, setShowBulk] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
 
   async function load() {
     if (!taskId) return;
@@ -149,6 +181,26 @@ export function TaskEditorPage() {
       order: task.testCases.length,
     });
     setTask((prev) => (prev ? { ...prev, testCases: [...prev.testCases, testCase] } : prev));
+  }
+
+  async function handleBulkImport(text: string) {
+    if (!task) return;
+    const cases = parseBulkCases(text);
+    if (cases.length === 0) {
+      setBulkError('テストケースを読み取れませんでした。書式を確認してください。');
+      return;
+    }
+    setBulkBusy(true);
+    setBulkError(null);
+    try {
+      const { testCases } = await bulkCreateTestCases(task.id, cases);
+      setTask((prev) => (prev ? { ...prev, testCases } : prev));
+      setShowBulk(false);
+    } catch (err) {
+      setBulkError(err instanceof ApiError ? err.message : '一括追加に失敗しました。');
+    } finally {
+      setBulkBusy(false);
+    }
   }
 
   // Run `code` (the current reference-solution editor content) against every
@@ -468,13 +520,30 @@ export function TaskEditorPage() {
       <div className="mb-6">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-lg font-bold">テストケース</h2>
-          <button
-            onClick={handleAddTestCase}
-            className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90"
-          >
-            + テストケースを追加
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowBulk((v) => !v)}
+              className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover"
+            >
+              {showBulk ? '一括追加を閉じる' : '一括追加'}
+            </button>
+            <button
+              onClick={handleAddTestCase}
+              className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90"
+            >
+              + テストケースを追加
+            </button>
+          </div>
         </div>
+
+        {showBulk && (
+          <BulkTestCasePanel
+            busy={bulkBusy}
+            error={bulkError}
+            onImport={handleBulkImport}
+          />
+        )}
+
         <div className="space-y-3">
           {task.testCases.map((tc) => (
             <TestCaseRow
@@ -523,6 +592,43 @@ export function TaskEditorPage() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function BulkTestCasePanel({
+  busy,
+  error,
+  onImport,
+}: {
+  busy: boolean;
+  error: string | null;
+  onImport: (text: string) => void;
+}) {
+  const [text, setText] = useState('');
+  const placeholder = `3\n---\n6\n===\n@sample\n10\n---\n20`;
+  return (
+    <div className="mb-3 rounded-lg border border-mp-border bg-mp-surface p-3">
+      <p className="mb-2 text-xs text-mp-muted">
+        複数のテストケースをまとめて追加します。ケースの区切りは <code>===</code> だけの行、
+        入力と期待される出力の区切りは <code>---</code> だけの行。ケースの1行目を{' '}
+        <code>@sample</code> にするとサンプル扱いになります。既存のテストケースの後ろに追加されます。
+      </p>
+      <textarea
+        rows={8}
+        className={codeClass}
+        placeholder={placeholder}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
+      {error && <p className="mt-1 text-sm text-mp-red">{error}</p>}
+      <button
+        onClick={() => onImport(text)}
+        disabled={busy || text.trim() === ''}
+        className="mt-2 rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
+      >
+        {busy ? '追加中...' : 'この内容で追加'}
+      </button>
     </div>
   );
 }

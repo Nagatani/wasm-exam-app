@@ -13,6 +13,7 @@ import { SandboxPage } from './pages/SandboxPage';
 import { StudentTaskPage } from './pages/StudentTaskPage';
 import { StudentExamFinishedPage } from './pages/StudentExamFinishedPage';
 import { ExamResultsPage } from './pages/ExamResultsPage';
+import { CoursesPage } from './pages/CoursesPage';
 
 function App() {
   return (
@@ -83,6 +84,14 @@ function App() {
             element={
               <ProtectedRoute role="TEACHER">
                 <ExamResultsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/teacher/courses"
+            element={
+              <ProtectedRoute role="TEACHER">
+                <CoursesPage />
               </ProtectedRoute>
             }
           />
