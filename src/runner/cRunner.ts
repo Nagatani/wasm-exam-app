@@ -31,6 +31,12 @@ export function prewarmCRunner(): void {
 
 export type RunCStage = 'compile_error' | 'runtime_error' | 'success';
 
+// Wall-clock cap for a single C program run, in line with the JS (10s) and
+// Python (15s) runners. Per-test-case configurable limits are a separate
+// Phase 6 concern (currently Java-only); C is a fixed constant like the other
+// client languages.
+export const C_TIME_LIMIT_MS = 10_000;
+
 export interface CompileResult {
   ok: boolean;
   wasmBinary: Uint8Array | null;
@@ -40,6 +46,10 @@ export interface CompileResult {
 
 export interface RunResult {
   ok: boolean;
+  // The run hit the wall-clock limit and was abandoned. The judge treats this
+  // like any other per-test runtime error (→ RE badge → overall WA); a
+  // distinct TLE verdict is still Phase 6.
+  timedOut: boolean;
   stdout: string;
   stderr: string;
   exitCode: number | null;
@@ -84,19 +94,60 @@ export async function compileC(sourceCode: string): Promise<CompileResult> {
   return { ok: true, wasmBinary, stderr: compileOutput.stderr, exitCode: compileOutput.code };
 }
 
-// Infinite-loop / resource-limit protection is explicitly out of scope here —
-// that's Phase 6 (TLE/MLE handling). This just runs the program to completion.
-export async function runCompiledC(wasmBinary: Uint8Array, stdin: string): Promise<RunResult> {
+// Runs the program with a wall-clock timeout. `@wasmer/sdk`'s `Instance` has
+// no kill/abort API, so on timeout we detach the handle (`free()`) and return
+// a `timedOut` result: the runaway program may keep occupying one worker from
+// the SDK's *bounded* pool until the page is reloaded, but the tab no longer
+// hangs and the judge gets a deterministic outcome. Memory limits (MLE) are
+// still Phase 6.
+export async function runCompiledC(
+  wasmBinary: Uint8Array,
+  stdin: string,
+  timeoutMs: number = C_TIME_LIMIT_MS,
+): Promise<RunResult> {
   const program = await Wasmer.fromFile(wasmBinary);
   if (!program.entrypoint) {
     throw new Error('コンパイル結果にエントリーポイントが見つかりません。');
   }
 
   const runInstance = await program.entrypoint.run({ stdin });
-  const runOutput = await runInstance.wait();
 
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), timeoutMs);
+  });
+  const finished = runInstance
+    .wait()
+    .then((output) => ({ output }) as const)
+    .catch((err) => ({ err }) as const);
+
+  const race = await Promise.race([finished, timeout]);
+  if (timer) clearTimeout(timer);
+
+  if (race === 'timeout') {
+    try {
+      runInstance.free();
+    } catch {
+      /* handle may already be gone */
+    }
+    void finished.catch(() => {}); // swallow the abandoned wait()'s eventual settle
+    return {
+      ok: false,
+      timedOut: true,
+      stdout: '',
+      stderr: `実行時間が制限（${Math.round(timeoutMs / 1000)}秒）を超えました。`,
+      exitCode: null,
+    };
+  }
+
+  if ('err' in race) {
+    throw race.err;
+  }
+
+  const runOutput = race.output;
   return {
     ok: runOutput.ok,
+    timedOut: false,
     stdout: runOutput.stdout,
     stderr: runOutput.stderr,
     exitCode: runOutput.code,
@@ -120,7 +171,7 @@ export async function compileAndRunC(sourceCode: string, stdin: string): Promise
   const runResult = await runCompiledC(compileResult.wasmBinary, stdin);
 
   return {
-    stage: runResult.ok ? 'success' : 'runtime_error',
+    stage: runResult.ok && !runResult.timedOut ? 'success' : 'runtime_error',
     compileStderr: compileResult.stderr,
     stdout: runResult.stdout,
     stderr: runResult.stderr,

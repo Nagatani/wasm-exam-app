@@ -69,3 +69,19 @@ export function upsertSolution(taskId: string, language: Language, code: string)
 export function deleteSolution(taskId: string, language: Language) {
   return apiFetch<void>(`/api/tasks/${taskId}/solutions/${language}`, { method: 'DELETE' });
 }
+
+// Server-side dry run of a candidate solution against a task's test cases
+// (Java only — C/JS/TS/Python are run in the browser). Returns the same shape
+// `runClientSide` does so both paths feed one comparison UI.
+export interface SolutionCheckResponse {
+  compileFailed: boolean;
+  compileStderr: string;
+  outcomes: { testCaseId: string; stage: 'success' | 'runtime_error'; stdout: string }[];
+}
+
+export function checkSolution(taskId: string, code: string) {
+  return apiFetch<SolutionCheckResponse>(`/api/tasks/${taskId}/check-solution`, {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  });
+}

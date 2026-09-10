@@ -52,7 +52,7 @@ export async function runClientSide(
     for (const [index, tc] of testCases.entries()) {
       onProgress({ phase: 'running', current: index + 1, total });
       const result = await runCompiledC(compiled.wasmBinary, tc.input);
-      record(tc.id, result.ok, result.stdout);
+      record(tc.id, result.ok && !result.timedOut, result.stdout);
     }
     return { compileFailed: false, compileStderr: '', outcomes };
   }

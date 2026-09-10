@@ -1,21 +1,42 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import { getTask, updateTask, deleteTask, createTestCase, upsertSolution } from '../api/tasks';
+import {
+  getTask,
+  updateTask,
+  deleteTask,
+  createTestCase,
+  updateTestCase,
+  upsertSolution,
+  checkSolution,
+} from '../api/tasks';
 import { ApiError } from '../api/client';
 import type { Language, TaskDetail } from '../types/exam';
 import {
   ALL_LANGUAGES,
+  isServerExec,
   LANGUAGE_LABEL,
   LANGUAGE_TEMPLATE,
   MONACO_LANGUAGE,
   isUntouchedTemplate,
 } from '../lib/language';
+import { runClientSide } from '../runner/clientRunner';
 import { TestCaseRow } from '../components/TestCaseRow';
 import { CodeEditor } from '../components/CodeEditor';
 import { BackHeader } from '../components/BackHeader';
 import { PageSkeleton } from '../components/Skeleton';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
+
+type SolutionCheckStatus = 'match' | 'mismatch' | 'error' | 'missing';
+
+interface SolutionCheckRow {
+  testCaseId: string;
+  label: string;
+  isSample: boolean;
+  expected: string;
+  actual: string | null;
+  status: SolutionCheckStatus;
+}
 
 const inputClass =
   'w-full rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg';
@@ -45,6 +66,11 @@ export function TaskEditorPage() {
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  // "解答例でテストケースを検証" results — one row per test case, or an error /
+  // compile-failure message.
+  const [checking, setChecking] = useState(false);
+  const [checkRows, setCheckRows] = useState<SolutionCheckRow[] | null>(null);
+  const [checkError, setCheckError] = useState<string | null>(null);
   // Snapshot (taskFormKey) of the last server-persisted state of the main
   // form, so an "unsaved changes" hint can be shown while the current fields
   // differ from it.
@@ -118,6 +144,92 @@ export function TaskEditorPage() {
       order: task.testCases.length,
     });
     setTask((prev) => (prev ? { ...prev, testCases: [...prev.testCases, testCase] } : prev));
+  }
+
+  // Run `code` (the current reference-solution editor content) against every
+  // test case and diff its stdout against the stored expected output. Java
+  // goes through the server judge; the other languages run in this browser via
+  // the same runner the student flow uses.
+  async function runSolutionCheck(code: string) {
+    if (!task) return;
+    setChecking(true);
+    setCheckError(null);
+    setCheckRows(null);
+    try {
+      const run = isServerExec(task.language)
+        ? await checkSolution(task.id, code)
+        : await runClientSide(
+            task.language,
+            code,
+            task.testCases.map((tc) => ({ id: tc.id, input: tc.input })),
+            () => {},
+          );
+      if (run.compileFailed) {
+        setCheckError(run.compileStderr || 'コンパイル／構文エラーが発生しました。');
+        return;
+      }
+      setCheckRows(
+        task.testCases.map((tc, i) => {
+          const outcome = run.outcomes.find((o) => o.testCaseId === tc.id);
+          if (!outcome) {
+            return {
+              testCaseId: tc.id,
+              label: `テストケース ${i + 1}`,
+              isSample: tc.isSample,
+              expected: tc.expectedOutput,
+              actual: null,
+              status: 'missing',
+            };
+          }
+          if (outcome.stage === 'runtime_error') {
+            return {
+              testCaseId: tc.id,
+              label: `テストケース ${i + 1}`,
+              isSample: tc.isSample,
+              expected: tc.expectedOutput,
+              actual: outcome.stdout,
+              status: 'error',
+            };
+          }
+          const status: SolutionCheckStatus =
+            outcome.stdout.trim() === tc.expectedOutput.trim() ? 'match' : 'mismatch';
+          return {
+            testCaseId: tc.id,
+            label: `テストケース ${i + 1}`,
+            isSample: tc.isSample,
+            expected: tc.expectedOutput,
+            actual: outcome.stdout,
+            status,
+          };
+        }),
+      );
+    } catch (err) {
+      setCheckError(err instanceof ApiError ? err.message : '検証の実行に失敗しました。');
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  // "実際の出力を期待値にする" — persist the produced stdout as this test
+  // case's expected output.
+  async function applyActualAsExpected(testCaseId: string, actual: string) {
+    try {
+      const { testCase: updated } = await updateTestCase(testCaseId, { expectedOutput: actual });
+      setTask((prev) =>
+        prev
+          ? { ...prev, testCases: prev.testCases.map((t) => (t.id === updated.id ? updated : t)) }
+          : prev,
+      );
+      setCheckRows((prev) =>
+        prev
+          ? prev.map((r) =>
+              r.testCaseId === testCaseId ? { ...r, expected: actual, status: 'match' } : r,
+            )
+          : prev,
+      );
+    } catch (err) {
+      setCheckError(err instanceof ApiError ? err.message : '期待値の更新に失敗しました。');
+    }
   }
 
   const dirty = task ? taskFormKey(task) !== savedSnapshotRef.current : false;
@@ -287,7 +399,9 @@ export function TaskEditorPage() {
         <div className="space-y-3">
           {task.testCases.map((tc) => (
             <TestCaseRow
-              key={tc.id}
+              // Include expectedOutput in the key so a value written by
+              // "実際の出力を期待値にする" remounts the row with fresh field state.
+              key={`${tc.id}@${tc.expectedOutput}`}
               testCase={tc}
               onUpdated={(updated) =>
                 setTask((prev) =>
@@ -314,7 +428,108 @@ export function TaskEditorPage() {
         taskId={task.id}
         language={task.language}
         initialCode={findSolution(task, task.language)}
+        canCheck={task.testCases.length > 0}
+        checking={checking}
+        onRunCheck={runSolutionCheck}
       />
+
+      {(checkRows || checkError) && (
+        <SolutionCheckPanel
+          rows={checkRows}
+          error={checkError}
+          onApply={applyActualAsExpected}
+          onDismiss={() => {
+            setCheckRows(null);
+            setCheckError(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function SolutionCheckPanel({
+  rows,
+  error,
+  onApply,
+  onDismiss,
+}: {
+  rows: SolutionCheckRow[] | null;
+  error: string | null;
+  onApply: (testCaseId: string, actual: string) => void;
+  onDismiss: () => void;
+}) {
+  const STATUS_META: Record<SolutionCheckStatus, { label: string; cls: string }> = {
+    match: { label: '一致', cls: 'text-mp-green' },
+    mismatch: { label: '不一致', cls: 'text-mp-red' },
+    error: { label: '実行時エラー', cls: 'text-mp-yellow' },
+    missing: { label: '出力なし', cls: 'text-mp-muted' },
+  };
+  const mismatchCount = rows?.filter((r) => r.status !== 'match').length ?? 0;
+
+  return (
+    <div className="mb-6 rounded-lg border border-mp-border bg-mp-surface p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-sm font-bold text-mp-muted">解答例の検証結果</h3>
+        <button
+          onClick={onDismiss}
+          className="text-xs font-semibold text-mp-cyan hover:underline"
+        >
+          閉じる
+        </button>
+      </div>
+
+      {error ? (
+        <pre className="whitespace-pre-wrap rounded bg-mp-bg p-3 text-xs text-mp-red">{error}</pre>
+      ) : rows && rows.length > 0 ? (
+        <>
+          <p className="mb-3 text-xs text-mp-muted">
+            {mismatchCount === 0
+              ? 'すべてのテストケースで期待される出力と一致しました。'
+              : `${mismatchCount} 件が期待される出力と一致していません。解答例が正しいことを確認できたら、「実際の出力を期待値にする」で期待される出力を上書きできます。`}
+          </p>
+          <div className="space-y-2">
+            {rows.map((r) => {
+              const meta = STATUS_META[r.status];
+              return (
+                <div key={r.testCaseId} className="rounded border border-mp-border bg-mp-bg p-2.5 text-xs">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="font-semibold">
+                      {r.label}
+                      {r.isSample ? '（サンプル）' : ''}
+                    </span>
+                    <span className={`font-bold ${meta.cls}`}>{meta.label}</span>
+                  </div>
+                  {r.status !== 'match' && (
+                    <div className="grid grid-cols-1 gap-2 font-mono md:grid-cols-2">
+                      <div>
+                        <p className="text-mp-muted">期待される出力</p>
+                        <pre className="whitespace-pre-wrap break-words">{r.expected || '(空)'}</pre>
+                      </div>
+                      <div>
+                        <p className="text-mp-muted">解答例の出力</p>
+                        <pre className="whitespace-pre-wrap break-words">
+                          {r.actual === null ? '(なし)' : r.actual || '(空)'}
+                        </pre>
+                      </div>
+                    </div>
+                  )}
+                  {(r.status === 'mismatch' || r.status === 'error') && r.actual !== null && (
+                    <button
+                      onClick={() => onApply(r.testCaseId, r.actual as string)}
+                      className="mt-2 rounded border border-mp-border bg-mp-surface-hover px-2 py-1 text-xs hover:opacity-90"
+                    >
+                      実際の出力を期待値にする
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <p className="text-xs text-mp-muted">テストケースがありません。</p>
+      )}
     </div>
   );
 }
@@ -324,15 +539,22 @@ function findSolution(task: TaskDetail, language: Language): string {
 }
 
 // The teacher-only reference solution for this task's language, with its own
-// "保存" button — saved separately from the task metadata form.
+// "保存" button — saved separately from the task metadata form. Also drives
+// "解答例でテストケースを検証" (results are rendered by the parent).
 function SolutionEditor({
   taskId,
   language,
   initialCode,
+  canCheck,
+  checking,
+  onRunCheck,
 }: {
   taskId: string;
   language: Language;
   initialCode: string;
+  canCheck: boolean;
+  checking: boolean;
+  onRunCheck: (code: string) => void;
 }) {
   const [code, setCode] = useState(initialCode);
   const [saving, setSaving] = useState(false);
@@ -349,6 +571,8 @@ function SolutionEditor({
     }
   }
 
+  const trimmed = code.trim();
+
   return (
     <div className="mb-4 rounded-lg border border-mp-border bg-mp-surface p-4">
       <h3 className="mb-2 text-sm font-bold text-mp-muted">
@@ -362,13 +586,29 @@ function SolutionEditor({
           height={220}
         />
       </div>
-      <button
-        onClick={handleSave}
-        disabled={saving}
-        className="rounded border border-mp-border bg-mp-surface-hover px-3 py-1.5 text-sm hover:opacity-90 disabled:opacity-50"
-      >
-        {saving ? '保存中...' : saved ? '保存しました' : '保存'}
-      </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="rounded border border-mp-border bg-mp-surface-hover px-3 py-1.5 text-sm hover:opacity-90 disabled:opacity-50"
+        >
+          {saving ? '保存中...' : saved ? '保存しました' : '保存'}
+        </button>
+        <button
+          onClick={() => onRunCheck(code)}
+          disabled={checking || !canCheck || trimmed === ''}
+          title={
+            !canCheck
+              ? 'テストケースを追加してください'
+              : trimmed === ''
+                ? '解答例コードを入力してください'
+                : undefined
+          }
+          className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
+        >
+          {checking ? '検証中...' : '解答例でテストケースを検証'}
+        </button>
+      </div>
     </div>
   );
 }
