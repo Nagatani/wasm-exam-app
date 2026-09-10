@@ -20,7 +20,7 @@
 
 - フェーズ1〜5（認証・講師用試験管理・実行サンドボックス・受験フロー・成績ダッシュボード / CSV出力）完了
 - 多言語対応（1問1言語・生徒に言語選択なし / Javaサーバーサイドjudge / JS・TS・Pythonクライアントサイド）完了
-- フェーズ6（TLE/MLEの厳密化、エラーフィードバック改善）未着手
+- フェーズ6（TLE/MLEの厳密化、エラーフィードバック改善ほか）未着手 — スコープと今後の展望は [`docs/roadmap.md`](./docs/roadmap.md)
 
 設計判断の背景は [`CLAUDE.md`](./CLAUDE.md)を参照してください。
 
@@ -144,4 +144,5 @@ docker exec wasm-exam-app-db-1 psql -U wasm_exam -d wasm_exam \
 | [`docs/languages.md`](./docs/languages.md) | 対応言語ごとの実行モデル・標準入出力の作法・制限・注意点 |
 | [`docs/teacher-guide.md`](./docs/teacher-guide.md) | 講師向け：試験・問題・テストケース・解答例の作成、成績確認、CSV出力 |
 | [`docs/operations.md`](./docs/operations.md) | 本番デプロイ、必須HTTPヘッダー、judgeサービスの運用、トラブルシューティング |
+| [`docs/roadmap.md`](./docs/roadmap.md) | フェーズ6以降のバックログ、教師・生徒双方の体験改善の展望と優先度 |
 | [`CLAUDE.md`](./CLAUDE.md) | アーキテクチャと設計判断の背景（開発者向け） |
