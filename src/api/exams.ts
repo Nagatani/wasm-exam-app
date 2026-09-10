@@ -1,5 +1,11 @@
 import { apiFetch, ApiError } from './client';
-import type { ExamDetail, ExamResults, ExamStatus, ExamSummary } from '../types/exam';
+import type {
+  ExamDetail,
+  ExamResults,
+  ExamStatus,
+  ExamSummary,
+  SubmissionDetail,
+} from '../types/exam';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -40,6 +46,14 @@ export function deleteExam(examId: string) {
 
 export function getExamResults(examId: string) {
   return apiFetch<ExamResults>(`/api/exams/${examId}/results`);
+}
+
+// A student's submitted code + per-test-case outcomes for their latest
+// submitted attempt (teacher review).
+export function getSubmissionDetail(examId: string, studentId: string) {
+  return apiFetch<SubmissionDetail>(
+    `/api/exams/${examId}/students/${studentId}/submission-detail`,
+  );
 }
 
 // Deletes every submission + the exam-attempt record for one student on this

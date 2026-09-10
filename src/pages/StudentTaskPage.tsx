@@ -14,6 +14,7 @@ import {
   RUNNABLE_LANGUAGES,
 } from '../lib/language';
 import { PageSkeleton } from '../components/Skeleton';
+import { SampleDiff } from '../components/SampleDiff';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { ApiError } from '../api/client';
 import type { JudgeOutcome, JudgeVerdict } from '../types/student';
@@ -23,12 +24,25 @@ const STATUS_LABEL: Record<JudgeVerdict['overallStatus'], string> = {
   AC: '✅ AC（全テストケース正解）',
   WA: '❌ WA（不正解）',
   CE: '⚠️ コンパイルエラー',
+  TLE: '⌛ TLE（実行時間超過）',
+  MLE: '⌛ MLE（メモリ超過）',
 };
 
 const STATUS_COLOR: Record<JudgeVerdict['overallStatus'], string> = {
   AC: 'bg-mp-green text-mp-btn-fg',
   WA: 'bg-mp-red text-mp-btn-fg',
   CE: 'bg-mp-yellow text-mp-btn-fg',
+  TLE: 'bg-mp-orange text-mp-btn-fg',
+  MLE: 'bg-mp-orange text-mp-btn-fg',
+};
+
+// Per-test-case status → text colour.
+const TESTCASE_STATUS_COLOR: Record<string, string> = {
+  AC: 'text-mp-green',
+  WA: 'text-mp-red',
+  RE: 'text-mp-yellow',
+  TLE: 'text-mp-orange',
+  MLE: 'text-mp-orange',
 };
 
 interface ExecutionResult {
@@ -495,23 +509,30 @@ export function StudentTaskPage() {
                         テストケース {tc.order + 1}
                         {tc.isSample ? '' : '（非公開）'}
                       </span>
-                      <span
-                        className={
-                          result?.status === 'AC'
-                            ? 'text-mp-green'
-                            : result?.status === 'RE'
-                              ? 'text-mp-yellow'
-                              : 'text-mp-red'
-                        }
-                      >
+                      <span className={result?.status ? TESTCASE_STATUS_COLOR[result.status] ?? 'text-mp-red' : ''}>
                         {result?.status ? `${statusGlyph(result.status)} ${result.status}` : '-'}
                       </span>
                     </div>
                     {tc.isSample && result && (
-                      <div className="font-mono text-mp-muted">
-                        <p>入力: {tc.input}</p>
-                        <p>期待値: {tc.expectedOutput}</p>
-                        <p>出力: {result.actualOutput}</p>
+                      <div className="text-mp-muted">
+                        <p className="font-mono">入力: {tc.input || '(なし)'}</p>
+                        {result.status === 'AC' ? (
+                          <p className="font-mono">出力: {result.actualOutput}</p>
+                        ) : result.status === 'RE' || result.status === 'TLE' || result.status === 'MLE' ? (
+                          <p className="font-mono">
+                            出力: {result.actualOutput || '(なし)'}
+                            {result.status === 'TLE'
+                              ? '（実行時間超過）'
+                              : result.status === 'MLE'
+                                ? '（メモリ超過）'
+                                : '（実行時エラー）'}
+                          </p>
+                        ) : (
+                          <SampleDiff
+                            expected={tc.expectedOutput ?? ''}
+                            actual={result.actualOutput}
+                          />
+                        )}
                       </div>
                     )}
                   </div>

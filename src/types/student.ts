@@ -96,7 +96,7 @@ export interface StudentTaskResponse {
   draft: StudentTaskDraft | null;
 }
 
-export type PerTestCaseStatus = 'AC' | 'WA' | 'RE';
+export type PerTestCaseStatus = 'AC' | 'WA' | 'RE' | 'TLE' | 'MLE';
 
 export interface PerTestCaseResult {
   testCaseId: string;
@@ -105,7 +105,7 @@ export interface PerTestCaseResult {
   actualOutput: string;
 }
 
-export type OverallStatus = 'AC' | 'WA' | 'CE';
+export type OverallStatus = 'AC' | 'WA' | 'CE' | 'TLE' | 'MLE';
 
 export interface JudgeVerdict {
   overallStatus: OverallStatus;
@@ -115,7 +115,7 @@ export interface JudgeVerdict {
 
 export interface JudgeOutcome {
   testCaseId: string;
-  stage: 'success' | 'runtime_error';
+  stage: 'success' | 'runtime_error' | 'tle' | 'mle';
   stdout: string;
 }
 

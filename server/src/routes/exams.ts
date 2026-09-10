@@ -189,6 +189,64 @@ examsRouter.get('/:examId/results/csv', async (req, res) => {
   res.send(csv);
 });
 
+// The submitted code + per-test-case outcomes for one student's *latest
+// submitted attempt* — so a teacher can see why a submission got its verdict.
+// Mirrors `getExamResults`'s "latest SUBMITTED attempt" rule.
+examsRouter.get('/:examId/students/:studentId/submission-detail', async (req, res) => {
+  const { examId, studentId } = req.params;
+  const exam = await prisma.exam.findUnique({
+    where: { id: examId },
+    include: {
+      tasks: {
+        orderBy: { order: 'asc' },
+        include: { testCases: { orderBy: { order: 'asc' } } },
+      },
+    },
+  });
+  if (!exam) {
+    res.status(404).json({ error: '試験が見つかりません。' });
+    return;
+  }
+
+  const attempt = await prisma.examAttempt.findFirst({
+    where: { examId, studentId, status: 'SUBMITTED' },
+    orderBy: { attemptNumber: 'desc' },
+  });
+  if (!attempt) {
+    res.json({ attemptNumber: null, tasks: [] });
+    return;
+  }
+
+  const submissions = await prisma.submission.findMany({ where: { attemptId: attempt.id } });
+  const byTask = new Map(submissions.map((s) => [s.taskId, s]));
+
+  res.json({
+    attemptNumber: attempt.attemptNumber,
+    tasks: exam.tasks.map((t) => {
+      const s = byTask.get(t.id);
+      return {
+        taskId: t.id,
+        title: t.title,
+        order: t.order,
+        points: t.points,
+        language: t.language,
+        submitted: !!s,
+        overallStatus: s?.overallStatus ?? null,
+        score: s?.score ?? 0,
+        code: s?.code ?? null,
+        results: s ? s.results : [],
+        testCases: t.testCases.map((tc) => ({
+          id: tc.id,
+          order: tc.order,
+          input: tc.input,
+          expectedOutput: tc.expectedOutput,
+          isSample: tc.isSample,
+        })),
+      };
+    }),
+  });
+});
+
 // "差し戻し": wipes a single student's attempt at this exam back to
 // never-took-it — deletes every Submission plus the ExamAttempt row so the
 // student-side countdown restarts from scratch the next time they open it.

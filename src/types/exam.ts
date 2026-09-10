@@ -105,3 +105,41 @@ export interface ExamResults {
   tasks: TaskResultColumn[];
   students: StudentResultRow[];
 }
+
+export type PerTestCaseStatus = 'AC' | 'WA' | 'RE' | 'TLE' | 'MLE';
+
+export interface SubmissionDetailTestCase {
+  id: string;
+  order: number;
+  input: string;
+  expectedOutput: string;
+  isSample: boolean;
+}
+
+export interface SubmissionDetailResult {
+  testCaseId: string;
+  isSample: boolean;
+  status: PerTestCaseStatus;
+  actualOutput: string;
+}
+
+export interface SubmissionDetailTask {
+  taskId: string;
+  title: string;
+  order: number;
+  points: number;
+  language: Language;
+  submitted: boolean;
+  overallStatus: SubmissionOverallStatus | null;
+  score: number;
+  code: string | null;
+  results: SubmissionDetailResult[];
+  testCases: SubmissionDetailTestCase[];
+}
+
+// GET /api/exams/:examId/students/:studentId/submission-detail — the student's
+// latest submitted attempt, with code + per-test-case outcomes.
+export interface SubmissionDetail {
+  attemptNumber: number | null;
+  tasks: SubmissionDetailTask[];
+}

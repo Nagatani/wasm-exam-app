@@ -27,7 +27,7 @@ import { BackHeader } from '../components/BackHeader';
 import { PageSkeleton } from '../components/Skeleton';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 
-type SolutionCheckStatus = 'match' | 'mismatch' | 'error' | 'missing';
+type SolutionCheckStatus = 'match' | 'mismatch' | 'error' | 'timeout' | 'missing';
 
 interface SolutionCheckRow {
   testCaseId: string;
@@ -65,7 +65,7 @@ export function TaskEditorPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
+  const [statementView, setStatementView] = useState<'edit' | 'split' | 'preview'>('edit');
   // "解答例でテストケースを検証" results — one row per test case, or an error /
   // compile-failure message.
   const [checking, setChecking] = useState(false);
@@ -181,14 +181,14 @@ export function TaskEditorPage() {
               status: 'missing',
             };
           }
-          if (outcome.stage === 'runtime_error') {
+          if (outcome.stage !== 'success') {
             return {
               testCaseId: tc.id,
               label: `テストケース ${i + 1}`,
               isSample: tc.isSample,
               expected: tc.expectedOutput,
               actual: outcome.stdout,
-              status: 'error',
+              status: outcome.stage === 'tle' || outcome.stage === 'mle' ? 'timeout' : 'error',
             };
           }
           const status: SolutionCheckStatus =
@@ -327,22 +327,50 @@ export function TaskEditorPage() {
           <label className="block text-sm text-mp-muted" htmlFor="task-statement">
             問題文（Markdown）
           </label>
-          <button
-            type="button"
-            onClick={() => setShowPreview((v) => !v)}
-            className="text-xs font-semibold text-mp-cyan hover:underline"
-          >
-            {showPreview ? '編集に戻る' : 'プレビュー'}
-          </button>
+          <div className="flex overflow-hidden rounded border border-mp-border text-xs">
+            {(
+              [
+                ['edit', '編集'],
+                ['split', '分割'],
+                ['preview', 'プレビュー'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setStatementView(value)}
+                className={`px-2 py-0.5 font-semibold ${
+                  statementView === value
+                    ? 'bg-mp-cyan text-mp-btn-fg'
+                    : 'bg-mp-surface text-mp-muted hover:bg-mp-surface-hover'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
-        {showPreview ? (
+        {statementView === 'preview' ? (
           <div className="markdown-body mb-3 rounded border border-mp-border bg-mp-bg p-3">
             <ReactMarkdown>{task.statementMarkdown}</ReactMarkdown>
+          </div>
+        ) : statementView === 'split' ? (
+          <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+            <textarea
+              id="task-statement"
+              rows={16}
+              className={codeClass}
+              value={task.statementMarkdown}
+              onChange={(e) => setTask({ ...task, statementMarkdown: e.target.value })}
+            />
+            <div className="markdown-body max-h-[26rem] overflow-y-auto rounded border border-mp-border bg-mp-bg p-3">
+              <ReactMarkdown>{task.statementMarkdown}</ReactMarkdown>
+            </div>
           </div>
         ) : (
           <textarea
             id="task-statement"
-            rows={6}
+            rows={14}
             className={`mb-3 ${codeClass}`}
             value={task.statementMarkdown}
             onChange={(e) => setTask({ ...task, statementMarkdown: e.target.value })}
@@ -463,6 +491,7 @@ function SolutionCheckPanel({
     match: { label: '一致', cls: 'text-mp-green' },
     mismatch: { label: '不一致', cls: 'text-mp-red' },
     error: { label: '実行時エラー', cls: 'text-mp-yellow' },
+    timeout: { label: '時間／メモリ超過', cls: 'text-mp-orange' },
     missing: { label: '出力なし', cls: 'text-mp-muted' },
   };
   const mismatchCount = rows?.filter((r) => r.status !== 'match').length ?? 0;

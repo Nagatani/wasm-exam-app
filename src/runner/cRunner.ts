@@ -46,9 +46,9 @@ export interface CompileResult {
 
 export interface RunResult {
   ok: boolean;
-  // The run hit the wall-clock limit and was abandoned. The judge treats this
-  // like any other per-test runtime error (→ RE badge → overall WA); a
-  // distinct TLE verdict is still Phase 6.
+  // The run hit the wall-clock limit and was abandoned. `clientRunner` maps
+  // this to a `tle` outcome → `TLE` verdict. A memory cap (MLE) for C is still
+  // Phase 6.
   timedOut: boolean;
   stdout: string;
   stderr: string;

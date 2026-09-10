@@ -40,8 +40,13 @@ export async function runClientSide(
   onProgress({ phase: 'compiling' });
   const total = testCases.length;
   const outcomes: JudgeOutcome[] = [];
-  const record = (id: string, ok: boolean, stdout: string) => {
-    outcomes.push({ testCaseId: id, stage: ok ? 'success' : 'runtime_error', stdout });
+  const record = (id: string, r: { ok: boolean; timedOut: boolean; stdout: string }) => {
+    const stage: JudgeOutcome['stage'] = r.timedOut
+      ? 'tle'
+      : r.ok
+        ? 'success'
+        : 'runtime_error';
+    outcomes.push({ testCaseId: id, stage, stdout: r.stdout });
   };
 
   if (language === 'C') {
@@ -52,7 +57,7 @@ export async function runClientSide(
     for (const [index, tc] of testCases.entries()) {
       onProgress({ phase: 'running', current: index + 1, total });
       const result = await runCompiledC(compiled.wasmBinary, tc.input);
-      record(tc.id, result.ok && !result.timedOut, result.stdout);
+      record(tc.id, result);
     }
     return { compileFailed: false, compileStderr: '', outcomes };
   }
@@ -65,7 +70,7 @@ export async function runClientSide(
     for (const [index, tc] of testCases.entries()) {
       onProgress({ phase: 'running', current: index + 1, total });
       const result = await runJsOnce(prepared.js, tc.input);
-      record(tc.id, result.ok && !result.timedOut, result.stdout);
+      record(tc.id, result);
     }
     return { compileFailed: false, compileStderr: '', outcomes };
   }
@@ -78,7 +83,7 @@ export async function runClientSide(
     for (const [index, tc] of testCases.entries()) {
       onProgress({ phase: 'running', current: index + 1, total });
       const result = await runPyOnce(source, tc.input);
-      record(tc.id, result.ok && !result.timedOut, result.stdout);
+      record(tc.id, result);
     }
     return { compileFailed: false, compileStderr: '', outcomes };
   }

@@ -1,6 +1,10 @@
 export interface ClientTestCaseOutcome {
   testCaseId: string;
-  stage: 'success' | 'runtime_error';
+  // 'success'      — program exited cleanly; stdout is compared to expected
+  // 'runtime_error'— non-zero exit / exception / crash
+  // 'tle'          — hit the wall-clock time limit
+  // 'mle'          — hit the memory limit (server-exec only for now)
+  stage: 'success' | 'runtime_error' | 'tle' | 'mle';
   stdout: string;
 }
 
@@ -9,7 +13,7 @@ export interface JudgeInput {
   outcomes: ClientTestCaseOutcome[];
 }
 
-export type PerTestCaseStatus = 'AC' | 'WA' | 'RE';
+export type PerTestCaseStatus = 'AC' | 'WA' | 'RE' | 'TLE' | 'MLE';
 
 export interface PerTestCaseResult {
   testCaseId: string;
@@ -18,7 +22,7 @@ export interface PerTestCaseResult {
   actualOutput: string;
 }
 
-export type OverallStatus = 'AC' | 'WA' | 'CE';
+export type OverallStatus = 'AC' | 'WA' | 'CE' | 'TLE' | 'MLE';
 
 export interface JudgeVerdict {
   overallStatus: OverallStatus;
@@ -32,11 +36,28 @@ interface JudgeableTestCase {
   isSample: boolean;
 }
 
+const STAGE_TO_STATUS: Record<'runtime_error' | 'tle' | 'mle', PerTestCaseStatus> = {
+  runtime_error: 'RE',
+  tle: 'TLE',
+  mle: 'MLE',
+};
+
+// Overall status when the submission isn't a clean AC. `RE` isn't a
+// `SubmissionStatus` value, so it rolls into `WA`; `TLE`/`MLE` are only
+// reported when *every* failing test case agrees, otherwise the mix is `WA`.
+function computeOverall(results: PerTestCaseResult[]): OverallStatus {
+  if (results.every((r) => r.status === 'AC')) return 'AC';
+  const failing = results.filter((r) => r.status !== 'AC');
+  if (failing.length > 0 && failing.every((r) => r.status === 'TLE')) return 'TLE';
+  if (failing.length > 0 && failing.every((r) => r.status === 'MLE')) return 'MLE';
+  return 'WA';
+}
+
 // The client reports what its compiled program printed for each test case's
 // input, but never the verdict itself — this function is the only place an
-// AC/WA/CE determination is made, specifically so a student can't tamper with
-// the client to submit a fabricated "AC" without the code actually producing
-// the right output.
+// AC/WA/CE/TLE/MLE determination is made, specifically so a student can't
+// tamper with the client to submit a fabricated "AC" without the code
+// actually producing the right output.
 export function judgeSubmission(
   testCases: JudgeableTestCase[],
   points: number,
@@ -51,11 +72,11 @@ export function judgeSubmission(
     if (!outcome) {
       return { testCaseId: tc.id, isSample: tc.isSample, status: 'WA', actualOutput: '' };
     }
-    if (outcome.stage === 'runtime_error') {
+    if (outcome.stage !== 'success') {
       return {
         testCaseId: tc.id,
         isSample: tc.isSample,
-        status: 'RE',
+        status: STAGE_TO_STATUS[outcome.stage],
         actualOutput: outcome.stdout,
       };
     }
@@ -64,7 +85,7 @@ export function judgeSubmission(
     return { testCaseId: tc.id, isSample: tc.isSample, status, actualOutput: outcome.stdout };
   });
 
-  const overallStatus: OverallStatus = results.every((r) => r.status === 'AC') ? 'AC' : 'WA';
+  const overallStatus = computeOverall(results);
   const score = overallStatus === 'AC' ? points : 0;
 
   return { overallStatus, results, score };

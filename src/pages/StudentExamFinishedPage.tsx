@@ -20,10 +20,12 @@ import { statusGlyph } from '../lib/status';
 
 type Mode = 'loading' | 'review' | 'result';
 
-const STATUS_COLOR: Record<'AC' | 'WA' | 'CE', string> = {
+const STATUS_COLOR: Record<'AC' | 'WA' | 'CE' | 'TLE' | 'MLE', string> = {
   AC: 'text-mp-green',
   WA: 'text-mp-red',
   CE: 'text-mp-yellow',
+  TLE: 'text-mp-orange',
+  MLE: 'text-mp-orange',
 };
 
 export function StudentExamFinishedPage() {

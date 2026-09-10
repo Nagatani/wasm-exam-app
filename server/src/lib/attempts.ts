@@ -29,12 +29,13 @@ function judgeInputFromContainer(jr: Awaited<ReturnType<typeof runOnJudge>>): Ju
     compileFailed: false,
     outcomes: jr.results.map((r) => ({
       testCaseId: r.id,
-      // TLE/MLE aren't distinct verdicts yet (Phase 6) — a timeout, an OOM or
-      // a non-zero exit all surface as a per-test runtime error.
-      stage:
-        r.timedOut || r.oom || (r.exitCode ?? 1) !== 0
-          ? ('runtime_error' as const)
-          : ('success' as const),
+      stage: r.timedOut
+        ? ('tle' as const)
+        : r.oom
+          ? ('mle' as const)
+          : (r.exitCode ?? 1) !== 0
+            ? ('runtime_error' as const)
+            : ('success' as const),
       stdout: r.stdout,
     })),
   };

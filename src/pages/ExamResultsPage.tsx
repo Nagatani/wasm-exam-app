@@ -1,10 +1,16 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { deleteStudentExamResults, downloadExamResultsCsv, getExamResults } from '../api/exams';
+import {
+  deleteStudentExamResults,
+  downloadExamResultsCsv,
+  getExamResults,
+  getSubmissionDetail,
+} from '../api/exams';
 import { ApiError } from '../api/client';
 import type {
   ExamResults,
   StudentResultRow,
+  SubmissionDetail,
   SubmissionOverallStatus,
   TaskResultColumn,
 } from '../types/exam';
@@ -19,6 +25,11 @@ const STATUS_COLOR: Record<SubmissionOverallStatus, string> = {
   TLE: 'text-mp-orange',
   MLE: 'text-mp-orange',
 };
+
+// Per-test-case status includes RE (not a SubmissionStatus value).
+function statusColor(status: string): string {
+  return status === 'RE' ? 'text-mp-yellow' : (STATUS_COLOR as Record<string, string>)[status] ?? 'text-mp-red';
+}
 
 type SortKey = 'studentNumber' | 'displayName' | 'totalScore' | 'elapsedSeconds' | 'lastSubmittedAt';
 type SortState = { key: SortKey; dir: 'asc' | 'desc' };
@@ -346,6 +357,7 @@ export function ExamResultsPage() {
                   {visibleStudents.map((student) => (
                     <StudentResultRowGroup
                       key={student.id}
+                      examId={examId!}
                       student={student}
                       tasks={results.tasks}
                       expanded={expandedIds.has(student.id)}
@@ -404,6 +416,7 @@ function SortHeader({
 }
 
 interface StudentResultRowGroupProps {
+  examId: string;
   student: StudentResultRow;
   tasks: TaskResultColumn[];
   expanded: boolean;
@@ -413,6 +426,7 @@ interface StudentResultRowGroupProps {
 }
 
 function StudentResultRowGroup({
+  examId,
   student,
   tasks,
   expanded,
@@ -420,6 +434,23 @@ function StudentResultRowGroup({
   onRevert,
   reverting,
 }: StudentResultRowGroupProps) {
+  const [detail, setDetail] = useState<SubmissionDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  async function loadDetail() {
+    if (detail || loadingDetail) return;
+    setLoadingDetail(true);
+    setDetailError(null);
+    try {
+      setDetail(await getSubmissionDetail(examId, student.id));
+    } catch (err) {
+      setDetailError(err instanceof ApiError ? err.message : '提出内容の取得に失敗しました。');
+    } finally {
+      setLoadingDetail(false);
+    }
+  }
+
   return (
     <Fragment>
       <tr
@@ -517,9 +548,113 @@ function StudentResultRowGroup({
                 })}
               </tbody>
             </table>
+
+            {student.lastSubmittedAt && (
+              <div className="mt-3">
+                {!detail && (
+                  <button
+                    onClick={loadDetail}
+                    disabled={loadingDetail}
+                    className="rounded border border-mp-border bg-mp-surface px-3 py-1 text-xs font-bold hover:bg-mp-surface-hover disabled:opacity-50"
+                  >
+                    {loadingDetail ? '読み込み中...' : '提出コードと結果を表示'}
+                  </button>
+                )}
+                {detailError && <p className="mt-1 text-xs text-mp-red">{detailError}</p>}
+                {detail && <SubmissionDetailView detail={detail} />}
+              </div>
+            )}
           </td>
         </tr>
       )}
     </Fragment>
+  );
+}
+
+function SubmissionDetailView({ detail }: { detail: SubmissionDetail }) {
+  return (
+    <div className="mt-2 space-y-4">
+      {detail.attemptNumber !== null && (
+        <p className="text-xs text-mp-muted">{detail.attemptNumber} 回目の受験の提出</p>
+      )}
+      {detail.tasks.map((t) => (
+        <div key={t.taskId} className="rounded-lg border border-mp-border bg-mp-surface p-3">
+          <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
+            <span className="font-bold">
+              {t.order + 1}. {t.title}
+            </span>
+            <span className="text-mp-muted">{t.language}</span>
+            {t.submitted ? (
+              <span className={`font-bold ${t.overallStatus ? STATUS_COLOR[t.overallStatus] : ''}`}>
+                {t.overallStatus ? `${statusGlyph(t.overallStatus)} ${t.overallStatus}` : ''}
+              </span>
+            ) : (
+              <span className="text-mp-muted">未提出</span>
+            )}
+            <span className="text-mp-muted">
+              {t.score} / {t.points} 点
+            </span>
+          </div>
+
+          {t.submitted && t.code !== null && (
+            <pre className="mb-2 max-h-64 overflow-auto rounded bg-mp-bg p-2 text-xs">
+              {t.code || '(空)'}
+            </pre>
+          )}
+
+          {t.results.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-max text-xs">
+                <thead className="text-mp-muted">
+                  <tr>
+                    <th className="px-2 py-1 text-left">#</th>
+                    <th className="px-2 py-1 text-left">入力</th>
+                    <th className="px-2 py-1 text-left">期待</th>
+                    <th className="px-2 py-1 text-left">実際</th>
+                    <th className="px-2 py-1 text-left">判定</th>
+                  </tr>
+                </thead>
+                <tbody className="font-mono">
+                  {t.testCases.map((tc, i) => {
+                    const r = t.results.find((x) => x.testCaseId === tc.id);
+                    return (
+                      <tr key={tc.id} className="border-t border-mp-border/50 align-top">
+                        <td className="px-2 py-1">
+                          {i + 1}
+                          {tc.isSample ? '' : '*'}
+                        </td>
+                        <td className="max-w-[12rem] px-2 py-1">
+                          <pre className="whitespace-pre-wrap break-words">{tc.input || '(なし)'}</pre>
+                        </td>
+                        <td className="max-w-[12rem] px-2 py-1">
+                          <pre className="whitespace-pre-wrap break-words">
+                            {tc.expectedOutput || '(空)'}
+                          </pre>
+                        </td>
+                        <td className="max-w-[12rem] px-2 py-1">
+                          <pre className="whitespace-pre-wrap break-words">
+                            {r ? r.actualOutput || '(空)' : '-'}
+                          </pre>
+                        </td>
+                        <td className="px-2 py-1">
+                          {r ? (
+                            <span className={`font-bold ${statusColor(r.status)}`}>
+                              {statusGlyph(r.status)} {r.status}
+                            </span>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <p className="mt-1 text-xs text-mp-muted">* は非公開テストケース</p>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }

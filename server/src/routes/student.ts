@@ -16,7 +16,7 @@ const MAX_CODE_LENGTH = 200_000;
 
 const outcomeSchema = z.object({
   testCaseId: z.string(),
-  stage: z.enum(['success', 'runtime_error']),
+  stage: z.enum(['success', 'runtime_error', 'tle', 'mle']),
   stdout: z.string(),
 });
 
@@ -148,10 +148,13 @@ async function resolveOutcomes(
 
   const outcomes = judgeResult.results.map((r) => ({
     testCaseId: r.id,
-    stage:
-      r.timedOut || r.oom || (r.exitCode ?? 1) !== 0
-        ? ('runtime_error' as const)
-        : ('success' as const),
+    stage: r.timedOut
+      ? ('tle' as const)
+      : r.oom
+        ? ('mle' as const)
+        : (r.exitCode ?? 1) !== 0
+          ? ('runtime_error' as const)
+          : ('success' as const),
     stdout: r.stdout,
   }));
 
@@ -571,7 +574,7 @@ studentRouter.post('/exams/:examId/submit', async (req, res) => {
 
   const perTask: Array<{
     taskId: string;
-    status: 'AC' | 'WA' | 'CE';
+    status: 'AC' | 'WA' | 'CE' | 'TLE' | 'MLE';
     score: number;
     compileStderr: string;
   }> = [];
@@ -617,10 +620,13 @@ studentRouter.post('/exams/:examId/submit', async (req, res) => {
           compileFailed: false,
           outcomes: jr.results.map((r) => ({
             testCaseId: r.id,
-            stage:
-              r.timedOut || r.oom || (r.exitCode ?? 1) !== 0
-                ? ('runtime_error' as const)
-                : ('success' as const),
+            stage: r.timedOut
+              ? ('tle' as const)
+              : r.oom
+                ? ('mle' as const)
+                : (r.exitCode ?? 1) !== 0
+                  ? ('runtime_error' as const)
+                  : ('success' as const),
             stdout: r.stdout,
           })),
         };
