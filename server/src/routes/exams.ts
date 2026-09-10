@@ -17,6 +17,14 @@ const examInputSchema = z.object({
   title: z.string().min(1, 'タイトルは必須です。'),
   description: z.string().nullable().optional(),
   timeLimitMinutes: z.number().int().positive('制限時間は1分以上で入力してください。'),
+  // How many times a student may take this exam. `null` = unlimited; omit to
+  // keep the current value (default 1 on create).
+  maxAttempts: z
+    .number()
+    .int()
+    .positive('受験可能回数は1以上で入力してください。')
+    .nullable()
+    .optional(),
   status: z.enum(['DRAFT', 'PUBLISHED']).optional(),
 });
 
@@ -61,6 +69,10 @@ examsRouter.post('/', async (req, res) => {
       title: parsed.data.title,
       description: parsed.data.description ?? null,
       timeLimitMinutes: parsed.data.timeLimitMinutes,
+      // `undefined` → schema default (1); `null` → unlimited.
+      ...(parsed.data.maxAttempts !== undefined
+        ? { maxAttempts: parsed.data.maxAttempts }
+        : {}),
       status: parsed.data.status ?? 'DRAFT',
       createdById: req.user!.id,
     },
@@ -145,6 +157,7 @@ examsRouter.get('/:examId/results/csv', async (req, res) => {
     '試験名',
     ...results.tasks.map((t) => t.title),
     '合計点',
+    '受験回数',
     '提出日時',
     '所要時間（秒）',
     ...results.tasks.map((t) => `${t.title}（解答時間・秒）`),
@@ -157,6 +170,7 @@ examsRouter.get('/:examId/results/csv', async (req, res) => {
     results.exam.title,
     ...student.results.map((r) => String(r.score)),
     String(student.totalScore),
+    String(student.attemptCount),
     student.lastSubmittedAt ? student.lastSubmittedAt.toISOString() : '',
     student.elapsedSeconds !== null ? String(student.elapsedSeconds) : '',
     ...student.results.map((r) => (r.timeSpentSeconds !== null ? String(r.timeSpentSeconds) : '')),

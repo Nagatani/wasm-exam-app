@@ -122,6 +122,8 @@ function CreateExamForm({ onCreated }: { onCreated: () => void }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [timeLimitMinutes, setTimeLimitMinutes] = useState(60);
+  const [unlimitedAttempts, setUnlimitedAttempts] = useState(false);
+  const [maxAttempts, setMaxAttempts] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -130,7 +132,12 @@ function CreateExamForm({ onCreated }: { onCreated: () => void }) {
     setError(null);
     setSubmitting(true);
     try {
-      await createExam({ title, description: description || null, timeLimitMinutes });
+      await createExam({
+        title,
+        description: description || null,
+        timeLimitMinutes,
+        maxAttempts: unlimitedAttempts ? null : maxAttempts,
+      });
       onCreated();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '作成に失敗しました。');
@@ -178,6 +185,32 @@ function CreateExamForm({ onCreated }: { onCreated: () => void }) {
         onChange={(e) => setTimeLimitMinutes(Number(e.target.value))}
         required
       />
+
+      <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-max-attempts">
+        受験可能回数
+      </label>
+      <div className="mb-3 flex items-center gap-3">
+        <input
+          id="exam-max-attempts"
+          type="number"
+          min={1}
+          disabled={unlimitedAttempts}
+          className="w-24 rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg disabled:opacity-50"
+          value={maxAttempts}
+          onChange={(e) => setMaxAttempts(Math.max(1, Number(e.target.value)))}
+        />
+        <label className="flex items-center gap-1.5 text-sm text-mp-muted">
+          <input
+            type="checkbox"
+            checked={unlimitedAttempts}
+            onChange={(e) => setUnlimitedAttempts(e.target.checked)}
+          />
+          無制限
+        </label>
+      </div>
+      <p className="mb-3 text-xs text-mp-muted">
+        複数回受験できる場合、最後に提出した回の点数が成績になります。
+      </p>
 
       {error && <p className="mb-3 text-sm text-mp-red">{error}</p>}
 

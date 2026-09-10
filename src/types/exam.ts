@@ -24,6 +24,8 @@ export interface ExamDetail {
   title: string;
   description: string | null;
   timeLimitMinutes: number;
+  // How many times a student may take this exam. null = unlimited.
+  maxAttempts: number | null;
   status: ExamStatus;
   createdById: string;
   createdAt: string;
@@ -93,6 +95,9 @@ export interface StudentResultRow {
   lastSubmittedAt: string | null;
   startedAt: string | null;
   elapsedSeconds: number | null;
+  // Number of finished (submitted) attempts. The row's status/score reflect
+  // the latest one.
+  attemptCount: number;
 }
 
 export interface ExamResults {

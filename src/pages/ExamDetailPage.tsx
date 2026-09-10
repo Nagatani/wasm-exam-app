@@ -15,6 +15,7 @@ function examFormKey(e: ExamDetail): string {
     title: e.title,
     description: e.description,
     timeLimitMinutes: e.timeLimitMinutes,
+    maxAttempts: e.maxAttempts,
     status: e.status,
   });
 }
@@ -58,6 +59,7 @@ export function ExamDetailPage() {
         title: exam.title,
         description: exam.description,
         timeLimitMinutes: exam.timeLimitMinutes,
+        maxAttempts: exam.maxAttempts,
         status: exam.status,
       });
       setExam((prev) => {
@@ -152,6 +154,34 @@ export function ExamDetailPage() {
             />
           </div>
           <div>
+            <label className="mb-1 block text-sm text-mp-muted" htmlFor="max-attempts">
+              受験可能回数
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                id="max-attempts"
+                type="number"
+                min={1}
+                disabled={exam.maxAttempts === null}
+                className="w-20 rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg disabled:opacity-50"
+                value={exam.maxAttempts ?? 1}
+                onChange={(e) =>
+                  setExam({ ...exam, maxAttempts: Math.max(1, Number(e.target.value)) })
+                }
+              />
+              <label className="flex items-center gap-1 text-sm text-mp-muted">
+                <input
+                  type="checkbox"
+                  checked={exam.maxAttempts === null}
+                  onChange={(e) =>
+                    setExam({ ...exam, maxAttempts: e.target.checked ? null : 1 })
+                  }
+                />
+                無制限
+              </label>
+            </div>
+          </div>
+          <div>
             <label className="mb-1 block text-sm text-mp-muted" htmlFor="status">
               公開ステータス
             </label>
@@ -166,6 +196,9 @@ export function ExamDetailPage() {
             </select>
           </div>
         </div>
+        <p className="mb-3 text-xs text-mp-muted">
+          複数回受験できる場合、最後に提出した回の点数が成績になります。各回とも制限時間は受験開始からのカウントダウンです。
+        </p>
 
         {error && <p className="mb-3 text-sm text-mp-red">{error}</p>}
 

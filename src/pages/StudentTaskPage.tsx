@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { CodeEditor } from '../components/CodeEditor';
 import { ThemeToggle } from '../components/ThemeToggle';
-import { getStudentExam, getStudentTask, runTask, submitTask } from '../api/student';
+import { getStudentExam, getStudentTask, runTask, saveTaskDraft } from '../api/student';
 import { prewarmClientRunner, runClientSide } from '../runner/clientRunner';
 import { statusGlyph } from '../lib/status';
 import {
@@ -37,16 +37,10 @@ interface ExecutionResult {
   outcomes: JudgeOutcome[];
 }
 
-interface ExamTiming {
-  timeLimitMinutes: number;
-  startedAt: string;
-}
-
-// Structured progress for the run/submit path so the UI can show a real bar
+// Structured progress for the preview run so the UI can show a real bar
 // instead of a single status string. 'compiling' is indeterminate (the first
-// C compile may pull a ~100MB toolchain); 'running' is proportional;
-// 'server' is the indeterminate wait while the judge container compiles and
-// runs a Java submission.
+// C compile may pull a ~100MB toolchain); 'running' is proportional; 'server'
+// is the indeterminate wait while the judge container runs a Java preview.
 type RunProgress =
   | { phase: 'compiling' }
   | { phase: 'running'; current: number; total: number }
@@ -67,85 +61,108 @@ export function StudentTaskPage() {
 
   const [task, setTask] = useState<StudentTask | null>(null);
   const [examTasks, setExamTasks] = useState<StudentTaskSummary[]>([]);
-  const [examTiming, setExamTiming] = useState<ExamTiming | null>(null);
+  const [deadline, setDeadline] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // No in-progress attempt for this exam → the student shouldn't be on this
+  // page. Redirect to the review/result page.
+  const [noAttempt, setNoAttempt] = useState(false);
 
   const [running, setRunning] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftSavedFlash, setDraftSavedFlash] = useState(false);
   const [progress, setProgress] = useState<RunProgress>(null);
   const [verdict, setVerdict] = useState<JudgeVerdict | null>(null);
   const [compileError, setCompileError] = useState<string | null>(null);
-  const [submittedTaskIds, setSubmittedTaskIds] = useState<string[]>([]);
-  const [showConfirm, setShowConfirm] = useState(false);
-  // Ctrl/Cmd+Enter in the editor triggers a run. The Monaco action is
-  // registered once on mount, so it calls through this ref to always see the
-  // current busy/timeUp state and the latest handleRun.
+  const [draftedTaskIds, setDraftedTaskIds] = useState<string[]>([]);
+
+  // Ctrl/Cmd+Enter in the editor triggers a preview run. Registered once on
+  // mount, so it calls through this ref to always see the latest state.
   const runActionRef = useRef<() => void>(() => {});
   const handleCmdEnter = useCallback(() => runActionRef.current(), []);
-  // The editor content this task loaded with — used to warn before navigating
-  // to another problem while there are unsaved edits (there's no draft
-  // persistence, so leaving loses the work).
-  const initialCodeRef = useRef('');
+  // The last code value persisted to the server draft — used to detect unsaved
+  // edits (there's a beforeunload guard and an on-navigate save).
+  const savedCodeRef = useRef('');
 
-  // Accumulated for the whole time the student spends on this task (from load
-  // to submit), not just the latest run — kept in refs since nothing needs to
-  // re-render on every keystroke, only read them when submitting.
+  // Accumulated for the whole time the student spends on this task, seeded
+  // from the saved draft so revisiting continues rather than resets.
   const keystrokeCountRef = useRef(0);
   const pasteCountRef = useRef(0);
   const pastedCharCountRef = useRef(0);
-  // When this task's page was (re-)entered — the reference point for "time
-  // spent on this task". Resets whenever taskId changes, same as the counters
-  // above; revisiting a task (e.g. browser back) restarts its clock rather
-  // than resuming it, a known limitation shared with the counters.
   const taskStartTimeRef = useRef(Date.now());
+  const draftBaseTimeRef = useRef(0);
 
   useEffect(() => {
     if (!taskId || !examId) return;
     setLoading(true);
     setVerdict(null);
     setCompileError(null);
-    keystrokeCountRef.current = 0;
-    pasteCountRef.current = 0;
-    pastedCharCountRef.current = 0;
-    taskStartTimeRef.current = Date.now();
+    setNoAttempt(false);
     Promise.all([getStudentTask(taskId), getStudentExam(examId)])
-      .then(([{ task }, { exam, submittedTaskIds }]) => {
+      .then(([{ task, draft }, state]) => {
+        if (!state.attempt) {
+          setNoAttempt(true);
+          return;
+        }
         setTask(task);
-        const starter = task.starterCode ?? '';
-        setCode(starter);
-        initialCodeRef.current = starter;
-        setExamTasks(exam.tasks);
-        setSubmittedTaskIds(submittedTaskIds);
-        setExamTiming({ timeLimitMinutes: exam.timeLimitMinutes, startedAt: exam.startedAt });
+        const initial = draft?.code ?? task.starterCode ?? '';
+        setCode(initial);
+        savedCodeRef.current = initial;
+        keystrokeCountRef.current = draft?.keystrokeCount ?? 0;
+        pasteCountRef.current = draft?.pasteCount ?? 0;
+        pastedCharCountRef.current = draft?.pastedCharCount ?? 0;
+        draftBaseTimeRef.current = draft?.timeSpentSeconds ?? 0;
+        taskStartTimeRef.current = Date.now();
+        setExamTasks(state.exam.tasks);
+        setDraftedTaskIds(state.attempt.draftedTaskIds);
+        setDeadline(new Date(state.attempt.deadline).getTime());
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : '問題の取得に失敗しました。'))
       .finally(() => setLoading(false));
   }, [taskId, examId]);
 
-  // Ticks once a second so the countdown in the header stays live; the
-  // deadline itself is anchored to the server-recorded exam start time, not
-  // to when this component happened to mount.
+  useEffect(() => {
+    if (noAttempt && examId) {
+      navigate(`/student/exams/${examId}/finished`, { replace: true });
+    }
+  }, [noAttempt, examId, navigate]);
+
+  // Ticks once a second so the countdown stays live; the deadline itself is
+  // anchored to the server-recorded attempt start.
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
 
-  // Start any heavy runtime download (clang toolchain for C, Pyodide for
-  // Python) as soon as the page opens, so it overlaps with the student reading
-  // the statement rather than blocking the first "実行" click. No-op for
-  // JS/TS, and for Java (server-executed).
+  // Start any heavy runtime download (clang for C, Pyodide for Python) as soon
+  // as the page opens so it overlaps with the student reading the statement.
   useEffect(() => {
-    if (task) {
-      prewarmClientRunner(task.language);
-    }
+    if (task) prewarmClientRunner(task.language);
   }, [task]);
 
-  // Guard against losing in-progress answer code to an accidental refresh /
-  // tab close. In-app navigation (stepper, submit) is handled separately.
-  useUnsavedGuard(code !== initialCodeRef.current);
+  useUnsavedGuard(code !== savedCodeRef.current);
+
+  const timeUp = deadline !== null && now >= deadline;
+
+  // When the clock runs out, hand off to the review page, which auto-submits
+  // the current drafts (decision: auto-finalize on time-up).
+  useEffect(() => {
+    if (timeUp && examId && !loading && task) {
+      navigate(`/student/exams/${examId}/finished`, { replace: true });
+    }
+  }, [timeUp, examId, loading, task, navigate]);
+
+  function currentMetrics() {
+    return {
+      keystrokeCount: keystrokeCountRef.current,
+      pasteCount: pasteCountRef.current,
+      pastedCharCount: pastedCharCountRef.current,
+      timeSpentSeconds:
+        draftBaseTimeRef.current + Math.round((Date.now() - taskStartTimeRef.current) / 1000),
+    };
+  }
 
   async function executeAgainstAllTestCases(currentTask: StudentTask): Promise<ExecutionResult> {
     return runClientSide(
@@ -164,8 +181,6 @@ export function StudentTaskPage() {
     setCompileError(null);
     try {
       if (isServerExec(task.language)) {
-        // Java: the browser can't run it — send the source, the judge
-        // container compiles + runs every test case and returns the verdict.
         setProgress({ phase: 'server' });
         const { verdict, compileStderr } = await runTask(task.id, { code });
         if (verdict.overallStatus === 'CE') setCompileError(compileStderr ?? '');
@@ -188,61 +203,62 @@ export function StudentTaskPage() {
     }
   }
 
-  function goToTask(targetId: string) {
+  async function persistDraft(): Promise<void> {
+    if (!task) return;
+    await saveTaskDraft(task.id, code, currentMetrics());
+    savedCodeRef.current = code;
+    setDraftedTaskIds((prev) => (prev.includes(task.id) ? prev : [...prev, task.id]));
+  }
+
+  async function handleSaveDraft() {
+    if (!task) return;
+    setSavingDraft(true);
+    setError(null);
+    try {
+      await persistDraft();
+      setDraftSavedFlash(true);
+      setTimeout(() => setDraftSavedFlash(false), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '下書きの保存に失敗しました。');
+    } finally {
+      setSavingDraft(false);
+    }
+  }
+
+  async function goToTask(targetId: string) {
     if (!examId || targetId === task?.id) return;
-    if (
-      code !== initialCodeRef.current &&
-      !window.confirm('このページで編集した内容は保存されません。ほかの問題に移動しますか？')
-    ) {
-      return;
+    if (code !== savedCodeRef.current) {
+      if (
+        !window.confirm(
+          'このページの編集内容はまだ下書き保存されていません。保存してから移動しますか？（キャンセルで移動を中止）',
+        )
+      ) {
+        return;
+      }
+      try {
+        await persistDraft();
+      } catch {
+        setError('下書きの保存に失敗したため移動を中止しました。');
+        return;
+      }
     }
     navigate(`/student/exams/${examId}/tasks/${targetId}`);
   }
 
-  async function handleSubmit() {
-    if (!task || !examId) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const metrics = {
-        keystrokeCount: keystrokeCountRef.current,
-        pasteCount: pasteCountRef.current,
-        pastedCharCount: pastedCharCountRef.current,
-        timeSpentSeconds: Math.round((Date.now() - taskStartTimeRef.current) / 1000),
-      };
-
-      if (isServerExec(task.language)) {
-        setProgress({ phase: 'server' });
-        const { submission, compileStderr } = await submitTask(task.id, code, metrics);
-        if (submission.overallStatus === 'CE') {
-          setCompileError(compileStderr ?? '');
-          setVerdict({ overallStatus: 'CE', results: [], score: 0 });
-        }
-      } else {
-        const { compileFailed, compileStderr, outcomes } = await executeAgainstAllTestCases(task);
-        if (compileFailed) {
-          setCompileError(compileStderr);
-          setVerdict({ overallStatus: 'CE', results: [], score: 0 });
-        }
-        await submitTask(task.id, code, metrics, { compileFailed, outcomes });
+  async function goToReview() {
+    if (!examId) return;
+    if (code !== savedCodeRef.current && task) {
+      try {
+        await persistDraft();
+      } catch {
+        setError('下書きの保存に失敗しました。もう一度お試しください。');
+        return;
       }
-
-      const idx = examTasks.findIndex((t) => t.id === task.id);
-      const next = examTasks[idx + 1];
-      if (next) {
-        navigate(`/student/exams/${examId}/tasks/${next.id}`);
-      } else {
-        navigate(`/student/exams/${examId}/finished`);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '提出に失敗しました。');
-    } finally {
-      setSubmitting(false);
-      setProgress(null);
     }
+    navigate(`/student/exams/${examId}/finished`);
   }
 
-  if (loading) {
+  if (loading || noAttempt) {
     return <PageSkeleton />;
   }
 
@@ -255,7 +271,7 @@ export function StudentTaskPage() {
   }
 
   const sampleTestCases = task.testCases.filter((tc) => tc.isSample);
-  const busy = running || submitting;
+  const busy = running || savingDraft;
   const languageRunnable = RUNNABLE_LANGUAGES.includes(task.language);
 
   const compilingMessage =
@@ -265,13 +281,11 @@ export function StudentTaskPage() {
         ? 'Python 実行環境を読み込み中...（初回は数十秒かかることがあります）'
         : 'コンパイル中...';
 
-  const remainingMs = examTiming
-    ? new Date(examTiming.startedAt).getTime() + examTiming.timeLimitMinutes * 60_000 - now
-    : null;
-  const timeUp = remainingMs !== null && remainingMs <= 0;
+  const remainingMs = deadline !== null ? deadline - now : null;
   const timeCritical = remainingMs !== null && !timeUp && remainingMs < 60_000;
   const timeLow = remainingMs !== null && !timeUp && !timeCritical && remainingMs < 5 * 60_000;
-  const submittedInExam = examTasks.filter((t) => submittedTaskIds.includes(t.id)).length;
+  const draftedCount = examTasks.filter((t) => draftedTaskIds.includes(t.id)).length;
+  const dirty = code !== savedCodeRef.current;
 
   runActionRef.current = () => {
     if (busy || timeUp || !languageRunnable) return;
@@ -299,6 +313,13 @@ export function StudentTaskPage() {
                 残り時間: {timeUp ? '00:00（時間切れ）' : formatRemaining(remainingMs)}
               </span>
             )}
+            <button
+              onClick={goToReview}
+              disabled={busy}
+              className="rounded bg-mp-purple px-3 py-1 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
+            >
+              試験を提出する
+            </button>
             <ThemeToggle />
           </div>
         </div>
@@ -307,28 +328,28 @@ export function StudentTaskPage() {
           <nav className="flex flex-wrap items-center gap-1.5" aria-label="問題一覧">
             {examTasks.map((t) => {
               const isCurrent = t.id === task.id;
-              const isDone = submittedTaskIds.includes(t.id);
+              const isDrafted = draftedTaskIds.includes(t.id);
               return (
                 <button
                   key={t.id}
                   onClick={() => goToTask(t.id)}
                   disabled={busy || isCurrent}
                   aria-current={isCurrent ? 'page' : undefined}
-                  title={`問題 ${t.order + 1}: ${t.title}${isDone ? '（提出済み）' : ''}`}
+                  title={`問題 ${t.order + 1}: ${t.title}${isDrafted ? '（下書き保存済み）' : ''}`}
                   className={`rounded px-2 py-0.5 text-xs font-bold disabled:cursor-default ${
                     isCurrent
                       ? 'bg-mp-cyan text-mp-btn-fg'
-                      : isDone
+                      : isDrafted
                         ? 'bg-mp-green/20 text-mp-green hover:bg-mp-green/30'
                         : 'border border-mp-border text-mp-muted hover:bg-mp-surface-hover'
                   }`}
                 >
-                  {isDone ? '✓ ' : ''}問題 {t.order + 1}
+                  {isDrafted ? '✎ ' : ''}問題 {t.order + 1}
                 </button>
               );
             })}
             <span className="ml-1 text-xs text-mp-muted">
-              提出 {submittedInExam}/{examTasks.length}
+              下書き {draftedCount}/{examTasks.length}
             </span>
           </nav>
         )}
@@ -336,7 +357,7 @@ export function StudentTaskPage() {
 
       {timeUp && (
         <div className="border-b border-mp-border bg-mp-red px-4 py-2 text-center text-sm font-bold text-mp-btn-fg">
-          試験時間が終了しました。コードの編集はできません。まだ提出していない場合は「送信」で現在の内容を提出できます。
+          試験時間が終了しました。提出画面に移動します...
         </div>
       )}
 
@@ -406,13 +427,17 @@ export function StudentTaskPage() {
               {running ? '実行中...' : '▶ コンパイル＆テスト実行'}
             </button>
             <button
-              onClick={() => setShowConfirm(true)}
-              disabled={busy || !languageRunnable}
-              className="flex-1 rounded bg-mp-purple px-3 py-2 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
+              onClick={handleSaveDraft}
+              disabled={busy || timeUp}
+              className="flex-1 rounded bg-mp-green px-3 py-2 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
             >
-              {submitting ? '提出中...' : '送信（解答提出）'}
+              {savingDraft ? '保存中...' : dirty ? '下書き保存' : draftSavedFlash ? '保存しました' : '下書き保存済み'}
             </button>
           </div>
+
+          <p className="rounded border border-mp-border bg-mp-bg p-2 text-xs text-mp-muted">
+            「下書き保存」で解答を一時保存できます。採点は行われません。すべての解答を確認したら、右上の「試験を提出する」から最終提出してください（提出後は再提出できません）。
+          </p>
 
           {!languageRunnable && (
             <p className="rounded border border-mp-border bg-mp-bg p-2 text-xs text-mp-muted">
@@ -446,7 +471,9 @@ export function StudentTaskPage() {
           {error && <p className="text-sm text-mp-red">{error}</p>}
 
           {verdict && (
-            <div className={`rounded border px-3 py-2 text-center font-bold ${STATUS_COLOR[verdict.overallStatus]}`}>
+            <div
+              className={`rounded border px-3 py-2 text-center font-bold ${STATUS_COLOR[verdict.overallStatus]}`}
+            >
               {STATUS_LABEL[verdict.overallStatus]}
             </div>
           )}
@@ -494,41 +521,6 @@ export function StudentTaskPage() {
           )}
         </div>
       </main>
-
-      {showConfirm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="w-full max-w-sm rounded-lg border border-mp-border bg-mp-surface p-5">
-            <h2 className="mb-2 text-base font-bold text-mp-fg">この解答を提出しますか？</h2>
-            <p className="mb-4 text-sm text-mp-muted">
-              「問題 {task.order + 1}: {task.title}」を提出します。提出後の修正・再提出はできません。
-              現在のエディタの内容がコンパイル・採点されます。
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setShowConfirm(false)}
-                disabled={submitting}
-                className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover disabled:opacity-50"
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={() => {
-                  setShowConfirm(false);
-                  void handleSubmit();
-                }}
-                disabled={submitting}
-                className="rounded bg-mp-purple px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
-              >
-                提出する
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

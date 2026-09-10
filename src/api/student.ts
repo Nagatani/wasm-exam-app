@@ -1,19 +1,22 @@
 import { apiFetch } from './client';
 import type {
-  TaskSubmissionMetrics,
   JudgeOutcome,
   JudgeVerdict,
-  StudentExamDetail,
+  StudentAttempt,
+  StudentExamResult,
+  StudentExamState,
   StudentExamSummary,
-  StudentTask,
-  SubmissionSummary,
+  StudentTaskResponse,
+  SubmitPayload,
+  SubmitTaskResult,
+  TaskDraftMetrics,
 } from '../types/student';
 
-// The answer language is fixed by the task, so run/submit bodies carry no
-// language field — only the per-mode payload differs.
+// The answer language is fixed by the task, so run bodies carry no language
+// field — only the per-mode payload differs.
 //
-// Client-executed languages (C): the browser ran the program and reports what
-// it printed per test case.
+// Client-executed languages (C/JS/TS/Python): the browser ran the program and
+// reports what it printed per test case.
 interface ClientExecInput {
   compileFailed: boolean;
   outcomes: JudgeOutcome[];
@@ -32,13 +35,19 @@ export function listStudentExams() {
 }
 
 export function getStudentExam(examId: string) {
-  return apiFetch<{ exam: StudentExamDetail; submittedTaskIds: string[] }>(
-    `/api/student/exams/${examId}`,
-  );
+  return apiFetch<StudentExamState>(`/api/student/exams/${examId}`);
+}
+
+// Begin a new attempt, or resume the in-progress one. Explicit — visiting the
+// exam never burns an attempt.
+export function startAttempt(examId: string) {
+  return apiFetch<{ attempt: StudentAttempt }>(`/api/student/exams/${examId}/attempts`, {
+    method: 'POST',
+  });
 }
 
 export function getStudentTask(taskId: string) {
-  return apiFetch<{ task: StudentTask }>(`/api/student/tasks/${taskId}`);
+  return apiFetch<StudentTaskResponse>(`/api/student/tasks/${taskId}`);
 }
 
 export function runTask(taskId: string, input: RunInput) {
@@ -48,31 +57,32 @@ export function runTask(taskId: string, input: RunInput) {
   );
 }
 
-export function submitTask(
-  taskId: string,
-  code: string,
-  metrics: TaskSubmissionMetrics,
-  // Only for client-executed languages (C). Server-exec languages (Java)
-  // re-run everything server-side and ignore these.
-  clientOutcomes?: { compileFailed: boolean; outcomes: JudgeOutcome[] },
-) {
-  return apiFetch<{
-    submission: {
-      id: string;
-      overallStatus: JudgeVerdict['overallStatus'];
-      score: number;
-      results: JudgeVerdict['results'];
-      submittedAt: string;
-    };
-    compileStderr?: string;
-  }>('/api/student/submissions', {
-    method: 'POST',
-    body: JSON.stringify({ taskId, code, ...metrics, ...(clientOutcomes ?? {}) }),
+// Per-task "下書き保存". Overwrites the current attempt's draft for this task;
+// never judged.
+export function saveTaskDraft(taskId: string, code: string, metrics: TaskDraftMetrics) {
+  return apiFetch<{ ok: true; updatedAt: string }>(`/api/student/tasks/${taskId}/draft`, {
+    method: 'PUT',
+    body: JSON.stringify({ code, ...metrics }),
   });
 }
 
-export function getExamSubmissions(examId: string) {
-  return apiFetch<{ submissions: SubmissionSummary[] }>(
-    `/api/student/exams/${examId}/submissions`,
-  );
+// Everything the review page needs to grade the in-progress attempt.
+export function getSubmitPayload(examId: string) {
+  return apiFetch<SubmitPayload>(`/api/student/exams/${examId}/attempt`);
+}
+
+// Finalize the current attempt. `tasks` carries per-task results only for
+// client-executed languages; server-exec tasks are graded server-side.
+export function submitExam(examId: string, tasks: SubmitTaskResult[]) {
+  return apiFetch<{
+    attempt: { attemptNumber: number; score: number; submittedAt: string };
+    perTask: { taskId: string; status: 'AC' | 'WA' | 'CE'; score: number; compileStderr: string }[];
+  }>(`/api/student/exams/${examId}/submit`, {
+    method: 'POST',
+    body: JSON.stringify({ tasks }),
+  });
+}
+
+export function getStudentExamResult(examId: string) {
+  return apiFetch<StudentExamResult>(`/api/student/exams/${examId}/result`);
 }

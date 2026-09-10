@@ -7,6 +7,8 @@ interface ExamInput {
   title: string;
   description?: string | null;
   timeLimitMinutes: number;
+  // null = unlimited retakes; omit to keep the current value (default 1).
+  maxAttempts?: number | null;
   status?: ExamStatus;
 }
 

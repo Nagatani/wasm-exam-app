@@ -331,6 +331,7 @@ export function ExamResultsPage() {
                     <SortHeader label="学籍番号" sortKey="studentNumber" sort={sort} onSort={handleSort} />
                     <SortHeader label="氏名" sortKey="displayName" sort={sort} onSort={handleSort} />
                     <SortHeader label="合計点" sortKey="totalScore" sort={sort} onSort={handleSort} />
+                    <th className="whitespace-nowrap px-3 py-2 text-left font-bold">受験</th>
                     <SortHeader label="所要時間" sortKey="elapsedSeconds" sort={sort} onSort={handleSort} />
                     <SortHeader
                       label="最終提出日時"
@@ -441,6 +442,9 @@ function StudentResultRowGroup({
         <td className="whitespace-nowrap px-3 py-2">{student.studentNumber}</td>
         <td className="whitespace-nowrap px-3 py-2">{student.displayName}</td>
         <td className="whitespace-nowrap px-3 py-2 font-bold">{student.totalScore}</td>
+        <td className="whitespace-nowrap px-3 py-2 text-mp-muted">
+          {student.attemptCount > 0 ? `${student.attemptCount}回` : '-'}
+        </td>
         <td
           className="whitespace-nowrap px-3 py-2 text-mp-muted"
           title={student.startedAt ? `開始: ${formatDateTime(student.startedAt)}` : undefined}
@@ -466,7 +470,7 @@ function StudentResultRowGroup({
       </tr>
       {expanded && (
         <tr className="border-t border-mp-border bg-mp-bg">
-          <td colSpan={7} className="px-3 py-3">
+          <td colSpan={8} className="px-3 py-3">
             <table className="w-full min-w-max text-xs">
               <thead className="text-mp-muted">
                 <tr>

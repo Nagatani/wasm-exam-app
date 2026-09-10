@@ -33,6 +33,11 @@ enum SubmissionStatus {
   MLE
 }
 
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+}
+
 model User {
   id            String   @id @default(uuid())
   studentNumber String   @unique
@@ -71,6 +76,10 @@ model Exam {
   title            String
   description      String?
   timeLimitMinutes Int
+  // How many times a student may take this exam. `null` = unlimited; a
+  // positive integer caps it. Default 1 (the historical single-attempt
+  // behaviour). Only *submitted* attempts count against the cap.
+  maxAttempts      Int?       @default(1)
   status           ExamStatus @default(DRAFT)
   createdById      String
   createdAt        DateTime   @default(now())
@@ -84,23 +93,58 @@ model Exam {
   @@map("exams")
 }
 
-// Marks when a student first opened this exam, so the student-facing
-// countdown and the teacher-facing "time taken" column both have a fixed
-// starting point instead of guessing from submission timestamps alone.
-// Created (upserted) the first time GET /api/student/exams/:examId is called
-// for a given student — i.e. the moment they actually enter the exam, not
-// when it merely appears in their dashboard list.
+// One row per time a student takes this exam. `attemptNumber` is 1-based and
+// unique per (exam, student). While `IN_PROGRESS` the student edits per-task
+// drafts (`TaskDraft`); on final submit the drafts are graded into immutable
+// `Submission` rows, `status` flips to `SUBMITTED`, and `score` / `submittedAt`
+// are filled in. `startedAt` is the fixed anchor the countdown and the
+// teacher's "所要時間" column compute from — per attempt, so a retake restarts
+// the clock. Created explicitly via POST /api/student/exams/:examId/attempts,
+// not as a side effect of viewing the exam.
 model ExamAttempt {
-  id        String   @id @default(uuid())
-  examId    String
-  studentId String
-  startedAt DateTime @default(now())
+  id            String        @id @default(uuid())
+  examId        String
+  studentId     String
+  attemptNumber Int           @default(1)
+  status        AttemptStatus @default(IN_PROGRESS)
+  startedAt     DateTime      @default(now())
+  submittedAt   DateTime?
+  // Total across all tasks, set when the attempt is finalized. The student's
+  // grade for the exam is the `score` of their latest SUBMITTED attempt.
+  score         Int?
 
-  exam    Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
-  student User @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  exam        Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  student     User         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  drafts      TaskDraft[]
+  submissions Submission[]
 
-  @@unique([examId, studentId])
+  @@unique([examId, studentId, attemptNumber])
+  @@index([examId, studentId])
   @@map("exam_attempts")
+}
+
+// In-progress answer for one task within one attempt. Mutable: the student's
+// per-task "下書き保存" upserts this. Never graded directly — on final submit
+// its `code` (+ metrics) is copied into an immutable `Submission`. Carries the
+// same client-reported editor metrics `Submission` does, accumulated across
+// the whole time the student spends on the task.
+model TaskDraft {
+  id               String   @id @default(uuid())
+  attemptId        String
+  taskId           String
+  code             String
+  keystrokeCount   Int      @default(0)
+  pasteCount       Int      @default(0)
+  pastedCharCount  Int      @default(0)
+  timeSpentSeconds Int      @default(0)
+  updatedAt        DateTime @updatedAt
+
+  attempt ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  task    Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, taskId])
+  @@index([taskId])
+  @@map("task_drafts")
 }
 
 model Task {
@@ -120,6 +164,7 @@ model Task {
   testCases   TestCase[]
   solutions   Solution[]
   submissions Submission[]
+  drafts      TaskDraft[]
 
   @@index([examId])
   @@map("tasks")
@@ -155,12 +200,16 @@ model Solution {
 }
 
 // Immutable once created (enforced in the API layer, not the DB): a
-// submission is a record of what a student actually turned in.
+// submission is a record of what a student actually turned in. One row per
+// (attempt, task) is created when an attempt is finalized.
 model Submission {
   id            String            @id @default(uuid())
   examId        String
   taskId        String
   studentId     String
+  // The attempt this submission belongs to. Nullable only for pre-attempt
+  // legacy rows; every submission created by the current flow sets it.
+  attemptId     String?
   language      Language
   code          String
   results       Json
@@ -181,11 +230,13 @@ model Submission {
   // the fields above.
   timeSpentSeconds Int @default(0)
 
-  exam    Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
-  task    Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  student User @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  exam    Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  task    Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  student User         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  attempt ExamAttempt? @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
   @@index([examId])
   @@index([studentId])
+  @@index([attemptId])
   @@map("submissions")
 }
