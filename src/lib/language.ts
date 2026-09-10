@@ -46,3 +46,50 @@ export const LANGUAGE_FILENAME: Record<Language, string> = {
   TS: 'main.ts',
   PYTHON: 'main.py',
 };
+
+// Skeleton starter code the task editor pre-fills when a teacher picks a
+// language, so the "初期テンプレートコード" field is never blank. The I/O helpers
+// referenced here match each runner: C reads real stdin; Java is a JEP 495
+// compact source file (JDK 24 --enable-preview in the judge) with an instance
+// main() and the auto-imported java.io.IO helpers; the JS/TS worker exposes
+// readline()/print(); Python runs under a redirected sys.stdin so
+// input()/print() work normally.
+export const LANGUAGE_TEMPLATE: Record<Language, string> = {
+  C: `#include <stdio.h>
+
+int main(void) {
+    // ここにコードを書く
+
+    return 0;
+}
+`,
+  JAVA: `// JEP 495: クラス宣言なしの簡易ソースファイル + インスタンス main
+void main() {
+    // IO.readln() で標準入力を1行読み、IO.println(...) で出力する
+    String line = IO.readln();
+    // ここにコードを書く
+
+}
+`,
+  JS: `// readline() で標準入力を1行読み、print() で出力する
+const input = readline();
+// ここにコードを書く
+`,
+  TS: `// readline() で標準入力を1行読み、print() で出力する
+const input: string = readline();
+// ここにコードを書く
+`,
+  PYTHON: `# input() で標準入力を1行読み、print() で出力する
+line = input()
+# ここにコードを書く
+`,
+};
+
+const TEMPLATE_VALUES = new Set(Object.values(LANGUAGE_TEMPLATE));
+
+// True when `code` is blank or still one of the untouched per-language
+// templates — i.e. it's safe to swap in a different language's template
+// without discarding anything the teacher actually wrote.
+export function isUntouchedTemplate(code: string): boolean {
+  return code.trim() === '' || TEMPLATE_VALUES.has(code);
+}

@@ -4,7 +4,13 @@ import ReactMarkdown from 'react-markdown';
 import { getTask, updateTask, deleteTask, createTestCase, upsertSolution } from '../api/tasks';
 import { ApiError } from '../api/client';
 import type { Language, TaskDetail } from '../types/exam';
-import { ALL_LANGUAGES, LANGUAGE_LABEL, MONACO_LANGUAGE } from '../lib/language';
+import {
+  ALL_LANGUAGES,
+  LANGUAGE_LABEL,
+  LANGUAGE_TEMPLATE,
+  MONACO_LANGUAGE,
+  isUntouchedTemplate,
+} from '../lib/language';
 import { TestCaseRow } from '../components/TestCaseRow';
 import { CodeEditor } from '../components/CodeEditor';
 import { BackHeader } from '../components/BackHeader';
@@ -49,8 +55,14 @@ export function TaskEditorPage() {
     setLoading(true);
     try {
       const { task } = await getTask(taskId);
-      setTask(task);
       savedSnapshotRef.current = taskFormKey(task);
+      // Pre-fill the starter-code field with the language's skeleton when the
+      // task has none yet (leaves the form marked "未保存" so the teacher saves it).
+      if (!task.starterCode || task.starterCode.trim() === '') {
+        setTask({ ...task, starterCode: LANGUAGE_TEMPLATE[task.language] });
+      } else {
+        setTask(task);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '問題の取得に失敗しました。');
     } finally {
@@ -176,7 +188,16 @@ export function TaskEditorPage() {
               id="task-language"
               className={inputClass}
               value={task.language}
-              onChange={(e) => setTask({ ...task, language: e.target.value as Language })}
+              onChange={(e) => {
+                const language = e.target.value as Language;
+                // Swap in the new language's template only if the field is
+                // still blank or an untouched template — never clobber code
+                // the teacher has written.
+                const starterCode = isUntouchedTemplate(task.starterCode ?? '')
+                  ? LANGUAGE_TEMPLATE[language]
+                  : task.starterCode;
+                setTask({ ...task, language, starterCode });
+              }}
             >
               {ALL_LANGUAGES.map((lang) => (
                 <option key={lang} value={lang}>
