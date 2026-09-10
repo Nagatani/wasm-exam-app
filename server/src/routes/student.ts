@@ -49,7 +49,7 @@ async function attemptView(attemptId: string): Promise<AttemptView> {
   const a = await prisma.examAttempt.findUniqueOrThrow({
     where: { id: attemptId },
     include: {
-      exam: { select: { timeLimitMinutes: true } },
+      exam: { select: { timeLimitMinutes: true, closesAt: true } },
       drafts: { select: { taskId: true } },
     },
   });
@@ -57,7 +57,7 @@ async function attemptView(attemptId: string): Promise<AttemptView> {
     id: a.id,
     attemptNumber: a.attemptNumber,
     startedAt: a.startedAt,
-    deadline: attemptDeadline(a.startedAt, a.exam.timeLimitMinutes),
+    deadline: attemptDeadline(a.startedAt, a.exam.timeLimitMinutes, a.exam.closesAt),
     draftedTaskIds: a.drafts.map((d) => d.taskId),
   };
 }
@@ -203,6 +203,7 @@ studentRouter.get('/exams', async (req, res) => {
     byExam.set(a.examId, list);
   }
 
+  const now = Date.now();
   res.json({
     exams: exams.map((exam) => {
       const list = (byExam.get(exam.id) ?? []).sort((a, b) => b.attemptNumber - a.attemptNumber);
@@ -210,6 +211,8 @@ studentRouter.get('/exams', async (req, res) => {
       const submitted = list.filter((a) => a.status === 'SUBMITTED');
       const hasInProgress = latest?.status === 'IN_PROGRESS';
       const latestSubmitted = submitted[0] ?? null; // list is desc by attemptNumber
+      const notYetOpen = exam.opensAt !== null && now < exam.opensAt.getTime();
+      const closed = exam.closesAt !== null && now >= exam.closesAt.getTime();
       return {
         id: exam.id,
         title: exam.title,
@@ -218,9 +221,16 @@ studentRouter.get('/exams', async (req, res) => {
         taskCount: exam._count.tasks,
         totalPoints: exam.tasks.reduce((sum, t) => sum + t.points, 0),
         maxAttempts: exam.maxAttempts, // null = unlimited
+        opensAt: exam.opensAt,
+        closesAt: exam.closesAt,
+        notYetOpen,
+        closed,
         attemptsUsed: submitted.length,
         hasInProgress,
-        canStart: hasInProgress || canStartAnother(exam.maxAttempts, submitted.length),
+        canStart:
+          !notYetOpen &&
+          !closed &&
+          (hasInProgress || canStartAnother(exam.maxAttempts, submitted.length)),
         latestScore: latestSubmitted?.score ?? null,
       };
     }),
@@ -242,6 +252,15 @@ studentRouter.post('/exams/:examId/attempts', async (req, res) => {
   }
   if (exam._count.tasks === 0) {
     res.status(400).json({ error: 'この試験にはまだ問題が登録されていません。' });
+    return;
+  }
+  const now = Date.now();
+  if (exam.opensAt && now < exam.opensAt.getTime()) {
+    res.status(409).json({ error: 'この試験はまだ開始できません。' });
+    return;
+  }
+  if (exam.closesAt && now >= exam.closesAt.getTime()) {
+    res.status(409).json({ error: 'この試験の受付は終了しました。' });
     return;
   }
 
@@ -322,6 +341,9 @@ studentRouter.get('/exams/:examId', async (req, res) => {
   });
   const current = all[0]?.status === 'IN_PROGRESS' ? all[0] : null;
   const submittedCount = all.filter((a) => a.status === 'SUBMITTED').length;
+  const now = Date.now();
+  const notYetOpen = exam.opensAt !== null && now < exam.opensAt.getTime();
+  const closed = exam.closesAt !== null && now >= exam.closesAt.getTime();
 
   res.json({
     exam: {
@@ -331,11 +353,17 @@ studentRouter.get('/exams/:examId', async (req, res) => {
       timeLimitMinutes: exam.timeLimitMinutes,
       tasks: exam.tasks,
       maxAttempts: exam.maxAttempts,
+      opensAt: exam.opensAt,
+      closesAt: exam.closesAt,
       totalPoints: exam.tasks.reduce((sum, t) => sum + t.points, 0),
     },
     attempt: current ? await attemptView(current.id) : null,
     attemptsUsed: submittedCount,
-    canStartNew: current === null && canStartAnother(exam.maxAttempts, submittedCount),
+    canStartNew:
+      current === null &&
+      !notYetOpen &&
+      !closed &&
+      canStartAnother(exam.maxAttempts, submittedCount),
   });
 });
 
@@ -459,7 +487,10 @@ studentRouter.post('/tasks/:taskId/run', async (req, res) => {
     throw err;
   }
 
-  const verdict = judgeSubmission(task.testCases, task.points, resolved.judgeInput);
+  const verdict = judgeSubmission(task.testCases, task.points, resolved.judgeInput, {
+    mode: task.comparisonMode,
+    floatTolerance: task.floatTolerance,
+  });
   res.json({ verdict, compileStderr: resolved.compileStderr });
 });
 
@@ -505,7 +536,7 @@ studentRouter.get('/exams/:examId/attempt', async (req, res) => {
       id: latest.id,
       attemptNumber: latest.attemptNumber,
       startedAt: latest.startedAt,
-      deadline: attemptDeadline(latest.startedAt, exam.timeLimitMinutes),
+      deadline: attemptDeadline(latest.startedAt, exam.timeLimitMinutes, exam.closesAt),
     },
     exam: {
       id: exam.id,
@@ -640,7 +671,10 @@ studentRouter.post('/exams/:examId/submit', async (req, res) => {
       judgeInput = { compileFailed: c.compileFailed, outcomes: c.outcomes };
     }
 
-    const verdict = judgeSubmission(task.testCases, task.points, judgeInput);
+    const verdict = judgeSubmission(task.testCases, task.points, judgeInput, {
+      mode: task.comparisonMode,
+      floatTolerance: task.floatTolerance,
+    });
     perTask.push({
       taskId: task.id,
       status: verdict.overallStatus,

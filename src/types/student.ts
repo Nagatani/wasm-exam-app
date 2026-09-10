@@ -9,12 +9,17 @@ export interface StudentExamSummary {
   totalPoints: number;
   // null = unlimited retakes.
   maxAttempts: number | null;
+  // ISO datetimes or null.
+  opensAt: string | null;
+  closesAt: string | null;
+  notYetOpen: boolean;
+  closed: boolean;
   // Finished (submitted) attempts so far.
   attemptsUsed: number;
   // The student has an attempt currently in progress.
   hasInProgress: boolean;
-  // Can enter the exam right now — either to resume an in-progress attempt or
-  // to start a fresh one within the retake limit.
+  // Can enter the exam right now — within the schedule window, and either to
+  // resume an in-progress attempt or start a fresh one within the retake limit.
   canStart: boolean;
   // Score of the latest submitted attempt, or null if never submitted.
   latestScore: number | null;
@@ -44,6 +49,8 @@ export interface StudentExamDetail {
   timeLimitMinutes: number;
   tasks: StudentTaskSummary[];
   maxAttempts: number | null;
+  opensAt: string | null;
+  closesAt: string | null;
   totalPoints: number;
 }
 

@@ -36,6 +36,64 @@ interface JudgeableTestCase {
   isSample: boolean;
 }
 
+export type ComparisonMode = 'EXACT' | 'TRIM_TRAILING_WS' | 'IGNORE_BLANK_LINES' | 'FLOAT';
+
+export interface Comparison {
+  mode: ComparisonMode;
+  floatTolerance: number;
+}
+
+const DEFAULT_COMPARISON: Comparison = { mode: 'EXACT', floatTolerance: 1e-6 };
+
+// Strip each line's trailing whitespace and drop trailing blank lines.
+function normalizeLines(s: string): string {
+  return s
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+$/, ''))
+    .join('\n')
+    .replace(/\n+$/, '');
+}
+
+function numbersClose(a: number, b: number, tol: number): boolean {
+  const diff = Math.abs(a - b);
+  return diff <= tol || diff <= tol * Math.max(Math.abs(a), Math.abs(b));
+}
+
+// The one place output equivalence is decided. `EXACT` is the historical rule
+// (trim the whole string, exact match); the others relax it in the ways
+// numeric / free-form problems usually need.
+export function compareOutput(expected: string, actual: string, cmp: Comparison): boolean {
+  switch (cmp.mode) {
+    case 'EXACT':
+      return expected.trim() === actual.trim();
+    case 'TRIM_TRAILING_WS':
+      return normalizeLines(expected) === normalizeLines(actual);
+    case 'IGNORE_BLANK_LINES': {
+      const strip = (s: string) =>
+        normalizeLines(s)
+          .split('\n')
+          .filter((line) => line.trim() !== '')
+          .join('\n');
+      return strip(expected) === strip(actual);
+    }
+    case 'FLOAT': {
+      const e = expected.trim().split(/\s+/).filter(Boolean);
+      const a = actual.trim().split(/\s+/).filter(Boolean);
+      if (e.length !== a.length) return false;
+      for (let i = 0; i < e.length; i++) {
+        const en = Number(e[i]);
+        const an = Number(a[i]);
+        if (Number.isFinite(en) && Number.isFinite(an)) {
+          if (!numbersClose(en, an, cmp.floatTolerance)) return false;
+        } else if (e[i] !== a[i]) {
+          return false;
+        }
+      }
+      return true;
+    }
+  }
+}
+
 const STAGE_TO_STATUS: Record<'runtime_error' | 'tle' | 'mle', PerTestCaseStatus> = {
   runtime_error: 'RE',
   tle: 'TLE',
@@ -62,6 +120,7 @@ export function judgeSubmission(
   testCases: JudgeableTestCase[],
   points: number,
   input: JudgeInput,
+  comparison: Comparison = DEFAULT_COMPARISON,
 ): JudgeVerdict {
   if (input.compileFailed) {
     return { overallStatus: 'CE', results: [], score: 0 };
@@ -80,8 +139,9 @@ export function judgeSubmission(
         actualOutput: outcome.stdout,
       };
     }
-    const status: PerTestCaseStatus =
-      outcome.stdout.trim() === tc.expectedOutput.trim() ? 'AC' : 'WA';
+    const status: PerTestCaseStatus = compareOutput(tc.expectedOutput, outcome.stdout, comparison)
+      ? 'AC'
+      : 'WA';
     return { testCaseId: tc.id, isSample: tc.isSample, status, actualOutput: outcome.stdout };
   });
 

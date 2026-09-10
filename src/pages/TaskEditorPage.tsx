@@ -11,7 +11,8 @@ import {
   checkSolution,
 } from '../api/tasks';
 import { ApiError } from '../api/client';
-import type { Language, TaskDetail } from '../types/exam';
+import type { ComparisonMode, Language, TaskDetail } from '../types/exam';
+import { COMPARISON_MODE_LABEL, compareOutput } from '../lib/compareOutput';
 import {
   ALL_LANGUAGES,
   isServerExec,
@@ -54,6 +55,8 @@ function taskFormKey(t: TaskDetail): string {
     statementMarkdown: t.statementMarkdown,
     language: t.language,
     starterCode: t.starterCode ?? '',
+    comparisonMode: t.comparisonMode,
+    floatTolerance: t.floatTolerance,
   });
 }
 
@@ -114,6 +117,8 @@ export function TaskEditorPage() {
         statementMarkdown: task.statementMarkdown,
         language: task.language,
         starterCode: task.starterCode,
+        comparisonMode: task.comparisonMode,
+        floatTolerance: task.floatTolerance,
       });
       setTask((prev) => {
         const next = prev ? { ...prev, ...updated } : prev;
@@ -191,8 +196,14 @@ export function TaskEditorPage() {
               status: outcome.stage === 'tle' || outcome.stage === 'mle' ? 'timeout' : 'error',
             };
           }
-          const status: SolutionCheckStatus =
-            outcome.stdout.trim() === tc.expectedOutput.trim() ? 'match' : 'mismatch';
+          const status: SolutionCheckStatus = compareOutput(
+            tc.expectedOutput,
+            outcome.stdout,
+            task.comparisonMode,
+            task.floatTolerance,
+          )
+            ? 'match'
+            : 'mismatch';
           return {
             testCaseId: tc.id,
             label: `テストケース ${i + 1}`,
@@ -322,6 +333,46 @@ export function TaskEditorPage() {
         <p className="mb-3 text-xs text-mp-muted">
           生徒はこの問題をここで指定した言語のみで解答します（生徒側に言語の選択肢はありません）。
         </p>
+
+        <div className="mb-3 flex flex-wrap items-end gap-4">
+          <div>
+            <label className="mb-1 block text-sm text-mp-muted" htmlFor="task-comparison">
+              出力の比較方法
+            </label>
+            <select
+              id="task-comparison"
+              className={inputClass}
+              value={task.comparisonMode}
+              onChange={(e) =>
+                setTask({ ...task, comparisonMode: e.target.value as ComparisonMode })
+              }
+            >
+              {(Object.keys(COMPARISON_MODE_LABEL) as ComparisonMode[]).map((m) => (
+                <option key={m} value={m}>
+                  {COMPARISON_MODE_LABEL[m]}
+                </option>
+              ))}
+            </select>
+          </div>
+          {task.comparisonMode === 'FLOAT' && (
+            <div>
+              <label className="mb-1 block text-sm text-mp-muted" htmlFor="task-float-tol">
+                許容誤差
+              </label>
+              <input
+                id="task-float-tol"
+                type="number"
+                step="any"
+                min={0}
+                className={`w-32 ${inputClass}`}
+                value={task.floatTolerance}
+                onChange={(e) =>
+                  setTask({ ...task, floatTolerance: Math.max(0, Number(e.target.value)) })
+                }
+              />
+            </div>
+          )}
+        </div>
 
         <div className="mb-1 flex items-center justify-between">
           <label className="block text-sm text-mp-muted" htmlFor="task-statement">

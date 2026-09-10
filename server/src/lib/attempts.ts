@@ -14,9 +14,16 @@ export function isServerExec(language: Language): boolean {
 }
 
 // The wall-clock deadline of an attempt: a fixed offset from when it started,
-// so the countdown the student sees and the "所要時間" a teacher sees agree.
-export function attemptDeadline(startedAt: Date, timeLimitMinutes: number): Date {
-  return new Date(startedAt.getTime() + timeLimitMinutes * 60_000);
+// clamped to the exam's `closesAt` if one is set. The countdown the student
+// sees and the "所要時間" a teacher sees both derive from this.
+export function attemptDeadline(
+  startedAt: Date,
+  timeLimitMinutes: number,
+  closesAt?: Date | null,
+): Date {
+  const byLimit = startedAt.getTime() + timeLimitMinutes * 60_000;
+  const byClose = closesAt ? closesAt.getTime() : Number.POSITIVE_INFINITY;
+  return new Date(Math.min(byLimit, byClose));
 }
 
 // Turn a judge-container run response into the { compileFailed, outcomes }
@@ -60,7 +67,11 @@ export async function maybeSettleAttempt(attemptId: string): Promise<boolean> {
   });
   if (!attempt || attempt.status !== 'IN_PROGRESS') return false;
 
-  const deadline = attemptDeadline(attempt.startedAt, attempt.exam.timeLimitMinutes);
+  const deadline = attemptDeadline(
+    attempt.startedAt,
+    attempt.exam.timeLimitMinutes,
+    attempt.exam.closesAt,
+  );
   if (Date.now() < deadline.getTime()) return false;
 
   const draftByTask = new Map(attempt.drafts.map((d) => [d.taskId, d]));
@@ -82,7 +93,10 @@ export async function maybeSettleAttempt(attemptId: string): Promise<boolean> {
         const jr = await withJudgeSlot(attempt.studentId, () =>
           runOnJudge({ code: draft.code, tests }),
         );
-        verdict = judgeSubmission(task.testCases, task.points, judgeInputFromContainer(jr));
+        verdict = judgeSubmission(task.testCases, task.points, judgeInputFromContainer(jr), {
+          mode: task.comparisonMode,
+          floatTolerance: task.floatTolerance,
+        });
       } catch {
         verdict = { overallStatus: 'WA', results: [], score: 0 };
       }

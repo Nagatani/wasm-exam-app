@@ -25,8 +25,18 @@ const examInputSchema = z.object({
     .positive('受験可能回数は1以上で入力してください。')
     .nullable()
     .optional(),
+  // Optional scheduling window. `null` clears; omit to keep.
+  opensAt: z.coerce.date().nullable().optional(),
+  closesAt: z.coerce.date().nullable().optional(),
   status: z.enum(['DRAFT', 'PUBLISHED']).optional(),
 });
+
+const comparisonModeSchema = z.enum([
+  'EXACT',
+  'TRIM_TRAILING_WS',
+  'IGNORE_BLANK_LINES',
+  'FLOAT',
+]);
 
 const taskInputSchema = z.object({
   order: z.number().int(),
@@ -35,6 +45,8 @@ const taskInputSchema = z.object({
   language: languageSchema.default('C'),
   starterCode: z.string().nullable().optional(),
   points: z.number().int().nonnegative().default(0),
+  comparisonMode: comparisonModeSchema.optional(),
+  floatTolerance: z.number().positive().optional(),
 });
 
 examsRouter.get('/', async (_req, res) => {
@@ -73,6 +85,8 @@ examsRouter.post('/', async (req, res) => {
       ...(parsed.data.maxAttempts !== undefined
         ? { maxAttempts: parsed.data.maxAttempts }
         : {}),
+      ...(parsed.data.opensAt !== undefined ? { opensAt: parsed.data.opensAt } : {}),
+      ...(parsed.data.closesAt !== undefined ? { closesAt: parsed.data.closesAt } : {}),
       status: parsed.data.status ?? 'DRAFT',
       createdById: req.user!.id,
     },

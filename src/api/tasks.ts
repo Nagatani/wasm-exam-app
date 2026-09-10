@@ -1,5 +1,5 @@
 import { apiFetch } from './client';
-import type { Language, Solution, TaskDetail, TestCase } from '../types/exam';
+import type { ComparisonMode, Language, Solution, TaskDetail, TestCase } from '../types/exam';
 
 interface TaskInput {
   order: number;
@@ -8,6 +8,8 @@ interface TaskInput {
   language?: Language;
   starterCode?: string | null;
   points?: number;
+  comparisonMode?: ComparisonMode;
+  floatTolerance?: number;
 }
 
 interface TestCaseInput {

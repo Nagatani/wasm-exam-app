@@ -14,6 +14,10 @@ function attemptLimitLabel(exam: StudentExamSummary): string {
   return `受験回数: ${exam.attemptsUsed}/${exam.maxAttempts}`;
 }
 
+function fmt(iso: string | null): string {
+  return iso ? new Date(iso).toLocaleString('ja-JP') : '';
+}
+
 export function StudentDashboard() {
   const { profile } = useAuth();
   const navigate = useNavigate();
@@ -107,6 +111,19 @@ export function StudentDashboard() {
                     {exam.latestScore !== null &&
                       ` ・ 前回: ${exam.latestScore}/${exam.totalPoints}点`}
                   </p>
+                  {exam.notYetOpen && (
+                    <p className="text-sm font-bold text-mp-orange">
+                      公開開始: {fmt(exam.opensAt)}
+                    </p>
+                  )}
+                  {!exam.notYetOpen && exam.closed && (
+                    <p className="text-sm font-bold text-mp-red">
+                      受付終了（{fmt(exam.closesAt)}）
+                    </p>
+                  )}
+                  {!exam.notYetOpen && !exam.closed && exam.closesAt && (
+                    <p className="text-sm text-mp-muted">受付終了: {fmt(exam.closesAt)}</p>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   {exam.attemptsUsed > 0 && (

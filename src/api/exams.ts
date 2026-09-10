@@ -15,6 +15,9 @@ interface ExamInput {
   timeLimitMinutes: number;
   // null = unlimited retakes; omit to keep the current value (default 1).
   maxAttempts?: number | null;
+  // ISO datetime strings or null (clear). Omit to keep.
+  opensAt?: string | null;
+  closesAt?: string | null;
   status?: ExamStatus;
 }
 

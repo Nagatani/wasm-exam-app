@@ -38,6 +38,14 @@ enum AttemptStatus {
   SUBMITTED
 }
 
+// How a test case's expected output is compared to the program's stdout.
+enum ComparisonMode {
+  EXACT // trim the whole string, then exact string match (the original rule)
+  TRIM_TRAILING_WS // strip each line's trailing spaces/tabs + trailing blank lines
+  IGNORE_BLANK_LINES // TRIM_TRAILING_WS, then drop empty lines entirely
+  FLOAT // whitespace-tokenised; numeric tokens compared within `floatTolerance`
+}
+
 model User {
   id            String   @id @default(uuid())
   studentNumber String   @unique
@@ -80,6 +88,11 @@ model Exam {
   // positive integer caps it. Default 1 (the historical single-attempt
   // behaviour). Only *submitted* attempts count against the cap.
   maxAttempts      Int?       @default(1)
+  // Optional scheduling window. Before `opensAt` a published exam is visible
+  // but not startable; after `closesAt` no new attempt may start and any
+  // in-progress attempt's effective deadline is clamped to it.
+  opensAt          DateTime?
+  closesAt         DateTime?
   status           ExamStatus @default(DRAFT)
   createdById      String
   createdAt        DateTime   @default(now())
@@ -158,6 +171,10 @@ model Task {
   language         Language @default(C)
   starterCode      String?
   points           Int     @default(0)
+  // Output-comparison rule for this task's test cases, and the tolerance used
+  // when `comparisonMode` is FLOAT (ignored otherwise).
+  comparisonMode   ComparisonMode @default(EXACT)
+  floatTolerance   Float          @default(0.000001)
   createdAt        DateTime @default(now())
 
   exam        Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)

@@ -6,6 +6,7 @@ import { SkeletonRows } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState';
 import { createExam, listExams } from '../api/exams';
 import { ApiError } from '../api/client';
+import { datetimeLocalToIso } from '../lib/datetime';
 import type { ExamSummary, ExamStatus } from '../types/exam';
 
 const STATUS_LABEL: Record<ExamStatus, string> = {
@@ -124,6 +125,8 @@ function CreateExamForm({ onCreated }: { onCreated: () => void }) {
   const [timeLimitMinutes, setTimeLimitMinutes] = useState(60);
   const [unlimitedAttempts, setUnlimitedAttempts] = useState(false);
   const [maxAttempts, setMaxAttempts] = useState(1);
+  const [opensAt, setOpensAt] = useState('');
+  const [closesAt, setClosesAt] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -137,6 +140,8 @@ function CreateExamForm({ onCreated }: { onCreated: () => void }) {
         description: description || null,
         timeLimitMinutes,
         maxAttempts: unlimitedAttempts ? null : maxAttempts,
+        opensAt: datetimeLocalToIso(opensAt),
+        closesAt: datetimeLocalToIso(closesAt),
       });
       onCreated();
     } catch (err) {
@@ -211,6 +216,33 @@ function CreateExamForm({ onCreated }: { onCreated: () => void }) {
       <p className="mb-3 text-xs text-mp-muted">
         複数回受験できる場合、最後に提出した回の点数が成績になります。
       </p>
+
+      <div className="mb-3 flex flex-wrap gap-4">
+        <div>
+          <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-opens-at">
+            公開開始日時（任意）
+          </label>
+          <input
+            id="exam-opens-at"
+            type="datetime-local"
+            className="rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+            value={opensAt}
+            onChange={(e) => setOpensAt(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-closes-at">
+            受付終了日時（任意）
+          </label>
+          <input
+            id="exam-closes-at"
+            type="datetime-local"
+            className="rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+            value={closesAt}
+            onChange={(e) => setClosesAt(e.target.value)}
+          />
+        </div>
+      </div>
 
       {error && <p className="mb-3 text-sm text-mp-red">{error}</p>}
 

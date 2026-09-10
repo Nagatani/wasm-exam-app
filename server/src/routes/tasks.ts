@@ -21,6 +21,10 @@ const taskUpdateSchema = z.object({
   language: languageSchema.optional(),
   starterCode: z.string().nullable().optional(),
   points: z.number().int().nonnegative().optional(),
+  comparisonMode: z
+    .enum(['EXACT', 'TRIM_TRAILING_WS', 'IGNORE_BLANK_LINES', 'FLOAT'])
+    .optional(),
+  floatTolerance: z.number().positive().optional(),
 });
 
 const testCaseInputSchema = z.object({

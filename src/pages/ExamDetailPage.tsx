@@ -8,6 +8,7 @@ import { BackHeader } from '../components/BackHeader';
 import { PageSkeleton } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
+import { datetimeLocalToIso, toDatetimeLocalValue } from '../lib/datetime';
 
 // The exam fields the metadata form persists — used to detect unsaved edits.
 function examFormKey(e: ExamDetail): string {
@@ -16,6 +17,8 @@ function examFormKey(e: ExamDetail): string {
     description: e.description,
     timeLimitMinutes: e.timeLimitMinutes,
     maxAttempts: e.maxAttempts,
+    opensAt: e.opensAt,
+    closesAt: e.closesAt,
     status: e.status,
   });
 }
@@ -60,6 +63,8 @@ export function ExamDetailPage() {
         description: exam.description,
         timeLimitMinutes: exam.timeLimitMinutes,
         maxAttempts: exam.maxAttempts,
+        opensAt: exam.opensAt,
+        closesAt: exam.closesAt,
         status: exam.status,
       });
       setExam((prev) => {
@@ -198,6 +203,40 @@ export function ExamDetailPage() {
         </div>
         <p className="mb-3 text-xs text-mp-muted">
           複数回受験できる場合、最後に提出した回の点数が成績になります。各回とも制限時間は受験開始からのカウントダウンです。
+        </p>
+
+        <div className="mb-3 flex flex-wrap gap-4">
+          <div>
+            <label className="mb-1 block text-sm text-mp-muted" htmlFor="opens-at">
+              公開開始日時（任意）
+            </label>
+            <input
+              id="opens-at"
+              type="datetime-local"
+              className="rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+              value={toDatetimeLocalValue(exam.opensAt)}
+              onChange={(e) =>
+                setExam({ ...exam, opensAt: datetimeLocalToIso(e.target.value) })
+              }
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-mp-muted" htmlFor="closes-at">
+              受付終了日時（任意）
+            </label>
+            <input
+              id="closes-at"
+              type="datetime-local"
+              className="rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+              value={toDatetimeLocalValue(exam.closesAt)}
+              onChange={(e) =>
+                setExam({ ...exam, closesAt: datetimeLocalToIso(e.target.value) })
+              }
+            />
+          </div>
+        </div>
+        <p className="mb-3 text-xs text-mp-muted">
+          公開開始前は一覧に表示されても受験を開始できません。受付終了後は新しい受験を開始できず、受験中の回は終了時刻で自動提出されます。
         </p>
 
         {error && <p className="mb-3 text-sm text-mp-red">{error}</p>}

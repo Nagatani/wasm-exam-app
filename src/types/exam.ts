@@ -19,6 +19,8 @@ export interface TaskSummary {
   points: number;
 }
 
+export type ComparisonMode = 'EXACT' | 'TRIM_TRAILING_WS' | 'IGNORE_BLANK_LINES' | 'FLOAT';
+
 export interface ExamDetail {
   id: string;
   title: string;
@@ -26,6 +28,10 @@ export interface ExamDetail {
   timeLimitMinutes: number;
   // How many times a student may take this exam. null = unlimited.
   maxAttempts: number | null;
+  // ISO datetimes or null. Before opensAt the exam is visible but not
+  // startable; after closesAt no new attempt may start.
+  opensAt: string | null;
+  closesAt: string | null;
   status: ExamStatus;
   createdById: string;
   createdAt: string;
@@ -61,6 +67,9 @@ export interface TaskDetail {
   language: Language;
   starterCode: string | null;
   points: number;
+  // How this task's test-case outputs are compared.
+  comparisonMode: ComparisonMode;
+  floatTolerance: number;
   createdAt: string;
   testCases: TestCase[];
   solutions: Solution[];
