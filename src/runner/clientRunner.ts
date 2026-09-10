@@ -1,8 +1,23 @@
 import type { Language } from '../types/exam';
 import type { JudgeOutcome } from '../types/student';
-import { compileC, prewarmCRunner, runCompiledC } from './cRunner';
+import { compileC, cRunnerState, prewarmCRunner, runCompiledC, type RunnerReadiness } from './cRunner';
 import { prepareJs, runJsOnce } from './jsRunner';
-import { preparePy, prewarmPyRunner, runPyOnce } from './pyRunner';
+import { preparePy, prewarmPyRunner, pyRunnerState, runPyOnce } from './pyRunner';
+
+export type { RunnerReadiness };
+
+// Readiness of the two heavy client runtimes (C toolchain, Pyodide) so a
+// warm-up UI can gate / reassure before an exam. JS/TS and server-exec Java
+// need no preparation.
+export function getRuntimeReadiness(): { c: RunnerReadiness; python: RunnerReadiness } {
+  return { c: cRunnerState(), python: pyRunnerState() };
+}
+
+// Start fetching both heavy runtimes now.
+export function prewarmAllClientRunners(): void {
+  prewarmCRunner();
+  prewarmPyRunner();
+}
 
 // One entry point for every browser-executed language (C, JS, TS, Python).
 // Java is server-executed and never comes through here. The shape it returns

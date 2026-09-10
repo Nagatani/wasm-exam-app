@@ -14,6 +14,7 @@ import { StudentTaskPage } from './pages/StudentTaskPage';
 import { StudentExamFinishedPage } from './pages/StudentExamFinishedPage';
 import { ExamResultsPage } from './pages/ExamResultsPage';
 import { CoursesPage } from './pages/CoursesPage';
+import { ChangePasswordPage } from './pages/ChangePasswordPage';
 
 function App() {
   return (
@@ -23,6 +24,14 @@ function App() {
           <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
+          <Route
+            path="/change-password"
+            element={
+              <ProtectedRoute allowPasswordChangePending>
+                <ChangePasswordPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/"
             element={

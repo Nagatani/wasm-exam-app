@@ -5,9 +5,72 @@ import { AppHeader } from '../components/AppHeader';
 import { SkeletonRows } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState';
 import { getStudentExam, listStudentExams, startAttempt } from '../api/student';
-import { prewarmCRunner } from '../runner/cRunner';
+import {
+  getRuntimeReadiness,
+  prewarmAllClientRunners,
+  type RunnerReadiness,
+} from '../runner/clientRunner';
 import { ApiError } from '../api/client';
 import type { StudentExamSummary } from '../types/student';
+
+const READINESS_LABEL: Record<RunnerReadiness, string> = {
+  idle: '未取得',
+  loading: '準備中...',
+  ready: '準備完了',
+  error: '取得に失敗',
+};
+
+function RuntimeReadinessCard() {
+  const [ready, setReady] = useState(getRuntimeReadiness());
+
+  useEffect(() => {
+    const id = setInterval(() => setReady(getRuntimeReadiness()), 1500);
+    return () => clearInterval(id);
+  }, []);
+
+  const row = (label: string, state: RunnerReadiness) => (
+    <span className="flex items-center gap-1">
+      <span
+        className={
+          state === 'ready'
+            ? 'text-mp-green'
+            : state === 'error'
+              ? 'text-mp-red'
+              : state === 'loading'
+                ? 'text-mp-cyan'
+                : 'text-mp-muted'
+        }
+      >
+        {state === 'ready' ? '✓' : state === 'loading' ? '…' : state === 'error' ? '✗' : '·'}
+      </span>
+      {label}: {READINESS_LABEL[state]}
+    </span>
+  );
+
+  return (
+    <div className="mb-6 rounded-lg border border-mp-border bg-mp-surface p-3 text-sm">
+      <div className="mb-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+        <span className="font-bold text-mp-muted">実行環境の準備状況</span>
+        {row('C（コンパイラ ~106MB）', ready.c)}
+        {row('Python（~10MB）', ready.python)}
+        <button
+          onClick={() => {
+            prewarmAllClientRunners();
+            setReady(getRuntimeReadiness());
+          }}
+          className="rounded border border-mp-border bg-mp-bg px-2 py-0.5 text-xs font-bold hover:bg-mp-surface-hover"
+        >
+          今すぐ準備する
+        </button>
+      </div>
+      <p className="text-xs text-mp-muted">
+        C / Python の問題は初回にランタイムのダウンロードが必要です（以降はブラウザにキャッシュ）。
+        受験前にこの表示が「準備完了」になっていると、最初の「実行」で待たされません。
+        JavaScript / TypeScript / Java は準備不要です。
+      </p>
+    </div>
+  );
+}
 
 function attemptLimitLabel(exam: StudentExamSummary): string {
   if (exam.maxAttempts === null) return '受験回数: 無制限';
@@ -33,9 +96,9 @@ export function StudentDashboard() {
         setError(err instanceof ApiError ? err.message : '試験一覧の取得に失敗しました。'),
       )
       .finally(() => setLoading(false));
-    // Begin fetching the ~100MB C toolchain now so it's likely cached by the
-    // time the student actually opens a task and hits "実行".
-    prewarmCRunner();
+    // Begin fetching the heavy client runtimes (clang ~106MB, Pyodide ~10MB)
+    // now so they're likely ready by the time the student opens a task.
+    prewarmAllClientRunners();
   }, []);
 
   async function enterFirstTask(examId: string) {
@@ -79,6 +142,8 @@ export function StudentDashboard() {
       <AppHeader title="生徒ダッシュボード" />
 
       <p className="mb-4 text-mp-muted">ようこそ、{profile?.displayName} さん。</p>
+
+      <RuntimeReadinessCard />
 
       {error && <p className="mb-4 text-sm text-mp-red">{error}</p>}
 

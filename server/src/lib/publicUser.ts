@@ -7,5 +7,6 @@ export function toPublicUser(user: User) {
     displayName: user.displayName,
     role: user.role,
     createdAt: user.createdAt,
+    mustChangePassword: user.mustChangePassword,
   };
 }

@@ -84,16 +84,27 @@ Cross-Origin-Embedder-Policy: require-corp
 - ヘルスチェック: `curl http://localhost:4001/health` → `{"ok":true}`
 - スケール注意: `server` 側の同時実行制御は**単一プロセス前提の簡易セマフォ**です。`server` を複数インスタンスで動かす場合、全体の同時実行は「インスタンス数 × `JUDGE_CONCURRENCY`」になります。judge側の `JUDGE_MAX_CONCURRENT` とコンテナのリソース上限で頭打ちにしてください。
 
-## Pyodide（Python）の配信元
+## クライアントランタイムの配信・キャッシュ（一斉受験対策）
 
-`src/runner/py.worker.ts` の `PYODIDE_BASE_URL` がPyodideランタイム（jsDelivr CDN、v0.28.0、初回 ~10MB）の取得元です。
+C（clang ツールチェイン、初回 ~106MB）と Python（Pyodide、初回 ~10MB）はブラウザが初回に取得します。1クラスが一斉に取りに行くと学内回線を圧迫し、最初のコンパイルが数分かかることがあります。以下で緩和します。
 
-- 学内からjsDelivrに到達できない、またはCDN依存を避けたい場合は、Pyodideの配布物を自ホストして `PYODIDE_BASE_URL` をそのパスに差し替え、`npm run build:full` し直してください。
-- 自ホストする配信層も、上記COOP/COEPと両立するCORP/CORSヘッダーを返す必要があります（同一オリジンに置くのが最も簡単）。
+- **生徒ダッシュボードの「実行環境の準備状況」**：ページを開くと自動で両ランタイムの取得を開始し、`C` / `Python` の状態（未取得 / 準備中 / 準備完了 / 取得失敗）を表示します。「今すぐ準備する」で手動再開も可能。受験前にこれを「準備完了」にしておくよう生徒に案内してください。取得済みの状態はそのブラウザセッション中は保持されます（`getRuntimeReadiness()` / `prewarmAllClientRunners()` in `src/runner/clientRunner.ts`）。
+- **演習室 PC の事前ウォーム**：授業前に各 PC で生徒ダッシュボードを一度開いておく（または上記ボタンを押す）とブラウザキャッシュに載り、本番の一斉アクセスを避けられます。
+- **Pyodide の配信元**：`src/runner/py.worker.ts` の `PYODIDE_BASE_URL`（既定 jsDelivr CDN、v0.28.0）。学内から jsDelivr に到達できない／CDN 依存を避けたい場合は、Pyodide の配布物を自ホストして同定数をそのパスに差し替え、`npm run build:full` し直してください。自ホスト配信層も上記 COOP/COEP と両立する CORP/CORS ヘッダーが必要です（同一オリジンに置くのが最も簡単）。
+- **clang の配信元**：`src/runner/cRunner.ts` が Wasmer レジストリ（`Wasmer.fromRegistry('clang/clang')`）から取得します。Pyodide のような単純な URL 差し替えはできません。学内で clang を使う場合は、上記の「演習室 PC の事前ウォーム」で各ブラウザにキャッシュさせておく運用を推奨します。
+
+## 生徒アカウントの一括作成と初期パスワード
+
+講師は「クラス管理」から `学籍番号,氏名` の名簿で生徒アカウントを一括作成できます（`POST /api/students/bulk`）。
+
+- 各アカウントにランダムな約12文字の**初期パスワード**が発行され、`users.initialPassword` に**平文で保存**されます。講師はクラスの受講者一覧と「初期パスワード一覧を印刷」で配布用スリップを（紛失時も）再印刷できます。
+- 生徒が初回ログインで `/change-password` からパスワードを変更すると、`initialPassword` は `NULL` になり以後表示されません（`mustChangePassword` も解除）。
+- **平文保存はユーザー承認済みの割り切り**（2026-09-11）です。自ホスト＝institution 管理下の DB で、プロビジョニングから初回変更までの短い期間だけ存在し、講師専用ルートからしか返しません。許容できない場合は `POST /bulk` のレスポンスでのみ初期パスワードを返す方式（列を持たない）＋「パスワードリセット」操作に切り替えてください。
+- 配布スリップは印刷後に適切に管理・破棄してください。
 
 ## データベース
 
-- バックアップは通常のPostgreSQL運用（`pg_dump` / スナップショット等）。個人情報（学籍番号・氏名・成績）が入るため、institutionの要件に従って保護してください。
+- バックアップは通常のPostgreSQL運用（`pg_dump` / スナップショット等）。個人情報（学籍番号・氏名・成績・初期パスワード）が入るため、institutionの要件に従って保護してください。
 - `docker-compose.yml` の `db` はnamed volume（`pgdata`）に保存する開発用です。本番はmanaged PostgreSQLを推奨。
 - ポート注意: 開発機では `docker-compose.yml` がホスト **5433** にマップしています（5432で稼働する別のPostgreSQLとの衝突回避）。本番の `DATABASE_URL` は実際の接続先に合わせてください。
 

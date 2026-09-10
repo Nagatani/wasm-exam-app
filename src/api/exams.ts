@@ -53,6 +53,16 @@ export function getExamResults(examId: string) {
   return apiFetch<ExamResults>(`/api/exams/${examId}/results`);
 }
 
+export interface PublishIssue {
+  level: 'error' | 'warn';
+  message: string;
+}
+
+// Advisory pre-publish sanity check for a teacher.
+export function getPublishCheck(examId: string) {
+  return apiFetch<{ issues: PublishIssue[] }>(`/api/exams/${examId}/publish-check`);
+}
+
 // A student's submitted code + per-test-case outcomes for their latest
 // submitted attempt (teacher review).
 export function getSubmissionDetail(examId: string, studentId: string) {

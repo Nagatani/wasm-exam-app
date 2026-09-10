@@ -6,4 +6,7 @@ export interface UserProfile {
   displayName: string;
   role: UserRole;
   createdAt: string;
+  // Bulk-provisioned account that must set its own password before doing
+  // anything else.
+  mustChangePassword: boolean;
 }

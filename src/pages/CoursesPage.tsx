@@ -12,7 +12,14 @@ import {
   listCourses,
   unenrollStudent,
 } from '../api/courses';
-import type { CourseDetail, CourseSummary, EnrollResult } from '../types/course';
+import { bulkCreateStudents } from '../api/students';
+import type {
+  BulkCreateResult,
+  CourseDetail,
+  CourseStudent,
+  CourseSummary,
+  EnrollResult,
+} from '../types/course';
 
 // Split a pasted roster (one-per-line or CSV) into 学籍番号 tokens: first
 // comma/tab/space-separated field of each non-empty line.
@@ -21,6 +28,48 @@ function parseRoster(text: string): string[] {
     .split(/\r?\n/)
     .map((line) => line.split(/[,\t ]/)[0]?.trim() ?? '')
     .filter((s) => s !== '' && !/^学籍番号$/i.test(s));
+}
+
+// Parse a `学籍番号,氏名` roster (CSV or tab-separated) for account creation.
+function parseAccountRoster(text: string): { studentNumber: string; displayName: string }[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => {
+      const parts = line.split(/[,\t]/).map((p) => p.trim());
+      return { studentNumber: parts[0] ?? '', displayName: parts.slice(1).join(' ').trim() };
+    })
+    .filter(
+      (r) => r.studentNumber !== '' && r.displayName !== '' && !/^学籍番号$/i.test(r.studentNumber),
+    );
+}
+
+// Open a print-friendly window listing credential slips.
+function printCredentials(
+  courseName: string,
+  rows: { studentNumber: string; displayName: string; initialPassword: string }[],
+) {
+  const w = window.open('', '_blank');
+  if (!w) return;
+  const esc = (s: string) =>
+    s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+  const body = rows
+    .map(
+      (r) => `<tr><td>${esc(r.studentNumber)}</td><td>${esc(r.displayName)}</td><td class="pw">${esc(
+        r.initialPassword,
+      )}</td></tr>`,
+    )
+    .join('');
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>初期パスワード一覧</title>
+<style>body{font-family:sans-serif;padding:24px}h1{font-size:16px}table{border-collapse:collapse;width:100%}
+th,td{border:1px solid #999;padding:6px 10px;text-align:left;font-size:13px}.pw{font-family:monospace}
+p{font-size:12px;color:#555}</style></head><body>
+<h1>${esc(courseName)} — 初期パスワード一覧</h1>
+<p>初回ログイン後、生徒は必ずパスワードを変更してください。変更するとこの初期パスワードは無効になります。</p>
+<table><thead><tr><th>学籍番号</th><th>氏名</th><th>初期パスワード</th></tr></thead><tbody>${body}</tbody></table>
+</body></html>`);
+  w.document.close();
+  w.focus();
+  w.print();
 }
 
 export function CoursesPage() {
@@ -175,6 +224,9 @@ function CourseRosterPanel({
   const [rosterText, setRosterText] = useState('');
   const [enrolling, setEnrolling] = useState(false);
   const [lastResult, setLastResult] = useState<EnrollResult | null>(null);
+  const [acctText, setAcctText] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [lastCreated, setLastCreated] = useState<BulkCreateResult | null>(null);
 
   async function load() {
     try {
@@ -211,6 +263,42 @@ function CourseRosterPanel({
     }
   }
 
+  async function handleCreateAccounts() {
+    const students = parseAccountRoster(acctText);
+    if (students.length === 0) {
+      setError('「学籍番号,氏名」の形式で入力してください。');
+      return;
+    }
+    setCreating(true);
+    setError(null);
+    try {
+      const result = await bulkCreateStudents({ students, courseId });
+      setLastCreated(result);
+      setAcctText('');
+      await load();
+      onChanged();
+      if (result.created.length > 0) {
+        printCredentials(detail?.name ?? 'クラス', result.created);
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'アカウント作成に失敗しました。');
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  function handlePrintAll() {
+    const rows = (detail?.students ?? [])
+      .filter((s): s is CourseStudent & { initialPassword: string } => s.initialPassword !== null)
+      .map((s) => ({
+        studentNumber: s.studentNumber,
+        displayName: s.displayName,
+        initialPassword: s.initialPassword,
+      }));
+    if (rows.length === 0) return;
+    printCredentials(detail?.name ?? 'クラス', rows);
+  }
+
   async function handleRemove(userId: string, label: string) {
     if (!confirm(`${label} をこのクラスから外しますか？`)) return;
     try {
@@ -242,7 +330,17 @@ function CourseRosterPanel({
       ) : (
         <div className="space-y-4">
           <div>
-            <p className="mb-1 text-xs font-bold text-mp-muted">受講者（{detail.students.length} 名）</p>
+            <div className="mb-1 flex items-center justify-between">
+              <p className="text-xs font-bold text-mp-muted">受講者（{detail.students.length} 名）</p>
+              {detail.students.some((s) => s.initialPassword !== null) && (
+                <button
+                  onClick={handlePrintAll}
+                  className="rounded border border-mp-border bg-mp-surface px-2 py-0.5 text-xs font-bold hover:bg-mp-surface-hover"
+                >
+                  初期パスワード一覧を印刷
+                </button>
+              )}
+            </div>
             {detail.students.length === 0 ? (
               <p className="text-sm text-mp-muted">まだ受講者がいません。</p>
             ) : (
@@ -254,6 +352,14 @@ function CourseRosterPanel({
                   >
                     <span>
                       {s.studentNumber} <span className="text-mp-muted">{s.displayName}</span>
+                      {s.initialPassword !== null && (
+                        <span
+                          className="ml-2 rounded bg-mp-yellow/20 px-1 font-mono text-xs text-mp-yellow"
+                          title="初期パスワード（変更前）"
+                        >
+                          🔑 {s.initialPassword}
+                        </span>
+                      )}
                     </span>
                     <button
                       onClick={() => handleRemove(s.userId, `${s.studentNumber} ${s.displayName}`)}
@@ -265,6 +371,39 @@ function CourseRosterPanel({
                 ))}
               </ul>
             )}
+          </div>
+
+          <div>
+            <p className="mb-1 text-xs font-bold text-mp-muted">
+              生徒アカウントを一括作成（1行に「学籍番号,氏名」、CSV可）— 既存の学籍番号はスキップされます。作成後、初期パスワード一覧が印刷用に開きます
+            </p>
+            <textarea
+              rows={4}
+              className="w-full rounded border border-mp-border bg-mp-surface px-2 py-1 font-mono text-sm text-mp-fg"
+              placeholder={'s2600001,山田 太郎\ns2600002,佐藤 花子'}
+              value={acctText}
+              onChange={(e) => setAcctText(e.target.value)}
+            />
+            <div className="mt-1 flex items-center gap-2">
+              <button
+                onClick={handleCreateAccounts}
+                disabled={creating || acctText.trim() === ''}
+                className="rounded bg-mp-cyan px-3 py-1 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
+              >
+                {creating ? '作成中...' : 'アカウントを作成'}
+              </button>
+              {lastCreated && (
+                <span className="text-xs text-mp-muted">
+                  {lastCreated.created.length} 名作成 ・ {lastCreated.enrolled} 名をこのクラスに登録
+                  {lastCreated.skipped.length > 0 && (
+                    <span className="text-mp-yellow">
+                      {' '}
+                      ・ 既存でスキップ: {lastCreated.skipped.join(', ')}
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
           </div>
 
           <div>

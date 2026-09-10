@@ -12,6 +12,15 @@ export interface CourseStudent {
   studentNumber: string;
   displayName: string;
   enrolledAt: string;
+  // Present only until the student changes their password.
+  initialPassword: string | null;
+  mustChangePassword: boolean;
+}
+
+export interface BulkCreateResult {
+  created: { studentNumber: string; displayName: string; initialPassword: string }[];
+  skipped: string[];
+  enrolled: number;
 }
 
 export interface CourseDetail {

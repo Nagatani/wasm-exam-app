@@ -35,8 +35,20 @@ function resetWorker(): void {
 
 // Kick off the Pyodide download early (e.g. when a Python task page opens) so
 // the first real run isn't the thing that waits for it.
+type PyState = 'idle' | 'loading' | 'ready' | 'error';
+let pyState: PyState = 'idle';
+
+// Whether the ~10MB Pyodide runtime has finished loading this page load.
+export function pyRunnerState(): PyState {
+  return pyState;
+}
+
 export function prewarmPyRunner(): void {
-  getWorker().postMessage({ op: 'prepare', source: 'pass' });
+  if (pyState === 'loading' || pyState === 'ready') return;
+  pyState = 'loading';
+  void call({ op: 'prepare', source: 'pass' }, LOAD_TIMEOUT_MS).then((r) => {
+    pyState = r.ok ? 'ready' : 'error';
+  });
 }
 
 interface WorkerReply {

@@ -94,3 +94,35 @@ authRouter.post('/logout', async (req, res) => {
 authRouter.get('/me', requireAuth, (req, res) => {
   res.json({ user: toPublicUser(req.user!) });
 });
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8, '新しいパスワードは8文字以上で入力してください。'),
+});
+
+authRouter.post('/change-password', requireAuth, async (req, res) => {
+  const parsed = changePasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'invalid_request' });
+    return;
+  }
+  const { currentPassword, newPassword } = parsed.data;
+  const user = req.user!;
+
+  if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+    res.status(401).json({ error: '現在のパスワードが正しくありません。' });
+    return;
+  }
+  if (await bcrypt.compare(newPassword, user.passwordHash)) {
+    res.status(400).json({ error: '現在のパスワードと異なるパスワードを設定してください。' });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 12);
+  await prisma.user.update({
+    where: { id: user.id },
+    // Clear the printed-credential fields once the student picks their own.
+    data: { passwordHash, mustChangePassword: false, initialPassword: null },
+  });
+  res.json({ ok: true });
+});

@@ -13,9 +13,27 @@ function ensureInit(): ReturnType<typeof init> {
   return initPromise;
 }
 
+export type RunnerReadiness = 'idle' | 'loading' | 'ready' | 'error';
+let clangState: RunnerReadiness = 'idle';
+
+// Whether the ~106MB clang toolchain has been fetched/initialised this page
+// load (so a warm-up UI can show progress before the student starts an exam).
+export function cRunnerState(): RunnerReadiness {
+  return clangState;
+}
+
 function loadClang(): Promise<Wasmer> {
   if (!clangPromise) {
+    clangState = 'loading';
     clangPromise = ensureInit().then(() => Wasmer.fromRegistry('clang/clang'));
+    clangPromise.then(
+      () => {
+        clangState = 'ready';
+      },
+      () => {
+        clangState = 'error';
+      },
+    );
   }
   return clangPromise;
 }

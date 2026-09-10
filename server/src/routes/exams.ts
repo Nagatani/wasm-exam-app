@@ -5,6 +5,8 @@ import { requireAuth, requireRole } from '../middleware/auth';
 import { getExamResults } from '../lib/examResults';
 import { toCsv, UTF8_BOM } from '../lib/csv';
 import { languageSchema } from '../lib/language';
+import { isServerExec } from '../lib/attempts';
+import { isJudgeConfigured } from '../lib/judgeClient';
 
 export const examsRouter = Router();
 
@@ -101,6 +103,71 @@ examsRouter.post('/', async (req, res) => {
   });
 
   res.status(201).json({ exam });
+});
+
+// Pre-publish sanity check — surfaces things a teacher usually wants to fix
+// before making an exam visible to students. Advisory only; publishing isn't
+// blocked.
+examsRouter.get('/:examId/publish-check', async (req, res) => {
+  const exam = await prisma.exam.findUnique({
+    where: { id: req.params.examId },
+    include: { tasks: { orderBy: { order: 'asc' }, include: { testCases: true } } },
+  });
+  if (!exam) {
+    res.status(404).json({ error: '試験が見つかりません。' });
+    return;
+  }
+
+  const issues: { level: 'error' | 'warn'; message: string }[] = [];
+  if (exam.tasks.length === 0) {
+    issues.push({ level: 'error', message: '問題が1つも登録されていません。' });
+  }
+
+  let totalPoints = 0;
+  for (const t of exam.tasks) {
+    totalPoints += t.points;
+    const label = `問題「${t.title}」`;
+    if (t.testCases.length === 0) {
+      issues.push({ level: 'error', message: `${label}: テストケースがありません。` });
+    } else if (!t.testCases.some((tc) => tc.isSample)) {
+      issues.push({
+        level: 'warn',
+        message: `${label}: サンプルテストケースがありません（生徒に入出力例が表示されません）。`,
+      });
+    }
+    if (t.points === 0) {
+      issues.push({ level: 'warn', message: `${label}: 配点が0点です。` });
+    }
+    if (t.testCases.some((tc) => tc.expectedOutput.trim() === '')) {
+      issues.push({
+        level: 'warn',
+        message: `${label}: 期待される出力が空のテストケースがあります。`,
+      });
+    }
+    if (t.comparisonMode === 'FLOAT' && t.testCases.some((tc) => !/-?\d/.test(tc.expectedOutput))) {
+      issues.push({
+        level: 'warn',
+        message: `${label}: 比較モードが「数値許容誤差」ですが、数値を含まない期待出力があります。`,
+      });
+    }
+    if (isServerExec(t.language) && !isJudgeConfigured()) {
+      issues.push({
+        level: 'error',
+        message: `${label}: Java の実行環境（judge）が未設定のため、この問題は受験できません。`,
+      });
+    }
+  }
+  if (exam.tasks.length > 0 && totalPoints === 0) {
+    issues.push({ level: 'warn', message: '合計配点が0点です。' });
+  }
+  if (exam.opensAt && exam.closesAt && exam.closesAt.getTime() <= exam.opensAt.getTime()) {
+    issues.push({ level: 'error', message: '受付終了日時が公開開始日時より前（または同時）です。' });
+  }
+  if (exam.closesAt && exam.closesAt.getTime() < Date.now()) {
+    issues.push({ level: 'warn', message: '受付終了日時が既に過去です。' });
+  }
+
+  res.json({ issues });
 });
 
 examsRouter.get('/:examId', async (req, res) => {

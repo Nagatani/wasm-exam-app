@@ -53,6 +53,13 @@ model User {
   displayName   String
   role          Role     @default(STUDENT)
   createdAt     DateTime @default(now())
+  // Set on accounts a teacher bulk-provisions; forces a password change on
+  // first login, which then clears `initialPassword`.
+  mustChangePassword Boolean @default(false)
+  // Plaintext of the randomly generated initial password, so a teacher can
+  // (re)print the credential slip until the student changes it. Nulled on the
+  // first password change. Only ever returned by teacher-only course routes.
+  initialPassword    String?
 
   sessions        Session[]
   examsCreated     Exam[]

@@ -50,7 +50,17 @@ coursesRouter.get('/:courseId', async (req, res) => {
     where: { id: req.params.courseId },
     include: {
       enrollments: {
-        include: { user: { select: { id: true, studentNumber: true, displayName: true } } },
+        include: {
+          user: {
+            select: {
+              id: true,
+              studentNumber: true,
+              displayName: true,
+              initialPassword: true,
+              mustChangePassword: true,
+            },
+          },
+        },
         orderBy: { user: { studentNumber: 'asc' } },
       },
       exams: {
@@ -74,6 +84,9 @@ coursesRouter.get('/:courseId', async (req, res) => {
         studentNumber: e.user.studentNumber,
         displayName: e.user.displayName,
         enrolledAt: e.createdAt,
+        // Only present until the student changes their password.
+        initialPassword: e.user.initialPassword,
+        mustChangePassword: e.user.mustChangePassword,
       })),
       exams: course.exams,
     },

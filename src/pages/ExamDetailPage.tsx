@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { deleteExam, getExam, updateExam } from '../api/exams';
+import { deleteExam, getExam, getPublishCheck, updateExam, type PublishIssue } from '../api/exams';
 import { createTask, duplicateTask } from '../api/tasks';
 import { listCourses } from '../api/courses';
 import { ApiError } from '../api/client';
@@ -36,7 +36,14 @@ export function ExamDetailPage() {
   const [savedFlash, setSavedFlash] = useState(false);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [courses, setCourses] = useState<CourseSummary[]>([]);
+  const [publishIssues, setPublishIssues] = useState<PublishIssue[] | null>(null);
   const savedSnapshotRef = useRef('');
+
+  function refreshPublishCheck(id: string) {
+    getPublishCheck(id)
+      .then(({ issues }) => setPublishIssues(issues))
+      .catch(() => setPublishIssues(null));
+  }
 
   useEffect(() => {
     listCourses()
@@ -51,6 +58,7 @@ export function ExamDetailPage() {
       const { exam } = await getExam(examId);
       setExam(exam);
       savedSnapshotRef.current = examFormKey(exam);
+      refreshPublishCheck(examId);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '試験の取得に失敗しました。');
     } finally {
@@ -86,6 +94,7 @@ export function ExamDetailPage() {
       });
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2000);
+      refreshPublishCheck(exam.id);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '保存に失敗しました。');
     } finally {
@@ -306,6 +315,32 @@ export function ExamDetailPage() {
           ) : null}
         </div>
       </form>
+
+      {publishIssues !== null && (
+        <div className="mb-6 rounded-lg border border-mp-border bg-mp-surface p-3 text-sm">
+          <p className="mb-1 font-bold text-mp-muted">公開前チェック</p>
+          {publishIssues.length === 0 ? (
+            <p className="text-mp-green">✓ 問題は見つかりませんでした。</p>
+          ) : (
+            <ul className="space-y-1">
+              {publishIssues.map((issue, i) => (
+                <li
+                  key={i}
+                  className={issue.level === 'error' ? 'text-mp-red' : 'text-mp-yellow'}
+                >
+                  {issue.level === 'error' ? '⚠ ' : '△ '}
+                  {issue.message}
+                </li>
+              ))}
+            </ul>
+          )}
+          {publishIssues.some((i) => i.level === 'error') && (
+            <p className="mt-1 text-xs text-mp-muted">
+              エラーがある状態でも公開はできますが、生徒が正しく受験できない可能性があります。
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-bold">問題一覧</h2>
