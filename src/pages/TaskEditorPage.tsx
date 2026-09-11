@@ -13,6 +13,7 @@ import {
   regradeTask,
 } from '../api/tasks';
 import { ApiError } from '../api/client';
+import { uploadTaskImage } from '../api/uploads';
 import type { ComparisonMode, Language, TaskDetail } from '../types/exam';
 import { COMPARISON_MODE_LABEL, compareOutput } from '../lib/compareOutput';
 import {
@@ -101,6 +102,12 @@ export function TaskEditorPage() {
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [statementView, setStatementView] = useState<'edit' | 'split' | 'preview'>('edit');
+  // The one currently-mounted statement <textarea> (edit or split mode are
+  // mutually exclusive with each other and with preview) — used to insert an
+  // uploaded image's Markdown at the cursor rather than always at the end.
+  const statementTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
   // "解答例でテストケースを検証" results — one row per test case, or an error /
   // compile-failure message.
   const [checking, setChecking] = useState(false);
@@ -269,6 +276,43 @@ export function TaskEditorPage() {
       setBulkError(err instanceof ApiError ? err.message : '一括追加に失敗しました。');
     } finally {
       setBulkBusy(false);
+    }
+  }
+
+  // Uploads `file` (already filtered to an image type by the <input accept>)
+  // and inserts its Markdown image syntax into statementMarkdown at the
+  // textarea's current cursor position — or at the end if the preview-only
+  // view is active (no textarea mounted to have a cursor in).
+  async function handleInsertImage(file: File) {
+    if (!task) return;
+    setImageUploadError(null);
+    setImageUploading(true);
+    try {
+      const { url } = await uploadTaskImage(file);
+      const snippet = `![](${url})`;
+      const textarea = statementTextareaRef.current;
+      if (textarea && statementView !== 'preview') {
+        const start = textarea.selectionStart ?? task.statementMarkdown.length;
+        const end = textarea.selectionEnd ?? start;
+        const next = task.statementMarkdown.slice(0, start) + snippet + task.statementMarkdown.slice(end);
+        setTask({ ...task, statementMarkdown: next });
+        // Wait for React to re-render the textarea with `next` before moving
+        // the cursor — setSelectionRange on the still-old value is a no-op.
+        requestAnimationFrame(() => {
+          textarea.focus();
+          const pos = start + snippet.length;
+          textarea.setSelectionRange(pos, pos);
+        });
+      } else {
+        const sep = task.statementMarkdown && !task.statementMarkdown.endsWith('\n') ? '\n' : '';
+        setTask({ ...task, statementMarkdown: `${task.statementMarkdown}${sep}${snippet}\n` });
+      }
+    } catch (err) {
+      setImageUploadError(
+        err instanceof ApiError ? err.message : '画像のアップロードに失敗しました。',
+      );
+    } finally {
+      setImageUploading(false);
     }
   }
 
@@ -532,33 +576,50 @@ export function TaskEditorPage() {
           </div>
         </div>
 
-        <div className="mb-1 flex items-center justify-between">
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
           <label className="block text-sm text-mp-muted" htmlFor="task-statement">
             問題文（Markdown）
           </label>
-          <div className="flex overflow-hidden rounded border border-mp-border text-xs">
-            {(
-              [
-                ['edit', '編集'],
-                ['split', '分割'],
-                ['preview', 'プレビュー'],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setStatementView(value)}
-                className={`px-2 py-0.5 font-semibold ${
-                  statementView === value
-                    ? 'bg-mp-cyan text-mp-btn-fg'
-                    : 'bg-mp-surface text-mp-muted hover:bg-mp-surface-hover'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <label className="cursor-pointer rounded border border-mp-border bg-mp-surface px-2 py-0.5 text-xs font-semibold hover:bg-mp-surface-hover">
+              {imageUploading ? 'アップロード中...' : '画像を挿入'}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                className="hidden"
+                disabled={imageUploading}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (file) handleInsertImage(file);
+                }}
+              />
+            </label>
+            <div className="flex overflow-hidden rounded border border-mp-border text-xs">
+              {(
+                [
+                  ['edit', '編集'],
+                  ['split', '分割'],
+                  ['preview', 'プレビュー'],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setStatementView(value)}
+                  className={`px-2 py-0.5 font-semibold ${
+                    statementView === value
+                      ? 'bg-mp-cyan text-mp-btn-fg'
+                      : 'bg-mp-surface text-mp-muted hover:bg-mp-surface-hover'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
+        {imageUploadError && <p className="mb-1 text-xs text-mp-red">{imageUploadError}</p>}
         {statementView === 'preview' ? (
           <div className="markdown-body mb-3 rounded border border-mp-border bg-mp-bg p-3">
             <ReactMarkdown>{task.statementMarkdown}</ReactMarkdown>
@@ -567,6 +628,7 @@ export function TaskEditorPage() {
           <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-2">
             <textarea
               id="task-statement"
+              ref={statementTextareaRef}
               rows={16}
               className={codeClass}
               value={task.statementMarkdown}
@@ -578,6 +640,7 @@ export function TaskEditorPage() {
           </div>
         ) : (
           <textarea
+            ref={statementTextareaRef}
             id="task-statement"
             rows={14}
             className={`mb-3 ${codeClass}`}

@@ -11,6 +11,8 @@ import { studentsRouter } from './routes/students';
 import { tasksRouter } from './routes/tasks';
 import { testCasesRouter } from './routes/testCases';
 import { studentRouter } from './routes/student';
+import { uploadsRouter } from './routes/uploads';
+import { UPLOADS_DIR, UPLOADS_URL_PREFIX } from './lib/uploads';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 4000);
@@ -48,6 +50,14 @@ app.use('/api/students', studentsRouter);
 app.use('/api/tasks', tasksRouter);
 app.use('/api/test-cases', testCasesRouter);
 app.use('/api/student', studentRouter);
+app.use('/api/uploads', uploadsRouter);
+
+// Task-statement images (POST /api/uploads above writes here) — served
+// publicly, no auth: see lib/uploads.ts for why. Registered before the
+// frontend's own static/catch-all block below just for clarity of intent;
+// order doesn't matter between the two since their path prefixes don't
+// overlap (/uploads/* vs. everything else).
+app.use(UPLOADS_URL_PREFIX, express.static(UPLOADS_DIR));
 
 // Serves the frontend's production build (`npm run build` at the repo root)
 // so one `npm start` here runs the whole app — no separate Vite dev-server

@@ -171,6 +171,14 @@ C（clang ツールチェイン、初回 ~106MB）と Python（Pyodide、初回 
 - `docker-compose.yml` の `db` はnamed volume（`pgdata`）に保存する開発用です。本番はmanaged PostgreSQLを推奨。
 - ポート注意: 開発機では `docker-compose.yml` がホスト **5433** にマップしています（5432で稼働する別のPostgreSQLとの衝突回避）。本番の `DATABASE_URL` は実際の接続先に合わせてください。
 
+## アップロードされた画像（問題文用）
+
+講師が問題文に挿入した画像（`POST /api/uploads`）はデータベースではなくファイルシステムに保存され、`/uploads/*` で**認証なしで**配信されます（個人情報ではなく、問題文の図版という公開情報のため）。
+
+- **方法A**（ホストで `npm start`）: `server/uploads/`（`UPLOADS_DIR` で変更可）にそのまま保存されます。ホストのディスクなので、通常のバックアップ対象に含めるかは運用判断（再アップロードで復旧できるなら必須ではありません）。
+- **方法B**（`docker-compose.prod.yml`）: 名前付きボリューム `uploads`（`server` コンテナの `/app/server/uploads` にマウント）に保存されます。**このボリュームなしでコンテナを再作成すると、アップロード済みの画像は失われます**（コンテナ自体の書き込み層に保存されるため）。`docker compose -f docker-compose.prod.yml down -v` はボリュームごと削除するので、画像を残したい場合は `-v` を付けずに `down` してください。
+- 制限: PNG / JPEG / GIF / WebP のみ、1ファイル5MBまで、講師ロールのみアップロード可能。
+
 ## アップグレード
 
 **方法A（ホストで `npm start`）**

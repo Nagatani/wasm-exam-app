@@ -70,11 +70,21 @@ services:
       JUDGE_URL: http://judge:8080
     ports:
       - '4000:4000'
+    volumes:
+      # Teacher-uploaded task-statement images (server/src/lib/uploads.ts)
+      # land in the container's own writable layer without this — gone on the
+      # next `--build`/recreate. Default UPLOADS_DIR resolves to exactly this
+      # path (server/dist/lib/../../uploads under the Dockerfile's /app/server
+      # layout), so no UPLOADS_DIR override is needed here.
+      - uploads:/app/server/uploads
     networks:
       - internal
       - public
     depends_on:
       - judge
+
+volumes:
+  uploads:
 
 networks:
   # No default gateway to the outside world — `judge` lives only here, so it

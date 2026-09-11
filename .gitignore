@@ -23,6 +23,10 @@ dist-ssr
 server/dist
 server/node_modules
 server/generated
+# Uploaded task-statement images (server/src/lib/uploads.ts) — runtime
+# content, not source; keep the directory itself out of git too, it's
+# recreated on startup (fs.mkdirSync) if missing.
+server/uploads
 
 # Editor directories and files
 .vscode/*

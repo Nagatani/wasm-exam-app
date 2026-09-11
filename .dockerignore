@@ -5,6 +5,7 @@ node_modules
 server/node_modules
 server/dist
 server/generated
+server/uploads
 dist
 dist-ssr
 .git

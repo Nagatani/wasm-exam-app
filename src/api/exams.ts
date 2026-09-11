@@ -92,9 +92,19 @@ export function deleteStudentExamResults(examId: string, studentId: string) {
 // returning text/csv, so it can't go through apiFetch's JSON parsing — this
 // fetches the blob directly and triggers a browser download.
 export async function downloadExamResultsCsv(examId: string): Promise<void> {
-  const res = await fetch(`${API_BASE_URL}/api/exams/${examId}/results/csv`, {
-    credentials: 'include',
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}/api/exams/${examId}/results/csv`, {
+      credentials: 'include',
+    });
+  } catch {
+    // Same reasoning as apiFetch's own network-failure handling (this fetch
+    // bypasses apiFetch, being a blob download, so it needs its own copy).
+    throw new ApiError(
+      'サーバーに接続できませんでした。ネットワーク環境を確認し、しばらくしてから再度お試しください。',
+      0,
+    );
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
