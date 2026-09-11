@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CodeEditor } from '../components/CodeEditor';
-import { ThemeToggle } from '../components/ThemeToggle';
+import { UserDrawer } from '../components/UserDrawer';
 import { compileAndRunC, type RunCResult } from '../runner/cRunner';
 
 const DEFAULT_SOURCE = `#include <stdio.h>
@@ -44,7 +44,7 @@ export function SandboxPage() {
         <Link to="/teacher" className="inline-block text-sm font-semibold text-mp-cyan hover:underline">
           ← 講師管理画面に戻る
         </Link>
-        <ThemeToggle />
+        <UserDrawer />
       </div>
 
       <h1 className="mb-2 text-xl font-bold text-mp-cyan">

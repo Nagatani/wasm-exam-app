@@ -1,5 +1,4 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { AppHeader } from '../components/AppHeader';
 import { SkeletonRows } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState';
 import { BackHeader } from '../components/BackHeader';
@@ -94,7 +93,7 @@ export function CoursesPage() {
   return (
     <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
       <BackHeader to="/teacher" label="講師管理画面に戻る" />
-      <AppHeader title="クラス管理" />
+      <h1 className="mb-4 text-xl font-bold text-mp-cyan">クラス管理</h1>
 
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-bold">クラス一覧</h2>

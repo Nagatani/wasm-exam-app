@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom';
-import { ThemeToggle } from './ThemeToggle';
+import { UserDrawer } from './UserDrawer';
 
 /**
  * Shared top bar for the teacher detail pages (exam / task editors, results):
- * a "back" link on the left and the theme toggle on the right. Keeps the
+ * a "back" link on the left and the user menu on the right. Keeps the
  * back-link markup and spacing identical across those pages.
  */
 export function BackHeader({ to, label }: { to: string; label: string }) {
@@ -12,7 +12,7 @@ export function BackHeader({ to, label }: { to: string; label: string }) {
       <Link to={to} className="inline-block text-sm font-semibold text-mp-cyan hover:underline">
         ← {label}
       </Link>
-      <ThemeToggle />
+      <UserDrawer />
     </div>
   );
 }

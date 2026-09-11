@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { CodeEditor } from '../components/CodeEditor';
-import { ThemeToggle } from '../components/ThemeToggle';
+import { UserDrawer } from '../components/UserDrawer';
 import { getStudentExam, getStudentTask, runTask, saveTaskDraft } from '../api/student';
 import { prewarmClientRunner, runClientSide } from '../runner/clientRunner';
 import { statusGlyph } from '../lib/status';
@@ -343,7 +343,7 @@ export function StudentTaskPage() {
             >
               試験を提出する
             </button>
-            <ThemeToggle />
+            <UserDrawer />
           </div>
         </div>
 

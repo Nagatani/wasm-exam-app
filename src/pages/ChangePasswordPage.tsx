@@ -4,7 +4,7 @@ import { changePassword } from '../api/auth';
 import { ApiError } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { PasswordField } from '../components/PasswordField';
-import { ThemeToggle } from '../components/ThemeToggle';
+import { UserDrawer } from '../components/UserDrawer';
 
 export function ChangePasswordPage() {
   const { profile, refresh } = useAuth();
@@ -41,7 +41,7 @@ export function ChangePasswordPage() {
       <div className="w-full max-w-sm rounded-lg border border-mp-border bg-mp-surface p-6">
         <div className="mb-2 flex items-center justify-between">
           <h1 className="text-xl font-bold text-mp-cyan">パスワードの変更</h1>
-          <ThemeToggle />
+          <UserDrawer />
         </div>
         {forced && (
           <p className="mb-4 rounded bg-mp-yellow/20 p-2 text-sm text-mp-yellow">

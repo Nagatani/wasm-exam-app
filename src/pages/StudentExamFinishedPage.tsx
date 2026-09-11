@@ -14,7 +14,7 @@ import type {
   SubmitPayload,
   SubmitTaskResult,
 } from '../types/student';
-import { ThemeToggle } from '../components/ThemeToggle';
+import { UserDrawer } from '../components/UserDrawer';
 import { PageSkeleton } from '../components/Skeleton';
 import { statusGlyph } from '../lib/status';
 
@@ -165,7 +165,7 @@ export function StudentExamFinishedPage() {
         <div className="w-full max-w-lg rounded-lg border border-mp-border bg-mp-surface p-6">
           <div className="mb-1 flex items-center justify-between">
             <h1 className="text-xl font-bold text-mp-cyan">提出前の確認</h1>
-            <ThemeToggle />
+            <UserDrawer />
           </div>
           <p className="mb-4 text-center text-mp-muted">
             {payload.exam.title}（{payload.attempt.attemptNumber} 回目）
@@ -247,7 +247,7 @@ export function StudentExamFinishedPage() {
             <h1 className="text-xl font-bold text-mp-cyan">
               {attempt ? '🎉 提出完了' : '未受験'}
             </h1>
-            <ThemeToggle />
+            <UserDrawer />
           </div>
           <p className="mb-6 text-center text-mp-muted">
             {exam.title}
