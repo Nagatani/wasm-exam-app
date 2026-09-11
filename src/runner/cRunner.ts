@@ -25,15 +25,32 @@ export function cRunnerState(): RunnerReadiness {
 function loadClang(): Promise<Wasmer> {
   if (!clangPromise) {
     clangState = 'loading';
-    clangPromise = ensureInit().then(() => Wasmer.fromRegistry('clang/clang'));
-    clangPromise.then(
-      () => {
-        clangState = 'ready';
-      },
-      () => {
-        clangState = 'error';
-      },
-    );
+    clangPromise = ensureInit()
+      .then(() => Wasmer.fromRegistry('clang/clang'))
+      .then(
+        (w) => {
+          clangState = 'ready';
+          return w;
+        },
+        (err) => {
+          clangState = 'error';
+          // The SDK/registry's own rejection reason is internal/technical
+          // (a fetch failure, a WASI init error, ...) — replace it with one
+          // friendly, actionable message so it doesn't leak raw SDK text to
+          // students. This is a *load* failure, distinct from a compile
+          // error in the student's own code (compileC below still throws its
+          // own message for that case).
+          //
+          // clangPromise stays memoized even on rejection (by design — see
+          // its declaration), so a *retry within the same page* re-awaits
+          // this same failed promise instead of re-fetching; the message
+          // therefore points at reloading, not just "click run again".
+          console.error('clang toolchain load failed:', err);
+          throw new Error(
+            'C の実行環境（clang）の読み込みに失敗しました。ページを再読み込みしてから再度お試しください。',
+          );
+        },
+      );
   }
   return clangPromise;
 }

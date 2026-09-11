@@ -5,6 +5,14 @@ import type { TestCase } from '../types/exam';
 const fieldClass =
   'w-full rounded border border-mp-border bg-mp-bg px-2 py-1 font-mono text-sm text-mp-fg';
 
+// judge/Judge.java clamps to these (falls back to the default when a value is
+// <= 0, caps at the max) — kept in sync manually since the judge doesn't
+// expose its limits over the API.
+const TIME_LIMIT_MIN_MS = 100;
+const TIME_LIMIT_MAX_MS = 15_000;
+const MEMORY_LIMIT_MIN_MB = 16;
+const MEMORY_LIMIT_MAX_MB = 512;
+
 interface TestCaseRowProps {
   testCase: TestCase;
   onUpdated: (testCase: TestCase) => void;
@@ -14,18 +22,34 @@ interface TestCaseRowProps {
   // row / solution editor) into one page-level "未保存の変更" summary — see
   // TaskEditorPage's dirtyTestCases.
   onDirtyChange?: (dirty: boolean) => void;
+  // Only Java (exam flow) and C (regrade only) actually run through the
+  // judge container and honour these two fields — show the inputs only when
+  // the task's language is one of those, so JS/TS/Python/C's real (in-browser)
+  // run — where these limits are silently ignored — doesn't show a control
+  // that looks like it does something.
+  showLimits: boolean;
 }
 
-export function TestCaseRow({ testCase, onUpdated, onDeleted, onDirtyChange }: TestCaseRowProps) {
+export function TestCaseRow({
+  testCase,
+  onUpdated,
+  onDeleted,
+  onDirtyChange,
+  showLimits,
+}: TestCaseRowProps) {
   const [input, setInput] = useState(testCase.input);
   const [expectedOutput, setExpectedOutput] = useState(testCase.expectedOutput);
   const [isSample, setIsSample] = useState(testCase.isSample);
+  const [timeLimitMs, setTimeLimitMs] = useState(testCase.timeLimitMs);
+  const [memoryLimitMb, setMemoryLimitMb] = useState(testCase.memoryLimitMb);
   const [saving, setSaving] = useState(false);
 
   const dirty =
     input !== testCase.input ||
     expectedOutput !== testCase.expectedOutput ||
-    isSample !== testCase.isSample;
+    isSample !== testCase.isSample ||
+    timeLimitMs !== testCase.timeLimitMs ||
+    memoryLimitMb !== testCase.memoryLimitMb;
 
   useEffect(() => {
     onDirtyChange?.(dirty);
@@ -45,6 +69,8 @@ export function TestCaseRow({ testCase, onUpdated, onDeleted, onDirtyChange }: T
         input,
         expectedOutput,
         isSample,
+        timeLimitMs,
+        memoryLimitMb,
       });
       onUpdated(updated);
     } finally {
@@ -80,6 +106,52 @@ export function TestCaseRow({ testCase, onUpdated, onDeleted, onDirtyChange }: T
           />
         </div>
       </div>
+      {showLimits && (
+        <div className="mb-2 flex flex-wrap items-end gap-4">
+          <div>
+            <label className="mb-1 block text-xs text-mp-muted">
+              時間制限（ms、{TIME_LIMIT_MIN_MS}〜{TIME_LIMIT_MAX_MS}）
+            </label>
+            <input
+              type="number"
+              min={TIME_LIMIT_MIN_MS}
+              max={TIME_LIMIT_MAX_MS}
+              step={100}
+              className={`w-28 ${fieldClass}`}
+              value={timeLimitMs}
+              onChange={(e) => setTimeLimitMs(Number(e.target.value))}
+              onBlur={(e) =>
+                setTimeLimitMs(
+                  Math.min(TIME_LIMIT_MAX_MS, Math.max(TIME_LIMIT_MIN_MS, Number(e.target.value))),
+                )
+              }
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-mp-muted">
+              メモリ制限（MB、{MEMORY_LIMIT_MIN_MB}〜{MEMORY_LIMIT_MAX_MB}）
+            </label>
+            <input
+              type="number"
+              min={MEMORY_LIMIT_MIN_MB}
+              max={MEMORY_LIMIT_MAX_MB}
+              step={16}
+              className={`w-28 ${fieldClass}`}
+              value={memoryLimitMb}
+              onChange={(e) => setMemoryLimitMb(Number(e.target.value))}
+              onBlur={(e) =>
+                setMemoryLimitMb(
+                  Math.min(
+                    MEMORY_LIMIT_MAX_MB,
+                    Math.max(MEMORY_LIMIT_MIN_MB, Number(e.target.value)),
+                  ),
+                )
+              }
+            />
+          </div>
+          <p className="text-xs text-mp-muted">Java・C（再採点）にのみ適用されます。</p>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <label className="flex items-center gap-2 text-sm text-mp-muted">
           <input

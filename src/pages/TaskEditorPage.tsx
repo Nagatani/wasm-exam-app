@@ -338,6 +338,11 @@ export function TaskEditorPage() {
   }
 
   const basicInfoDirty = task ? taskFormKey(task) !== savedSnapshotRef.current : false;
+  // Only Java (exam flow) and C (regrade only) actually run through the
+  // judge container — see isRegradeCapable() server-side; there's no
+  // frontend equivalent to import since this page is the only place that
+  // needs it.
+  const judgeRelevant = task ? task.language === 'JAVA' || task.language === 'C' : false;
   const anyDirty = basicInfoDirty || dirtyTestCaseIds.size > 0 || solutionDirty;
   useUnsavedGuard(anyDirty);
 
@@ -587,7 +592,7 @@ export function TaskEditorPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {(task.language === 'JAVA' || task.language === 'C') && (
+            {judgeRelevant && (
               <button
                 onClick={handleRegrade}
                 disabled={regrading}
@@ -644,6 +649,7 @@ export function TaskEditorPage() {
                 )
               }
               onDirtyChange={(dirty) => handleTestCaseDirtyChange(tc.id, dirty)}
+              showLimits={judgeRelevant}
             />
           ))}
         </div>

@@ -10,14 +10,29 @@ export class ApiError extends Error {
 }
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
+  } catch {
+    // `fetch` itself rejected (offline, DNS failure, server unreachable, CORS
+    // block, ...) — the browser's own message here (e.g. "Failed to fetch")
+    // is technical and often in English, so every caller that already
+    // branches on `err instanceof ApiError` (the norm across this app) gets
+    // this one consistent, localized message instead of leaking that text to
+    // students/teachers. status 0 marks it as "no HTTP response at all",
+    // distinct from any real server status code.
+    throw new ApiError(
+      'サーバーに接続できませんでした。ネットワーク環境を確認し、しばらくしてから再度お試しください。',
+      0,
+    );
+  }
 
   if (res.status === 204) {
     return undefined as T;
