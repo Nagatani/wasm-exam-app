@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { deleteExam, getExam, getPublishCheck, updateExam, type PublishIssue } from '../api/exams';
-import { createTask, duplicateTask } from '../api/tasks';
+import { createTask, duplicateTask, updateTask } from '../api/tasks';
 import { listCourses } from '../api/courses';
 import { ApiError } from '../api/client';
 import type { ExamDetail, ExamStatus } from '../types/exam';
@@ -11,6 +11,7 @@ import { PageSkeleton } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { datetimeLocalToIso, toDatetimeLocalValue } from '../lib/datetime';
+import { changedOrders, moveItem } from '../lib/reorder';
 
 // The exam fields the metadata form persists — used to detect unsaved edits.
 function examFormKey(e: ExamDetail): string {
@@ -37,6 +38,8 @@ export function ExamDetailPage() {
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [courses, setCourses] = useState<CourseSummary[]>([]);
   const [publishIssues, setPublishIssues] = useState<PublishIssue[] | null>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [reorderError, setReorderError] = useState<string | null>(null);
   const savedSnapshotRef = useRef('');
 
   function refreshPublishCheck(id: string) {
@@ -129,6 +132,27 @@ export function ExamDetailPage() {
       setError(err instanceof ApiError ? err.message : '問題の複製に失敗しました。');
     } finally {
       setDuplicatingId(null);
+    }
+  }
+
+  // Reorders the task list (drag-and-drop or the ▲▼ buttons both call this).
+  // Updates the on-screen order immediately, then persists only the rows
+  // whose position actually changed — one PATCH each, in parallel. On
+  // failure, reload from the server rather than leaving the list showing an
+  // order that didn't actually save.
+  async function reorderTasks(from: number, to: number) {
+    if (!exam) return;
+    const reordered = moveItem(exam.tasks, from, to);
+    if (reordered === exam.tasks) return;
+    setExam({ ...exam, tasks: reordered.map((t, i) => ({ ...t, order: i })) });
+    setReorderError(null);
+    try {
+      await Promise.all(
+        changedOrders(reordered).map(({ item, order }) => updateTask(item.id, { order })),
+      );
+    } catch (err) {
+      setReorderError(err instanceof ApiError ? err.message : '並び替えの保存に失敗しました。');
+      await load();
     }
   }
 
@@ -373,31 +397,71 @@ export function ExamDetailPage() {
           }
         />
       ) : (
-        <ul className="divide-y divide-mp-border rounded-lg border border-mp-border bg-mp-surface">
-          {exam.tasks.map((task) => (
-            <li
-              key={task.id}
-              className="flex items-center justify-between gap-2 px-4 py-3 hover:bg-mp-surface-hover"
-            >
-              <Link
-                to={`/teacher/exams/${exam.id}/tasks/${task.id}`}
-                className="flex flex-1 items-center justify-between gap-2"
+        <>
+          {reorderError && <p className="mb-2 text-sm text-mp-red">{reorderError}</p>}
+          <ul className="divide-y divide-mp-border rounded-lg border border-mp-border bg-mp-surface">
+            {exam.tasks.map((task, i) => (
+              <li
+                key={task.id}
+                draggable
+                onDragStart={() => setDragIndex(i)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (dragIndex !== null) reorderTasks(dragIndex, i);
+                  setDragIndex(null);
+                }}
+                onDragEnd={() => setDragIndex(null)}
+                className={`flex items-center gap-2 px-4 py-3 hover:bg-mp-surface-hover ${
+                  dragIndex === i ? 'opacity-50' : ''
+                }`}
               >
-                <span>
-                  {task.order + 1}. {task.title}
+                <span
+                  className="shrink-0 cursor-grab select-none text-mp-muted active:cursor-grabbing"
+                  title="ドラッグして並び替え"
+                >
+                  ⠿
                 </span>
-                <span className="text-sm text-mp-muted">{task.points}点</span>
-              </Link>
-              <button
-                onClick={() => handleDuplicateTask(task.id)}
-                disabled={duplicatingId === task.id}
-                className="shrink-0 rounded border border-mp-border bg-mp-surface px-2 py-1 text-xs font-bold hover:bg-mp-surface-hover disabled:opacity-50"
-              >
-                {duplicatingId === task.id ? '複製中...' : '複製'}
-              </button>
-            </li>
-          ))}
-        </ul>
+                <div className="flex shrink-0 flex-col">
+                  <button
+                    type="button"
+                    onClick={() => reorderTasks(i, i - 1)}
+                    disabled={i === 0}
+                    aria-label="上に移動"
+                    className="leading-none text-mp-muted hover:text-mp-fg disabled:opacity-30"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => reorderTasks(i, i + 1)}
+                    disabled={i === exam.tasks.length - 1}
+                    aria-label="下に移動"
+                    className="leading-none text-mp-muted hover:text-mp-fg disabled:opacity-30"
+                  >
+                    ▼
+                  </button>
+                </div>
+                <Link
+                  to={`/teacher/exams/${exam.id}/tasks/${task.id}`}
+                  className="flex flex-1 items-center justify-between gap-2"
+                >
+                  <span>
+                    {task.order + 1}. {task.title}
+                  </span>
+                  <span className="text-sm text-mp-muted">{task.points}点</span>
+                </Link>
+                <button
+                  onClick={() => handleDuplicateTask(task.id)}
+                  disabled={duplicatingId === task.id}
+                  className="shrink-0 rounded border border-mp-border bg-mp-surface px-2 py-1 text-xs font-bold hover:bg-mp-surface-hover disabled:opacity-50"
+                >
+                  {duplicatingId === task.id ? '複製中...' : '複製'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </div>
   );

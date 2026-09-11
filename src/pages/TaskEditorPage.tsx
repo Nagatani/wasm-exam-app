@@ -29,6 +29,7 @@ import { CodeEditor } from '../components/CodeEditor';
 import { BackHeader } from '../components/BackHeader';
 import { PageSkeleton } from '../components/Skeleton';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
+import { changedOrders, moveItem } from '../lib/reorder';
 
 // Bulk import format: cases separated by a line that is exactly `===`; within
 // a case, input and expected are separated by a line that is exactly `---`; a
@@ -113,6 +114,8 @@ export function TaskEditorPage() {
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [regrading, setRegrading] = useState(false);
   const [regradeMsg, setRegradeMsg] = useState<string | null>(null);
+  const [tcDragIndex, setTcDragIndex] = useState<number | null>(null);
+  const [testCaseReorderError, setTestCaseReorderError] = useState<string | null>(null);
   // This page has three independently-saved sections (basic info / each test
   // case row / the reference solution) — each aggregated here so one banner
   // can show every unsaved section at once instead of leaving the teacher to
@@ -200,6 +203,28 @@ export function TaskEditorPage() {
       order: task.testCases.length,
     });
     setTask((prev) => (prev ? { ...prev, testCases: [...prev.testCases, testCase] } : prev));
+  }
+
+  // Drag-and-drop / ▲▼ reordering for the test case list — same pattern as
+  // ExamDetailPage's task reordering (see reorder.ts): update on-screen
+  // order immediately, persist only the rows that actually moved, and
+  // reload from the server if any of those PATCHes fail.
+  async function reorderTestCases(from: number, to: number) {
+    if (!task) return;
+    const reordered = moveItem(task.testCases, from, to);
+    if (reordered === task.testCases) return;
+    setTask({ ...task, testCases: reordered.map((tc, i) => ({ ...tc, order: i })) });
+    setTestCaseReorderError(null);
+    try {
+      await Promise.all(
+        changedOrders(reordered).map(({ item, order }) => updateTestCase(item.id, { order })),
+      );
+    } catch (err) {
+      setTestCaseReorderError(
+        err instanceof ApiError ? err.message : '並び替えの保存に失敗しました。',
+      );
+      await load();
+    }
   }
 
   async function handleRegrade() {
@@ -617,6 +642,9 @@ export function TaskEditorPage() {
           </div>
         </div>
         {regradeMsg && <p className="mb-2 text-sm text-mp-cyan">{regradeMsg}</p>}
+        {testCaseReorderError && (
+          <p className="mb-2 text-sm text-mp-red">{testCaseReorderError}</p>
+        )}
 
         {showBulk && (
           <BulkTestCasePanel
@@ -627,30 +655,70 @@ export function TaskEditorPage() {
         )}
 
         <div className="space-y-3">
-          {task.testCases.map((tc) => (
-            <TestCaseRow
+          {task.testCases.map((tc, i) => (
+            <div
               // Include expectedOutput in the key so a value written by
               // "実際の出力を期待値にする" remounts the row with fresh field state.
               key={`${tc.id}@${tc.expectedOutput}`}
-              testCase={tc}
-              onUpdated={(updated) =>
-                setTask((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        testCases: prev.testCases.map((t) => (t.id === updated.id ? updated : t)),
-                      }
-                    : prev,
-                )
-              }
-              onDeleted={(id) =>
-                setTask((prev) =>
-                  prev ? { ...prev, testCases: prev.testCases.filter((t) => t.id !== id) } : prev,
-                )
-              }
-              onDirtyChange={(dirty) => handleTestCaseDirtyChange(tc.id, dirty)}
-              showLimits={judgeRelevant}
-            />
+              draggable
+              onDragStart={() => setTcDragIndex(i)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (tcDragIndex !== null) reorderTestCases(tcDragIndex, i);
+                setTcDragIndex(null);
+              }}
+              onDragEnd={() => setTcDragIndex(null)}
+              className={tcDragIndex === i ? 'opacity-50' : ''}
+            >
+              <div className="mb-1 flex items-center gap-2 text-xs text-mp-muted">
+                <span
+                  className="cursor-grab select-none active:cursor-grabbing"
+                  title="ドラッグして並び替え"
+                >
+                  ⠿
+                </span>
+                <button
+                  type="button"
+                  onClick={() => reorderTestCases(i, i - 1)}
+                  disabled={i === 0}
+                  aria-label="上に移動"
+                  className="leading-none hover:text-mp-fg disabled:opacity-30"
+                >
+                  ▲
+                </button>
+                <button
+                  type="button"
+                  onClick={() => reorderTestCases(i, i + 1)}
+                  disabled={i === task.testCases.length - 1}
+                  aria-label="下に移動"
+                  className="leading-none hover:text-mp-fg disabled:opacity-30"
+                >
+                  ▼
+                </button>
+                <span>テストケース {i + 1}</span>
+              </div>
+              <TestCaseRow
+                testCase={tc}
+                onUpdated={(updated) =>
+                  setTask((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          testCases: prev.testCases.map((t) => (t.id === updated.id ? updated : t)),
+                        }
+                      : prev,
+                  )
+                }
+                onDeleted={(id) =>
+                  setTask((prev) =>
+                    prev ? { ...prev, testCases: prev.testCases.filter((t) => t.id !== id) } : prev,
+                  )
+                }
+                onDirtyChange={(dirty) => handleTestCaseDirtyChange(tc.id, dirty)}
+                showLimits={judgeRelevant}
+              />
+            </div>
           ))}
         </div>
       </div>
