@@ -74,6 +74,10 @@ export interface TaskDetail {
   // How this task's test-case outputs are compared.
   comparisonMode: ComparisonMode;
   floatTolerance: number;
+  // When true, the score is proportional to the fraction of test cases
+  // (sample + hidden) that passed, rounded to the nearest point — instead of
+  // all-or-nothing on a clean AC. Still 0 on a compile error.
+  allowPartialCredit: boolean;
   createdAt: string;
   testCases: TestCase[];
   solutions: Solution[];

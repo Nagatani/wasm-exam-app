@@ -10,6 +10,7 @@ interface TaskInput {
   points?: number;
   comparisonMode?: ComparisonMode;
   floatTolerance?: number;
+  allowPartialCredit?: boolean;
 }
 
 interface TestCaseInput {

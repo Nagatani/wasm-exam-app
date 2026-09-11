@@ -27,6 +27,7 @@ const taskUpdateSchema = z.object({
     .enum(['EXACT', 'TRIM_TRAILING_WS', 'IGNORE_BLANK_LINES', 'FLOAT'])
     .optional(),
   floatTolerance: z.number().positive().optional(),
+  allowPartialCredit: z.boolean().optional(),
 });
 
 const testCaseInputSchema = z.object({
@@ -279,10 +280,13 @@ tasksRouter.post('/:taskId/regrade', async (req, res) => {
       failed += 1;
       continue;
     }
-    const verdict = judgeSubmission(task.testCases, task.points, judgeInputFromContainer(jr), {
-      mode: task.comparisonMode,
-      floatTolerance: task.floatTolerance,
-    });
+    const verdict = judgeSubmission(
+      task.testCases,
+      task.points,
+      judgeInputFromContainer(jr),
+      { mode: task.comparisonMode, floatTolerance: task.floatTolerance },
+      task.allowPartialCredit,
+    );
     if (verdict.overallStatus !== sub.overallStatus || verdict.score !== sub.score) {
       changed += 1;
     }
@@ -345,6 +349,7 @@ tasksRouter.post('/:taskId/duplicate', async (req, res) => {
       points: src.points,
       comparisonMode: src.comparisonMode,
       floatTolerance: src.floatTolerance,
+      allowPartialCredit: src.allowPartialCredit,
       testCases: {
         create: src.testCases.map((tc) => ({
           input: tc.input,

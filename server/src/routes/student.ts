@@ -514,10 +514,13 @@ studentRouter.post('/tasks/:taskId/run', async (req, res) => {
     throw err;
   }
 
-  const verdict = judgeSubmission(task.testCases, task.points, resolved.judgeInput, {
-    mode: task.comparisonMode,
-    floatTolerance: task.floatTolerance,
-  });
+  const verdict = judgeSubmission(
+    task.testCases,
+    task.points,
+    resolved.judgeInput,
+    { mode: task.comparisonMode, floatTolerance: task.floatTolerance },
+    task.allowPartialCredit,
+  );
   res.json({ verdict, compileStderr: resolved.compileStderr });
 });
 
@@ -699,10 +702,13 @@ studentRouter.post('/exams/:examId/submit', async (req, res) => {
       judgeInput = { compileFailed: c.compileFailed, outcomes: c.outcomes };
     }
 
-    const verdict = judgeSubmission(task.testCases, task.points, judgeInput, {
-      mode: task.comparisonMode,
-      floatTolerance: task.floatTolerance,
-    });
+    const verdict = judgeSubmission(
+      task.testCases,
+      task.points,
+      judgeInput,
+      { mode: task.comparisonMode, floatTolerance: task.floatTolerance },
+      task.allowPartialCredit,
+    );
     perTask.push({
       taskId: task.id,
       status: verdict.overallStatus,

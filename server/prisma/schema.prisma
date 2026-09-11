@@ -238,6 +238,10 @@ model Task {
   // when `comparisonMode` is FLOAT (ignored otherwise).
   comparisonMode   ComparisonMode @default(EXACT)
   floatTolerance   Float          @default(0.000001)
+  // When true, judgeSubmission() scores proportionally to the fraction of
+  // test cases that passed (rounded to the nearest point) instead of
+  // all-or-nothing on a clean AC. Still 0 on a compile error — nothing ran.
+  allowPartialCredit Boolean @default(false)
   createdAt        DateTime @default(now())
 
   exam        Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)

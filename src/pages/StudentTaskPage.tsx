@@ -502,6 +502,11 @@ export function StudentTaskPage() {
               className={`rounded border px-3 py-2 text-center font-bold ${STATUS_COLOR[verdict.overallStatus]}`}
             >
               {STATUS_LABEL[verdict.overallStatus]}
+              {verdict.overallStatus !== 'CE' && (
+                <span className="ml-2 font-normal">
+                  （{verdict.score}/{task.points}点）
+                </span>
+              )}
             </div>
           )}
 

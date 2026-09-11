@@ -125,10 +125,13 @@ export async function maybeSettleAttempt(attemptId: string): Promise<boolean> {
         const jr = await withJudgeSlot(attempt.studentId, () =>
           runOnJudge({ code: draft.code, tests }),
         );
-        verdict = judgeSubmission(task.testCases, task.points, judgeInputFromContainer(jr), {
-          mode: task.comparisonMode,
-          floatTolerance: task.floatTolerance,
-        });
+        verdict = judgeSubmission(
+          task.testCases,
+          task.points,
+          judgeInputFromContainer(jr),
+          { mode: task.comparisonMode, floatTolerance: task.floatTolerance },
+          task.allowPartialCredit,
+        );
       } catch {
         verdict = { overallStatus: 'WA', results: [], score: 0 };
       }

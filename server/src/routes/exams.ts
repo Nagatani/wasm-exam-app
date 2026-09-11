@@ -51,6 +51,7 @@ const taskInputSchema = z.object({
   points: z.number().int().nonnegative().default(0),
   comparisonMode: comparisonModeSchema.optional(),
   floatTolerance: z.number().positive().optional(),
+  allowPartialCredit: z.boolean().optional(),
 });
 
 examsRouter.get('/', async (_req, res) => {

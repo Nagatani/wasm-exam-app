@@ -88,6 +88,7 @@ function taskFormKey(t: TaskDetail): string {
     starterCode: t.starterCode ?? '',
     comparisonMode: t.comparisonMode,
     floatTolerance: t.floatTolerance,
+    allowPartialCredit: t.allowPartialCredit,
   });
 }
 
@@ -173,6 +174,7 @@ export function TaskEditorPage() {
         starterCode: task.starterCode,
         comparisonMode: task.comparisonMode,
         floatTolerance: task.floatTolerance,
+        allowPartialCredit: task.allowPartialCredit,
       });
       setTask((prev) => {
         const next = prev ? { ...prev, ...updated } : prev;
@@ -515,6 +517,19 @@ export function TaskEditorPage() {
               />
             </div>
           )}
+          <div>
+            <label className="mb-1 flex items-center gap-2 text-sm text-mp-muted">
+              <input
+                type="checkbox"
+                checked={task.allowPartialCredit}
+                onChange={(e) => setTask({ ...task, allowPartialCredit: e.target.checked })}
+              />
+              部分点を認める
+            </label>
+            <p className="text-xs text-mp-muted">
+              通過したテストケース数に比例した点数（四捨五入）。既定は全テストAC以外0点。
+            </p>
+          </div>
         </div>
 
         <div className="mb-1 flex items-center justify-between">

@@ -121,6 +121,7 @@ export function judgeSubmission(
   points: number,
   input: JudgeInput,
   comparison: Comparison = DEFAULT_COMPARISON,
+  allowPartialCredit = false,
 ): JudgeVerdict {
   if (input.compileFailed) {
     return { overallStatus: 'CE', results: [], score: 0 };
@@ -146,7 +147,27 @@ export function judgeSubmission(
   });
 
   const overallStatus = computeOverall(results);
-  const score = overallStatus === 'AC' ? points : 0;
+  const score = computeScore(results, points, overallStatus, allowPartialCredit);
 
   return { overallStatus, results, score };
+}
+
+// All-or-nothing on a clean AC by default (the historical rule); with
+// `allowPartialCredit` the score is proportional to the fraction of test
+// cases (sample + hidden alike) that individually passed, rounded to the
+// nearest whole point — e.g. 3/4 passing on a 10-point task scores 8, not 0.
+// A compile failure never earns partial credit (nothing ran at all — handled
+// by judgeSubmission's early return before this is called).
+function computeScore(
+  results: PerTestCaseResult[],
+  points: number,
+  overallStatus: OverallStatus,
+  allowPartialCredit: boolean,
+): number {
+  if (!allowPartialCredit) {
+    return overallStatus === 'AC' ? points : 0;
+  }
+  if (results.length === 0) return 0;
+  const passed = results.filter((r) => r.status === 'AC').length;
+  return Math.round((points * passed) / results.length);
 }
