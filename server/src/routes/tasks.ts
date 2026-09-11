@@ -4,7 +4,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { languageSchema, parseLanguageParam } from '../lib/language';
-import { isServerExec, judgeInputFromContainer } from '../lib/attempts';
+import { isRegradeCapable, isServerExec, judgeInputFromContainer, judgeLanguage } from '../lib/attempts';
 import { isJudgeConfigured, runOnJudge, JudgeError } from '../lib/judgeClient';
 import { withJudgeSlot, QueueRejectedError } from '../lib/executionQueue';
 import { judgeSubmission } from '../lib/judge';
@@ -249,8 +249,8 @@ tasksRouter.post('/:taskId/regrade', async (req, res) => {
     res.status(404).json({ error: '問題が見つかりません。' });
     return;
   }
-  if (!isServerExec(task.language)) {
-    res.status(400).json({ error: 'サーバー側で再採点できるのは Java のみです。' });
+  if (!isRegradeCapable(task.language)) {
+    res.status(400).json({ error: 'サーバー側で再採点できるのは Java / C のみです。' });
     return;
   }
   if (!isJudgeConfigured()) {
@@ -265,6 +265,7 @@ tasksRouter.post('/:taskId/regrade', async (req, res) => {
     timeLimitMs: tc.timeLimitMs,
     memoryLimitMb: tc.memoryLimitMb,
   }));
+  const language = judgeLanguage(task.language);
 
   let changed = 0;
   let failed = 0;
@@ -273,7 +274,7 @@ tasksRouter.post('/:taskId/regrade', async (req, res) => {
   for (const sub of submissions) {
     let jr;
     try {
-      jr = await withJudgeSlot(req.user!.id, () => runOnJudge({ code: sub.code, tests }));
+      jr = await withJudgeSlot(req.user!.id, () => runOnJudge({ language, code: sub.code, tests }));
     } catch {
       failed += 1;
       continue;

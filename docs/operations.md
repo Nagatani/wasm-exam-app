@@ -69,11 +69,25 @@ Cross-Origin-Embedder-Policy: require-corp
 - フロントをCDNや別の静的ホストから配信する構成にする場合は、その配信層で両ヘッダーを設定してください。
 - 動作確認: ブラウザのDevToolsコンソールで `self.crossOriginIsolated` が `true` であること。
 
-## judgeサービス（Java実行）
+## judgeサービス（Java・C実行）
 
 - `docker compose up -d judge` で起動。ホストの **`127.0.0.1:4001`** にのみpublishされ、外部には公開されません。`server` は `JUDGE_URL` で到達します。
 - `JUDGE_URL` を空にするとJava実行は無効になり、生徒側でJavaの問題は「準備中」表示になります（他言語は影響なし）。
 - **サンドボックスはコンテナ自体**です。`docker-compose.yml` で `cap_drop: ALL` / `read_only` / tmpfs作業領域 / `pids_limit` / `mem_limit` / `cpus` / `no-new-privileges` / 非rootユーザーを設定しています。学生コードのコンパイル・実行はこのコンテナ内でのみ行われ、ホストでは一切実行されません。macOSでもLinuxでもDocker上で同一に動きます。
+- **C 実行（2026-09-11 追加）**：`Judge.java` は `language: "C"` を受け取ると gcc でコンパイル・実行します。現状は**講師の「既存の提出を再採点」からのみ呼ばれ**、生徒の通常の受験フロー（実行プレビュー・最終提出）は従来どおりブラウザ内 `@wasmer/sdk` のままです。C はメモリ上限を `ulimit -v` で緩く保護するのみで、Java の `-Xmx` ほど確実な MLE 検出はできません（`oom` は常に `false` を返します）。
+
+### judge のネットワーク遮断（未対応・既知の制約）
+
+`judge` コンテナは `cap_drop: ALL` などでホストへの影響は強く制限されていますが、**外向きのネットワーク通信自体は遮断されていません**（`cap_drop` は `connect()` を止めません）。つまり学生コード（Java・C とも）は理論上コンテナから外部に通信できます。judge コンテナ自体は個人情報を一切持たない（DB に触れない）ためデータ漏洩の実害は小さいですが、クラウド環境のメタデータエンドポイント（例: `169.254.169.254`）へのアクセスなど、踏み台にされるリスクはゼロではありません。
+
+一度 `docker-compose.yml` の `judge` を `internal: true` の専用ネットワークに載せる案を試しましたが、**Docker Desktop（macOS の開発機）では `internal: true` にすると `ports:` によるホスト→コンテナの公開が効かなくなり**（`127.0.0.1:4001` に接続できなくなる）、開発ワークフローを壊すため差し戻しました。Linux の素の Docker Engine では `internal: true` でも publish は独立して機能するはずですが未検証です。対応する場合の現実的な選択肢：
+
+- **本番（Linux）限定で `internal: true` を追加**：`docker-compose.yml` を環境ごとに分ける（例 `docker-compose.prod.yml` で override）か、Linux では動作確認の上で有効化する。macOS の開発用ファイルには入れない。
+- **ホスト側ファイアウォールで judge コンテナのブリッジ網からの outbound を落とす**（例 `iptables -I DOCKER-USER -s <judgeのブリッジsubnet> ! -d <server/db> -j DROP` 相当）。コンテナ再作成後も有効で、Linux 本番向けの現実的な手段。
+- 現状は「受け入れて監視する」：judge のログ・リソース使用量を見ておき、対応は必要になった時点で行う。
+
+方針が決まったら本項と `docker-compose.yml` の該当コメントを更新してください。
+
 - 負荷制御:
   - `JUDGE_CONCURRENCY`（`server` 側、既定3）… サーバーが同時にjudgeへ投げる最大数
   - ユーザーあたり同時1ジョブ（超過リクエストは即429）

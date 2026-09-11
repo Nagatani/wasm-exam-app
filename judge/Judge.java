@@ -26,14 +26,16 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Single-file HTTP judge for student Java submissions. Runs as the only
+ * Single-file HTTP judge for student Java and C submissions. Runs as the only
  * process in the `judge` Docker container (see Dockerfile / docker-compose.yml)
  * — compilation and execution never touch the host, and the container is the
- * sandbox boundary (no caps, read-only rootfs, tmpfs workdir, pids/mem caps).
+ * sandbox boundary (no caps, read-only rootfs, tmpfs workdir, pids/mem caps,
+ * no outbound network via the `internal` compose network).
  *
  * Protocol (called only by the app's own Express server, never a browser):
  *   POST /run
- *     { "code": "<Main.java source>",
+ *     { "language": "JAVA" | "C",   // optional, defaults to "JAVA"
+ *       "code": "<Main.java or main.c source>",
  *       "tests": [ { "id": "...", "stdin": "...",
  *                    "timeLimitMs": 2000, "memoryLimitMb": 256 } ] }
  *   200 { "compile": { "ok": bool, "stderr": "..." },
@@ -43,6 +45,16 @@ import java.util.concurrent.TimeUnit;
  * The verdict (AC/WA/CE) is NOT computed here — the app server re-derives it
  * from these raw outcomes via its own judgeSubmission(). This service only
  * reports what the program printed and how it exited.
+ *
+ * C support (2026-09) is deliberately narrow in scope: as of this writing the
+ * app server only calls it for Java's day-to-day exam flow plus a
+ * teacher-triggered *regrade* of already-submitted C code (see
+ * server/src/routes/tasks.ts `/regrade` and CLAUDE.md "Server-side C
+ * executor") — not for a student's live "実行"/final submit, which still runs
+ * in-browser via @wasmer/sdk. `oom` is always reported `false` for C: unlike
+ * Java's `-Xmx` there's no reliable signal to grep for, only the coarse
+ * `ulimit -v` secondary guard applied at run time (matches the existing "C
+ * has no MLE" note in docs/languages.md).
  */
 public final class Judge {
 
@@ -82,6 +94,7 @@ public final class Judge {
   // ---- request / response DTOs (Gson-mapped) --------------------------------
 
   private static final class RunRequest {
+    String language; // "JAVA" (default) or "C"
     String code;
     List<TestSpec> tests;
   }
@@ -181,22 +194,46 @@ public final class Judge {
     }
   }
 
+  private static String normalizeLanguage(String raw) {
+    if (raw == null) return "JAVA";
+    return "C".equalsIgnoreCase(raw.trim()) ? "C" : "JAVA";
+  }
+
   private static RunResponse compileAndRun(RunRequest req) throws IOException, InterruptedException {
+    String language = normalizeLanguage(req.language);
     Path jobDir = Files.createTempDirectory(WORK_ROOT, "job-");
     try {
+      if ("C".equals(language)) {
+        Path srcDir = Files.createDirectories(jobDir.resolve("src"));
+        Path mainC = srcDir.resolve("main.c");
+        Files.writeString(mainC, req.code);
+        Path binary = jobDir.resolve("a.out");
+
+        CompileInfo compile = compileC(mainC, binary, srcDir);
+        if (!compile.ok) {
+          return new RunResponse(compile, List.of());
+        }
+
+        List<TestOutcome> outcomes = new ArrayList<>();
+        for (TestSpec test : req.tests) {
+          outcomes.add(runOne(jobDir, language, binary, test));
+        }
+        return new RunResponse(compile, outcomes);
+      }
+
       Path srcDir = Files.createDirectories(jobDir.resolve("src"));
       Path classesDir = Files.createDirectories(jobDir.resolve("classes"));
       Path mainJava = srcDir.resolve("Main.java");
       Files.writeString(mainJava, req.code);
 
-      CompileInfo compile = compile(mainJava, classesDir);
+      CompileInfo compile = compileJava(mainJava, classesDir);
       if (!compile.ok) {
         return new RunResponse(compile, List.of());
       }
 
       List<TestOutcome> outcomes = new ArrayList<>();
       for (TestSpec test : req.tests) {
-        outcomes.add(runOne(jobDir, classesDir, test));
+        outcomes.add(runOne(jobDir, language, classesDir, test));
       }
       return new RunResponse(compile, outcomes);
     } finally {
@@ -204,7 +241,7 @@ public final class Judge {
     }
   }
 
-  private static CompileInfo compile(Path mainJava, Path classesDir)
+  private static CompileInfo compileJava(Path mainJava, Path classesDir)
       throws InterruptedException {
     JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
     if (compiler == null) {
@@ -255,30 +292,80 @@ public final class Judge {
     return holder[0] != null ? holder[0] : new CompileInfo(false, "compilation failed");
   }
 
-  private static TestOutcome runOne(Path jobDir, Path classesDir, TestSpec test)
+  // Subprocess gcc build — plain `-O2 -std=c11`, no student-facing flags to
+  // tune. Diagnostics come out as `main.c:LINE:COL: error: ...` (cwd = srcDir,
+  // relative filename) which is the same shape @wasmer/sdk's clang produces
+  // client-side, so anything that ever parses these (src/lib/compileErrors.ts)
+  // doesn't need a separate case for the server path.
+  private static CompileInfo compileC(Path mainC, Path binary, Path srcDir)
+      throws IOException, InterruptedException {
+    List<String> cmd = List.of(
+        "gcc", "-O2", "-std=c11", "-Wall",
+        "-o", binary.toString(),
+        mainC.getFileName().toString(),
+        "-lm");
+    ProcessBuilder pb = new ProcessBuilder(cmd);
+    pb.directory(srcDir.toFile());
+    pb.environment().clear();
+    pb.environment().put("PATH", "/usr/bin:/bin");
+    pb.environment().put("LANG", "C.UTF-8");
+
+    Process process = pb.start();
+    process.getOutputStream().close();
+
+    StreamDrainer outDrainer = new StreamDrainer(process.getInputStream());
+    StreamDrainer errDrainer = new StreamDrainer(process.getErrorStream());
+    outDrainer.start();
+    errDrainer.start();
+
+    boolean exited = process.waitFor(COMPILE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    if (!exited) {
+      process.destroyForcibly();
+      process.waitFor(2, TimeUnit.SECONDS);
+      return new CompileInfo(false, "compilation timed out");
+    }
+    outDrainer.join(1_000);
+    errDrainer.join(1_000);
+
+    String stderr = errDrainer.text();
+    if (process.exitValue() != 0) {
+      return new CompileInfo(false, stderr.isBlank() ? "gcc exited with status " + process.exitValue() : stderr);
+    }
+    // Unlike javac's NOTE-stripping above, any gcc -Wall output on a
+    // successful build is genuinely about the student's own code.
+    return new CompileInfo(true, stderr.trim());
+  }
+
+  private static TestOutcome runOne(Path jobDir, String language, Path artifact, TestSpec test)
       throws IOException, InterruptedException {
     long timeLimitMs = clamp(test.timeLimitMs, DEFAULT_TIME_LIMIT_MS, MAX_TIME_LIMIT_MS);
     long memLimitMb = clamp(test.memoryLimitMb, DEFAULT_MEM_LIMIT_MB, MAX_MEM_LIMIT_MB);
     long cpuSeconds = (timeLimitMs / 1000) + 2;
     String stdin = test.stdin != null ? test.stdin : "";
+    boolean isC = "C".equals(language);
 
-    // ulimit gives cheap secondary guards (file size, CPU seconds) on top of
-    // the wall-clock kill below; `exec` replaces the shell so the timeout
-    // targets the JVM directly. Only POSIX-portable options are used (the
-    // container's /bin/sh is dash — no `ulimit -u`); fork bombs are contained
-    // by the container-level pids_limit instead.
-    String shell = "ulimit -f 32768; ulimit -t " + cpuSeconds + "; exec \"$@\"";
-    List<String> cmd = List.of(
-        "/bin/sh", "-c", shell, "sh",
-        "java",
-        "--enable-preview",
-        "-XX:+UseSerialGC",
-        "-XX:ActiveProcessorCount=1",
-        "-XX:-UsePerfData",
-        "-Xss16m",
-        "-Xmx" + memLimitMb + "m",
-        "-cp", classesDir.toString(),
-        "Main");
+    // ulimit gives cheap secondary guards (file size, CPU seconds, and for C
+    // also address space) on top of the wall-clock kill below; `exec`
+    // replaces the shell so the timeout targets the program directly. Only
+    // POSIX-portable options are used (the container's /bin/sh is dash — no
+    // `ulimit -u`); fork bombs are contained by the container-level
+    // pids_limit instead.
+    String shell = isC
+        ? "ulimit -f 32768; ulimit -t " + cpuSeconds + "; ulimit -v " + (memLimitMb * 1024) + "; exec \"$@\""
+        : "ulimit -f 32768; ulimit -t " + cpuSeconds + "; exec \"$@\"";
+    List<String> cmd = isC
+        ? List.of("/bin/sh", "-c", shell, "sh", artifact.toString())
+        : List.of(
+            "/bin/sh", "-c", shell, "sh",
+            "java",
+            "--enable-preview",
+            "-XX:+UseSerialGC",
+            "-XX:ActiveProcessorCount=1",
+            "-XX:-UsePerfData",
+            "-Xss16m",
+            "-Xmx" + memLimitMb + "m",
+            "-cp", artifact.toString(),
+            "Main");
 
     ProcessBuilder pb = new ProcessBuilder(cmd);
     pb.directory(jobDir.toFile());
@@ -326,8 +413,10 @@ public final class Judge {
 
     String stdout = outDrainer.text();
     String stderr = errDrainer.text();
-    boolean oom = stderr.contains("OutOfMemoryError")
-        || stderr.contains("java.lang.OutOfMemoryError");
+    // C: no reliable OOM signal to grep (see the class-level doc comment) —
+    // always report false rather than guess. Java: -Xmx makes this precise.
+    boolean oom = !isC
+        && (stderr.contains("OutOfMemoryError") || stderr.contains("java.lang.OutOfMemoryError"));
 
     return new TestOutcome(test.id, stdout, stderr, exitCode, timedOut, oom);
   }

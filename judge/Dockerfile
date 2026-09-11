@@ -1,10 +1,18 @@
-# Sandboxed Java compile/run service. The container itself is the sandbox
+# Sandboxed Java + C compile/run service. The container itself is the sandbox
 # boundary — see docker-compose.yml for the hardening flags (cap_drop,
-# read_only, tmpfs, pids_limit, mem_limit). Nothing here runs on the host.
+# read_only, tmpfs, pids_limit, mem_limit, no outbound network). Nothing here
+# runs on the host.
 FROM eclipse-temurin:24-jdk
 
 ARG GSON_VERSION=2.11.0
 ARG GSON_SHA256=57928d6e5a6edeb2abd3770a8f95ba44dce45f3b23b7a9dc2b309c581552a78b
+
+# gcc for the C executor (used only for teacher-triggered regrade today — see
+# CLAUDE.md "Server-side C executor"). libc6-dev supplies the headers/static
+# bits gcc needs to link a normal C program.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

@@ -4,13 +4,31 @@ import { judgeSubmission, type JudgeInput, type JudgeVerdict } from './judge';
 import { isJudgeConfigured, runOnJudge } from './judgeClient';
 import { withJudgeSlot } from './executionQueue';
 
-// Languages the server compiles+runs itself (in the sandboxed judge
-// container). Everything else runs in the student's browser and the client
-// reports per-test outcomes back — the server cannot reproduce those runs.
+// Languages the server compiles+runs itself for the *day-to-day exam flow*
+// (in the sandboxed judge container). Everything else runs in the student's
+// browser and the client reports per-test outcomes back — the server cannot
+// reproduce those runs during a normal run/submit.
 const SERVER_EXEC_LANGUAGES: ReadonlySet<Language> = new Set<Language>(['JAVA']);
 
 export function isServerExec(language: Language): boolean {
   return SERVER_EXEC_LANGUAGES.has(language);
+}
+
+// Languages the judge container *can* compile+run when asked directly — a
+// superset of `SERVER_EXEC_LANGUAGES`. C was added 2026-09-11 for the
+// teacher-triggered "regrade" endpoint only (server/src/routes/tasks.ts);
+// the student's own run/submit for C still goes through the browser
+// (`isServerExec('C')` stays false) — see judge/Judge.java's class doc for
+// why the scope is deliberately narrow.
+const REGRADE_CAPABLE_LANGUAGES: ReadonlySet<Language> = new Set<Language>(['JAVA', 'C']);
+
+export function isRegradeCapable(language: Language): boolean {
+  return REGRADE_CAPABLE_LANGUAGES.has(language);
+}
+
+// The judge protocol's `language` field for a regrade-capable language.
+export function judgeLanguage(language: Language): 'JAVA' | 'C' {
+  return language === 'C' ? 'C' : 'JAVA';
 }
 
 // The wall-clock deadline of an attempt: a fixed offset from when it started,

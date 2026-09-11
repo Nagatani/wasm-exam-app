@@ -17,6 +17,11 @@ export interface JudgeTestSpec {
 }
 
 export interface JudgeRunRequest {
+  // Omit for Java (the historical default, and still the only language the
+  // student-facing exam flow ever sends here). 'C' is used only for the
+  // teacher-triggered regrade path (server/src/routes/tasks.ts) — the
+  // student's own "実行"/final submit still runs C in-browser.
+  language?: 'JAVA' | 'C';
   code: string;
   tests: JudgeTestSpec[];
 }

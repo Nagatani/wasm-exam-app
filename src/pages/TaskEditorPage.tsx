@@ -547,12 +547,12 @@ export function TaskEditorPage() {
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-bold">テストケース</h2>
           <div className="flex flex-wrap gap-2">
-            {task.language === 'JAVA' && (
+            {(task.language === 'JAVA' || task.language === 'C') && (
               <button
                 onClick={handleRegrade}
                 disabled={regrading}
                 className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover disabled:opacity-50"
-                title="このテストケースで既存の提出を再採点します（Java）"
+                title="このテストケースで既存の提出を再採点します（Java / C）"
               >
                 {regrading ? '再採点中...' : '既存の提出を再採点'}
               </button>
