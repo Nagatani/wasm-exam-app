@@ -4,23 +4,39 @@
 
 ## 構成の考え方
 
-運用モードでは **フロントエンドの本番ビルドを `server/` 自身が配信**します（consolidated serving）。APIとフロントを1プロセス・1ポートで扱えるので、リバースプロキシの後ろに `server` を1つ置くだけで済みます。Java実行だけは別に `judge` コンテナが必要です。
+運用モードでは **フロントエンドの本番ビルドを `server/` 自身が配信**します（consolidated serving）。APIとフロントを1プロセス・1ポートで扱えるので、リバースプロキシの後ろに `server` を1つ置くだけで済みます。**運用方法は2通り**あり、違いは実質「`server` をホストで直接動かすか、コンテナで動かすか」だけです。
+
+### 方法A：ホストで `npm start`（これまでどおり・シンプル）
 
 ```
-[ブラウザ] ──► [リバースプロキシ (TLS)] ──► [server (Node, :4000)]
+[ブラウザ] ──► [リバースプロキシ (TLS)] ──► [server (Node, :4000, ホストプロセス)]
                                               ├─ 静的配信: フロント本番ビルド (dist/)
                                               ├─ API: /api/*
                                               └─ ──► [PostgreSQL]
-                                                 ──► [judge コンテナ (127.0.0.1:4001)]  ※Javaのみ
+                                                 ──► [judge コンテナ (127.0.0.1:4001)]  ※Java/C
 ```
+
+`server` がホストの `127.0.0.1:4001` 経由で `judge` に到達する構成上、**`judge` コンテナの外向きネットワーク遮断ができません**（詳細は後述）。手数が少なく、これまでの手順そのままです。
+
+### 方法B：Docker Compose でまとめて実行（`judge` のネットワーク遮断込み）
+
+```
+[ブラウザ] ──► [リバースプロキシ (TLS)] ──► [server コンテナ (:4000)] ──► [外部の managed PostgreSQL]
+                                                    │
+                                                    └─ Dockerの内部ネットワーク限定で ──► [judge コンテナ]（外向き通信不可・ポート非公開）
+```
+
+`server` 自体もコンテナ化して `judge` と同じ Docker 内部ネットワーク（`internal: true`）に載せ、**コンテナ名（`http://judge:8080`）で直接到達**させる構成です。`judge` にはホスト公開ポートが一切不要になるので、`internal: true` にしても壊れません（`127.0.0.1` へのポート公開は Docker Desktop では `internal: true` と共存できないことを実機検証済み——方法Aで `judge` 単体を `internal: true` にできないのはこれが理由です）。手順は「コンテナ化した運用構成」節を参照。
+
+**どちらを選ぶか**：`judge` の外向き通信を遮断したい／したほうが安心なら方法B、シンプルさを優先するなら方法A。両者は排他ではなく、後から切り替えても構いません。
 
 ## 必要なもの
 
-- Node.js **22.12以降**（22.11以下は `npm install` がネイティブ依存を一部スキップし、`build` が失敗することがあります）
+- Node.js **22.12以降**（22.11以下は `npm install` がネイティブ依存を一部スキップし、`build` が失敗することがあります）※方法Bはビルドがコンテナ内で行われるためこの制約を受けません
 - PostgreSQL（本番は管理されたPostgreSQLを推奨。`docker-compose.yml` の `db` は開発用）
-- Docker（`judge` コンテナ用。Java問題を使わないなら不要）
+- Docker（`judge` コンテナ用に必須。方法Bでは `server` もこれでビルド・起動します）
 
-## デプロイ手順
+## デプロイ手順（方法A：ホストで `npm start`）
 
 ```bash
 # 1. 取得・依存インストール
@@ -37,14 +53,14 @@ npm run build:full                              # dist/ を生成し server/ も
 #    PORT=4000
 #    CORS_ORIGIN=https://exam.example.ac.jp      # フロントを配信するオリジン
 #    NODE_ENV=production
-#    JUDGE_URL=http://localhost:4001             # Java を使わないなら空
+#    JUDGE_URL=http://localhost:4001             # Java/C を使わないなら空
 #    JUDGE_CONCURRENCY=3
 #    JUDGE_REQUEST_TIMEOUT_MS=60000
 
 # 4. DB マイグレーションを適用（スキーマ変更なしの適用のみ）
 npm --prefix server run prisma:deploy
 
-# 5. judge コンテナを起動（Java を使う場合）
+# 5. judge コンテナを起動（Java/C を使う場合）
 docker compose up -d judge
 
 # 6. サーバー起動（pm2 / systemd などで常駐させる）
@@ -52,6 +68,38 @@ npm start
 ```
 
 `.env.production` の `VITE_API_BASE_URL` を**空**にするのが要点です。空だとフロントのAPI呼び出しが同一オリジンの相対パス（`/api/...`）になり、どのホスト名で配信しても同じビルドがそのまま動きます。
+
+## デプロイ手順（方法B：コンテナ化した運用構成）
+
+`docker-compose.prod.yml` が `judge`（外向き通信不可・ポート非公開）と `server`（フロント同梱でビルド、そのDockerイメージは `server/Dockerfile`）をまとめて起動します。**`db` サービスはこのファイルにはありません**——本番は managed PostgreSQL 前提のためです。
+
+```bash
+# 1. 取得
+git pull
+
+# 2. サーバーの環境変数（コンテナ用・server/.env ではなく server/.env.prod.docker）
+cp server/.env.prod.docker.example server/.env.prod.docker
+# server/.env.prod.docker を編集：
+#   DATABASE_URL=postgresql://USER:PASS@実際に到達できるホスト:5432/DBNAME
+#   CORS_ORIGIN=https://exam.example.ac.jp
+#   （JUDGE_URL は docker-compose.prod.yml 側が http://judge:8080 に強制するので書かなくてよい）
+
+# 3. DB マイグレーションを適用（server/.env.prod.docker と同じ DATABASE_URL に対して、ホストから実行）
+#    prisma CLI はローカルの Node が必要。一度だけ npm ci / npm --prefix server ci しておく。
+DATABASE_URL=... npm --prefix server run prisma:deploy
+
+# 4. ビルド＋起動（judge と server の両イメージをビルドしてまとめて起動）
+npm run docker:prod
+# 同義: docker compose -f docker-compose.prod.yml up -d --build
+
+# 5. 確認
+curl http://127.0.0.1:4000/health   # {"ok":true}
+docker compose -f docker-compose.prod.yml logs -f server
+```
+
+- リバースプロキシは方法Aと同じく `127.0.0.1:4000` を指してください（`server` コンテナが公開しているポート）。
+- `docker-compose.yml`（方法A・開発用）と `docker-compose.prod.yml`（方法B）は**併用しない**でください。プロジェクト名が同じディレクトリでは共有されるため、両方を同時に `up` すると `judge` コンテナがどちらか片方の定義で上書きされます。切り替えるときは前の構成を `down` してから。
+- `judge/` や `server/` のコードを変更したら `npm run docker:prod`（`--build` 付き）を再実行すれば両方のイメージを再ビルドします。
 
 ## 必須HTTPヘッダー（重要）
 
@@ -71,31 +119,32 @@ Cross-Origin-Embedder-Policy: require-corp
 
 ## judgeサービス（Java・C実行）
 
-- `docker compose up -d judge` で起動。ホストの **`127.0.0.1:4001`** にのみpublishされ、外部には公開されません。`server` は `JUDGE_URL` で到達します。
+- **方法A**（`docker-compose.yml`）：`docker compose up -d judge` で起動。ホストの **`127.0.0.1:4001`** にのみpublishされ、外部には公開されません。`server` は `JUDGE_URL=http://localhost:4001` で到達します。
+- **方法B**（`docker-compose.prod.yml`）：ホスト公開ポートなし。`server` コンテナから Docker 内部ネットワーク経由で `http://judge:8080` に到達します（`JUDGE_URL` は compose 側が自動設定）。
 - `JUDGE_URL` を空にするとJava実行は無効になり、生徒側でJavaの問題は「準備中」表示になります（他言語は影響なし）。
 - **サンドボックスはコンテナ自体**です。`docker-compose.yml` で `cap_drop: ALL` / `read_only` / tmpfs作業領域 / `pids_limit` / `mem_limit` / `cpus` / `no-new-privileges` / 非rootユーザーを設定しています。学生コードのコンパイル・実行はこのコンテナ内でのみ行われ、ホストでは一切実行されません。macOSでもLinuxでもDocker上で同一に動きます。
 - **C 実行（2026-09-11 追加）**：`Judge.java` は `language: "C"` を受け取ると gcc でコンパイル・実行します。現状は**講師の「既存の提出を再採点」からのみ呼ばれ**、生徒の通常の受験フロー（実行プレビュー・最終提出）は従来どおりブラウザ内 `@wasmer/sdk` のままです。C はメモリ上限を `ulimit -v` で緩く保護するのみで、Java の `-Xmx` ほど確実な MLE 検出はできません（`oom` は常に `false` を返します）。
 
-### judge のネットワーク遮断（未対応・既知の制約）
+### judge のネットワーク遮断
 
-`judge` コンテナは `cap_drop: ALL` などでホストへの影響は強く制限されていますが、**外向きのネットワーク通信自体は遮断されていません**（`cap_drop` は `connect()` を止めません）。つまり学生コード（Java・C とも）は理論上コンテナから外部に通信できます。judge コンテナ自体は個人情報を一切持たない（DB に触れない）ためデータ漏洩の実害は小さいですが、クラウド環境のメタデータエンドポイント（例: `169.254.169.254`）へのアクセスなど、踏み台にされるリスクはゼロではありません。
+`judge` コンテナは `cap_drop: ALL` などでホストへの影響は強く制限されていますが、それだけでは**外向きのネットワーク通信は遮断されません**（`cap_drop` は `connect()` を止めません）。つまり学生コード（Java・C とも）は理論上コンテナから外部に通信できます。judge コンテナ自体は個人情報を一切持たない（DB に触れない）ためデータ漏洩の実害は小さいですが、クラウド環境のメタデータエンドポイント（例: `169.254.169.254`）へのアクセスなど、踏み台にされるリスクはゼロではありません。
 
-一度 `docker-compose.yml` の `judge` を `internal: true` の専用ネットワークに載せる案を試しましたが、**Docker Desktop（macOS の開発機）では `internal: true` にすると `ports:` によるホスト→コンテナの公開が効かなくなり**（`127.0.0.1:4001` に接続できなくなる）、開発ワークフローを壊すため差し戻しました。Linux の素の Docker Engine では `internal: true` でも publish は独立して機能するはずですが未検証です。対応する場合の現実的な選択肢：
+**方法Bを使うとこれが解決します。** `docker-compose.prod.yml` の `judge` は `internal: true` の専用ネットワーク（`judge` と `server` だけが所属）に載っており、ホスト公開ポートを一切持ちません。以下は実機で確認済みの性質です（2026-09-11）：
 
-- **本番（Linux）限定で `internal: true` を追加**：`docker-compose.yml` を環境ごとに分ける（例 `docker-compose.prod.yml` で override）か、Linux では動作確認の上で有効化する。macOS の開発用ファイルには入れない。
-- **ホスト側ファイアウォールで judge コンテナのブリッジ網からの outbound を落とす**（例 `iptables -I DOCKER-USER -s <judgeのブリッジsubnet> ! -d <server/db> -j DROP` 相当）。コンテナ再作成後も有効で、Linux 本番向けの現実的な手段。
-- 現状は「受け入れて監視する」：judge のログ・リソース使用量を見ておき、対応は必要になった時点で行う。
+- `judge` コンテナ内から外部ホストへの接続は **DNS解決・素のIP接続のどちらも失敗**（`wget`: `Temporary failure in name resolution` / `Network is unreachable`）。
+- 同じ内部ネットワーク上の `server` コンテナからは `http://judge:8080` に正常に到達（コンテナ間通信は `internal: true` でも機能する——ホスト向けの `ports:` 公開だけが Docker Desktop で機能しなくなる、というのが元の問題でした）。
+- `server` コンテナ自身は別途 `public` ネットワークにも所属しており、外部の PostgreSQL・インターネットへは通常どおり到達可能（`server` は信頼できる自前コードなので遮断する理由がありません）。
 
-方針が決まったら本項と `docker-compose.yml` の該当コメントを更新してください。
+方法A（`docker-compose.yml` を host-run `server` と併用する構成）のまま `judge` だけを `internal: true` にすることは**できません**——`server` がホストプロセスである以上、`judge` は必ずホストへポートを公開する必要があり、それ自体が `internal: true` と両立しないためです。この構成のまま遮断したい場合は、代わりにホスト側ファイアウォールで judge コンテナのブリッジ網からの outbound を落とす手があります（例 `iptables -I DOCKER-USER -s <judgeのブリッジsubnet> ! -d <server/db> -j DROP` 相当。コンテナ再作成後も有効で Linux 限定）。
 
 - 負荷制御:
   - `JUDGE_CONCURRENCY`（`server` 側、既定3）… サーバーが同時にjudgeへ投げる最大数
   - ユーザーあたり同時1ジョブ（超過リクエストは即429）
   - `JUDGE_MAX_CONCURRENT`（`judge` コンテナ側、`docker-compose.yml` の環境変数、既定2）… コンテナ内の同時コンパイル・実行数の上限
   - `JUDGE_REQUEST_TIMEOUT_MS`（`server` → judgeの1リクエスト全体のタイムアウト）
-- `judge/` のコード（`Judge.java` / `Dockerfile`）を変更したら `docker compose build judge` で再ビルドしてから `up -d`。
-- ログ: `docker compose logs -f judge`
-- ヘルスチェック: `curl http://localhost:4001/health` → `{"ok":true}`
+- `judge/` のコード（`Judge.java` / `Dockerfile`）を変更したら、方法Aなら `docker compose build judge && docker compose up -d judge`、方法Bなら `npm run docker:prod` で再ビルド。
+- ログ: 方法A `docker compose logs -f judge` ／ 方法B `docker compose -f docker-compose.prod.yml logs -f judge`
+- ヘルスチェック: 方法A `curl http://localhost:4001/health` → `{"ok":true}`。方法Bはホストから直接は叩けません（`judge` にホスト公開ポートがないため）——`docker compose -f docker-compose.prod.yml exec server node -e "fetch('http://judge:8080/health').then(r=>r.text()).then(console.log)"` のように `server` コンテナ経由で確認してください。
 - スケール注意: `server` 側の同時実行制御は**単一プロセス前提の簡易セマフォ**です。`server` を複数インスタンスで動かす場合、全体の同時実行は「インスタンス数 × `JUDGE_CONCURRENCY`」になります。judge側の `JUDGE_MAX_CONCURRENT` とコンテナのリソース上限で頭打ちにしてください。
 
 ## クライアントランタイムの配信・キャッシュ（一斉受験対策）
@@ -124,6 +173,8 @@ C（clang ツールチェイン、初回 ~106MB）と Python（Pyodide、初回 
 
 ## アップグレード
 
+**方法A（ホストで `npm start`）**
+
 ```bash
 git pull
 npm ci && npm --prefix server ci
@@ -131,6 +182,14 @@ npm --prefix server run prisma:deploy
 npm run build:full
 # server を再起動（pm2 restart / systemctl restart ...）
 docker compose build judge && docker compose up -d judge   # judge/ に変更があったとき
+```
+
+**方法B（コンテナ化した運用構成）**
+
+```bash
+git pull
+DATABASE_URL=... npm --prefix server run prisma:deploy   # server/.env.prod.docker と同じ接続先に対して
+npm run docker:prod                                       # judge・server 両イメージを再ビルドして再起動
 ```
 
 `prisma:deploy` は未適用のマイグレーションを順に流すだけで、スキーマドリフトのプロンプトは出ません。適用状況は `npm --prefix server run prisma:migrate -- status`（または `npx prisma migrate status`）で確認できます。
@@ -148,3 +207,5 @@ docker compose build judge && docker compose up -d judge   # judge/ に変更が
 | マイグレーションのドリフト警告 | `npx prisma migrate status`（`server/` 内）で状態確認 → `prisma:deploy` |
 | Pythonの初回ロードが極端に遅い / 失敗 | `PYODIDE_BASE_URL`（jsDelivr）への到達性。学内制限があれば自ホストへ切り替え |
 | 提出したのに成績に出ない | その試験が「公開中」か。成績は最新提出のみ表示。生徒が別アカウントで受けていないか |
+| 方法Bで `server` コンテナが `judge` に繋がらない | `docker-compose.prod.yml` を単独で（`docker-compose.yml` と混ぜずに）`up` したか確認。`docker compose -f docker-compose.prod.yml ps` で両方 `Up` か、`server` コンテナ内から `http://judge:8080/health` に到達できるかを確認（上の judgeサービス節のコマンド） |
+| 方法Bで `docker build` が `Module has no exported member` 系のTSエラーで失敗する | `server/Dockerfile` は `prisma generate` を `tsc` より前に実行する必要があります（`src/**/*.ts` が生成型に依存するため）。Dockerfile を独自に編集した場合はこの順序を崩さないでください |

@@ -1,0 +1,20 @@
+# Keeps the server/Dockerfile build context (repo root) small and avoids ever
+# sending secrets/local state into an image layer, even though the Dockerfile
+# only COPYs specific paths anyway.
+node_modules
+server/node_modules
+server/dist
+server/generated
+dist
+dist-ssr
+.git
+.env
+.env.*
+!.env.example
+!.env.production.example
+!server/.env.example
+!server/.env.prod.docker.example
+*.log
+.DS_Store
+legacy
+judge

@@ -18,11 +18,15 @@ services:
   # scratch, capped process count / memory / CPU. Reached only by the app
   # server over loopback (JUDGE_URL), never exposed publicly.
   #
-  # NOTE: this does NOT block outbound network access from student code
-  # running inside — see docs/operations.md "judge のネットワーク遮断（未対応）"
-  # for why a compose-level `internal: true` network was tried and reverted
-  # (it breaks the host->container published port on Docker Desktop) and what
-  # the options are.
+  # NOTE: this dev/two-terminal setup does NOT block judge's own outbound
+  # network access (cap_drop/read_only/tmpfs don't stop connect()) — a
+  # published loopback port is required here so a host-run `server` can reach
+  # it. For a deployment where that matters, use docker-compose.prod.yml
+  # instead: it containerizes `server` too and puts it on the same
+  # Docker-internal network as `judge`, so judge needs no published port at
+  # all and can be given `internal: true` (verified: this — not the network
+  # flag alone — is what actually blocks egress without depending on the
+  # Docker flavor). See docs/operations.md "コンテナ化した運用構成".
   judge:
     build: ./judge
     restart: unless-stopped

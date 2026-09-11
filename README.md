@@ -21,8 +21,8 @@
 - フェーズ1〜5（認証・講師用試験管理・実行サンドボックス・受験フロー・成績ダッシュボード / CSV出力）完了
 - 多言語対応（1問1言語・生徒に言語選択なし / Javaサーバーサイドjudge / JS・TS・Pythonクライアントサイド）完了
 - 提出モデルの刷新（2026-09-10）完了 — 設問ごとは「下書き保存」、試験全体で1回「最終提出」して採点。受験可能回数を講師が設定（既定1回 / 無制限可）、成績は最後に提出した回。時間切れは自動提出
-- フェーズ6の一部完了 — Cの10秒実行時間制限、`TLE`/`MLE` の独立判定、解答例でテストケースを検証、サンプルの差分表示、コンパイルエラーのエディタ表示、成績画面から提出コード閲覧、問題ごとの出力比較モード（完全一致 / 行末空白無視 / 空行無視 / 数値許容誤差）、試験の公開開始・受付終了日時、問題の複製・テストケース一括追加、クラス（受講者名簿）管理と試験のクラス紐付け、生徒アカウントの一括作成（初期パスワード発行・印刷）、実行環境の準備状況カード、公開前チェック、サービス状態表示・教員昇格フォーム、個別の時間延長（配慮対応）、**judgeへのC実行経路の追加とJava/Cの既存提出の再採点**（生徒の通常の受験フローに変更なし。詳細は [`docs/roadmap.md`](./docs/roadmap.md) §3）
-- 残り（分かりやすいエラーフィードバック、judgeのJS/TS/Python対応、judgeのネットワーク遮断、問題バンクほか）は [`docs/roadmap.md`](./docs/roadmap.md)
+- フェーズ6の一部完了 — Cの10秒実行時間制限、`TLE`/`MLE` の独立判定、解答例でテストケースを検証、サンプルの差分表示、コンパイルエラーのエディタ表示、成績画面から提出コード閲覧、問題ごとの出力比較モード（完全一致 / 行末空白無視 / 空行無視 / 数値許容誤差）、試験の公開開始・受付終了日時、問題の複製・テストケース一括追加、クラス（受講者名簿）管理と試験のクラス紐付け、生徒アカウントの一括作成（初期パスワード発行・印刷）、実行環境の準備状況カード、公開前チェック、サービス状態表示・教員昇格フォーム、個別の時間延長（配慮対応）、judge への C 実行経路の追加と Java/C の既存提出の再採点（生徒の通常の受験フローに変更なし）、**judge のネットワーク遮断**（`server` をコンテナ化して `judge` と同じ内部ネットワークに置く運用構成 `docker-compose.prod.yml` を追加。詳細は [`docs/operations.md`](./docs/operations.md)・[`docs/roadmap.md`](./docs/roadmap.md) §3）
+- 残り（分かりやすいエラーフィードバック、judgeのJS/TS/Python対応、問題バンクほか）は [`docs/roadmap.md`](./docs/roadmap.md)
 - **マイグレーションの適用が必要**: `20260910120000_add_attempt_lifecycle` / `20260910130000_comparison_mode_and_schedule` / `20260911090000_courses_enrollments` / `20260911100000_student_provisioning` / `20260911110000_exam_time_extension`（`npm --prefix server run prisma:migrate`）。**今回の judge C対応にスキーマ変更はありません**が、`judge/Dockerfile` を変更したので `docker compose build judge` の再ビルドが必要です
 
 設計判断の背景は [`CLAUDE.md`](./CLAUDE.md)を参照してください。
@@ -31,13 +31,16 @@
 
 ```
 .
-├── src/                  # フロントエンド (React + Vite + TypeScript + Tailwind CSS v4)
-│   └── runner/           # 各言語のクライアントサイド実行ランナー
-├── server/               # バックエンド (Express + TypeScript + Prisma + PostgreSQL)
-├── judge/                # Java 用サンドボックス実行サービス (Docker, 単一ファイルの Judge.java)
-├── docker-compose.yml    # ローカル用 PostgreSQL + judge サービス
-├── docs/                 # 利用ドキュメント
-└── legacy/               # 初期モックプロトタイプ（参考用、未使用）
+├── src/                       # フロントエンド (React + Vite + TypeScript + Tailwind CSS v4)
+│   └── runner/                # 各言語のクライアントサイド実行ランナー
+├── server/                    # バックエンド (Express + TypeScript + Prisma + PostgreSQL)
+│   ├── Dockerfile             # server をコンテナ化する場合のビルド定義（運用時・コンテナ構成用）
+│   └── .env.prod.docker.example  # ↑ 用の環境変数サンプル
+├── judge/                     # Java・C 用サンドボックス実行サービス (Docker, 単一ファイルの Judge.java)
+├── docker-compose.yml         # 開発用：ローカル PostgreSQL + judge サービス
+├── docker-compose.prod.yml    # 運用時・コンテナ構成用：judge（内部ネットワークのみ）+ server
+├── docs/                      # 利用ドキュメント
+└── legacy/                    # 初期モックプロトタイプ（参考用、未使用）
 ```
 
 ## 必要環境
@@ -95,7 +98,16 @@ docker compose up -d db judge
 npm start                                     # http://localhost:4000 で配信 + API
 ```
 
-詳細（本番でのリバースプロキシ設定・必須HTTPヘッダー・judgeの運用）は **[`docs/operations.md`](./docs/operations.md)** を参照してください。
+### 運用時（コンテナでまとめて実行・judgeのネットワーク遮断つき）
+
+`server` 自体もコンテナ化し、`judge` と同じ Docker 内部ネットワークに閉じ込める構成です。上の「1コマンド・1プロセス」と違い、`judge` コンテナに外向き通信をさせない構成にできます（ホスト公開ポートを持たないため）。DBは本番同様、外部の PostgreSQL を使います。
+
+```bash
+cp server/.env.prod.docker.example server/.env.prod.docker   # 初回のみ、DATABASE_URL等を編集
+npm run docker:prod                                            # judge・server をビルドして起動
+```
+
+どちらを使うかを含む詳細（本番でのリバースプロキシ設定・必須HTTPヘッダー・judgeの運用）は **[`docs/operations.md`](./docs/operations.md)** を参照してください。
 
 ## 最初の講師アカウントの作成
 
@@ -118,6 +130,7 @@ docker exec wasm-exam-app-db-1 psql -U wasm_exam -d wasm_exam \
 | `npm run build` | 型チェック + 本番ビルド |
 | `npm run build:full` | フロントエンド本番ビルド + サーバービルド |
 | `npm start` | ビルド済みサーバーを起動（フロントエンド配信 + APIを1プロセスで） |
+| `npm run docker:prod` | `judge`・`server` をコンテナでビルド・起動（`docker-compose.prod.yml`、judgeのネットワーク遮断つき） |
 | `npm run lint` | oxlintによる静的解析 |
 | `npm run preview` | 本番ビルドをローカルでプレビュー |
 
@@ -135,10 +148,14 @@ docker exec wasm-exam-app-db-1 psql -U wasm_exam -d wasm_exam \
 
 | コマンド | 内容 |
 |---|---|
-| `docker compose up -d db judge` | PostgreSQLとJava judgeを起動 |
+| `docker compose up -d db judge` | 開発用：PostgreSQLとjudgeを起動 |
 | `docker compose ps` | コンテナの稼働状況 |
 | `docker compose logs -f judge` | judgeのログ |
 | `docker compose build judge` | `judge/` を変更したときの再ビルド |
+| `docker compose -f docker-compose.prod.yml up -d --build`（= `npm run docker:prod`） | 運用時・コンテナ構成：judge・server をビルドして起動 |
+| `docker compose -f docker-compose.prod.yml ps` / `logs -f server` | ↑ の稼働状況・ログ |
+
+`docker-compose.yml`（開発用）と `docker-compose.prod.yml`（運用時・コンテナ構成）は同時に使わないでください。詳細は [`docs/operations.md`](./docs/operations.md)。
 
 ## ドキュメント一覧
 

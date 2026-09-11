@@ -1,0 +1,87 @@
+# Containerized operational deployment — an alternative to `npm start` on the
+# host (docs/operations.md still documents that simpler path too; this one
+# exists specifically to close a real gap: `judge` compiles and runs
+# untrusted student code but its outbound network access was never blocked
+# ("cap_drop"/"read_only"/tmpfs don't stop connect()). A compose-level
+# `internal: true` network on `judge` alone breaks its host-published port
+# **on Docker Desktop** (verified 2026-09-11 — connection refused), which
+# would silently break the docker-compose.yml dev workflow if applied there.
+# Containerizing `server` and putting it on the same internal network as
+# `judge` sidesteps that: `server` reaches `judge` by container name
+# (http://judge:8080) over Docker's own inter-container networking, which
+# does NOT go through the host-port-publish path that broke — verified
+# working on Docker Desktop, and expected to behave the same on Linux Docker
+# Engine since it's a different mechanism entirely. `judge` gets no published
+# port at all here — nothing but `server` can reach it, and it has no route
+# out.
+#
+# This file is deliberately self-contained (not a docker-compose.yml
+# override) so each topology reads as one coherent whole — the two files
+# intentionally are NOT meant to be combined with `-f`.
+#
+# Usage:
+#   cp server/.env.prod.docker.example server/.env.prod.docker   # once, then edit
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Production DB: this stack has no `db` service — docs/operations.md already
+# recommends a managed PostgreSQL for production, not the docker-compose.yml
+# `db` (that one's a dev-only named-volume Postgres). Point DATABASE_URL in
+# server/.env.prod.docker at your real instance; `server` reaches it over the
+# `public` network below (which has a normal outbound route), not `internal`.
+
+services:
+  judge:
+    build: ./judge
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    mem_limit: 1g
+    cpus: 2.0
+    tmpfs:
+      # `exec` on /work: a compiled C binary must be exec()able from wherever
+      # gcc wrote it — Docker tmpfs is `noexec` by default. See judge/Judge.java
+      # / CLAUDE.md "Server-side judge" for the story (found by testing the
+      # real build, not by inspection).
+      - /work:size=192m,mode=1777,exec
+      - /tmp:size=64m,mode=1777
+    environment:
+      JUDGE_MAX_CONCURRENT: '2'
+    networks:
+      - internal
+    # No `ports:` on purpose — see the file-level comment above.
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - server/.env.prod.docker
+    environment:
+      # Reached by Docker service-name DNS on the `internal` network, not a
+      # published port — keep this in sync if you ever rename the service
+      # above. Anything set for JUDGE_URL in server/.env.prod.docker is
+      # overridden by this.
+      JUDGE_URL: http://judge:8080
+    ports:
+      - '4000:4000'
+    networks:
+      - internal
+      - public
+    depends_on:
+      - judge
+
+networks:
+  # No default gateway to the outside world — `judge` lives only here, so it
+  # cannot make outbound network calls. `server` is dual-homed: this network
+  # to reach `judge`, `public` for everything else.
+  internal:
+    internal: true
+  # A normal bridge network: outbound routing (to the managed database, etc.)
+  # and the published port a host-level reverse proxy connects to.
+  public:
