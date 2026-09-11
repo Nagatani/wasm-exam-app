@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { updateTestCase, deleteTestCase } from '../api/tasks';
 import type { TestCase } from '../types/exam';
 
@@ -9,13 +9,34 @@ interface TestCaseRowProps {
   testCase: TestCase;
   onUpdated: (testCase: TestCase) => void;
   onDeleted: (id: string) => void;
+  // Reports this row's own unsaved-changes state up to the parent, which
+  // aggregates every independently-saved section (task form / each test case
+  // row / solution editor) into one page-level "未保存の変更" summary — see
+  // TaskEditorPage's dirtyTestCases.
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
-export function TestCaseRow({ testCase, onUpdated, onDeleted }: TestCaseRowProps) {
+export function TestCaseRow({ testCase, onUpdated, onDeleted, onDirtyChange }: TestCaseRowProps) {
   const [input, setInput] = useState(testCase.input);
   const [expectedOutput, setExpectedOutput] = useState(testCase.expectedOutput);
   const [isSample, setIsSample] = useState(testCase.isSample);
   const [saving, setSaving] = useState(false);
+
+  const dirty =
+    input !== testCase.input ||
+    expectedOutput !== testCase.expectedOutput ||
+    isSample !== testCase.isSample;
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dirty]);
+  // Clear this row's dirty flag from the parent's aggregate when the row goes
+  // away (e.g. deleted), not just when it becomes clean.
+  useEffect(() => {
+    return () => onDirtyChange?.(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleSave() {
     setSaving(true);
@@ -68,13 +89,16 @@ export function TestCaseRow({ testCase, onUpdated, onDeleted }: TestCaseRowProps
           />
           サンプルとして生徒に表示する
         </label>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {dirty && (
+            <span className="text-xs font-bold text-mp-orange">● 未保存</span>
+          )}
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || !dirty}
             className="rounded border border-mp-border bg-mp-surface-hover px-3 py-1 text-sm hover:opacity-90 disabled:opacity-50"
           >
-            {saving ? '保存中...' : '保存'}
+            {saving ? '保存中...' : 'このテストケースを保存'}
           </button>
           <button
             onClick={handleDelete}

@@ -113,6 +113,22 @@ export function TaskEditorPage() {
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [regrading, setRegrading] = useState(false);
   const [regradeMsg, setRegradeMsg] = useState<string | null>(null);
+  // This page has three independently-saved sections (basic info / each test
+  // case row / the reference solution) — each aggregated here so one banner
+  // can show every unsaved section at once instead of leaving the teacher to
+  // notice a missed "保存" click on a section they've scrolled away from.
+  const [dirtyTestCaseIds, setDirtyTestCaseIds] = useState<Set<string>>(new Set());
+  const [solutionDirty, setSolutionDirty] = useState(false);
+
+  function handleTestCaseDirtyChange(id: string, dirty: boolean) {
+    setDirtyTestCaseIds((prev) => {
+      if (dirty === prev.has(id)) return prev;
+      const next = new Set(prev);
+      if (dirty) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
 
   async function load() {
     if (!taskId) return;
@@ -321,8 +337,14 @@ export function TaskEditorPage() {
     }
   }
 
-  const dirty = task ? taskFormKey(task) !== savedSnapshotRef.current : false;
-  useUnsavedGuard(dirty);
+  const basicInfoDirty = task ? taskFormKey(task) !== savedSnapshotRef.current : false;
+  const anyDirty = basicInfoDirty || dirtyTestCaseIds.size > 0 || solutionDirty;
+  useUnsavedGuard(anyDirty);
+
+  const unsavedSections: string[] = [];
+  if (basicInfoDirty) unsavedSections.push('基本情報');
+  if (dirtyTestCaseIds.size > 0) unsavedSections.push(`テストケース（${dirtyTestCaseIds.size}件）`);
+  if (solutionDirty) unsavedSections.push('解答例コード');
 
   if (loading) {
     return <PageSkeleton />;
@@ -340,10 +362,23 @@ export function TaskEditorPage() {
     <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
       <BackHeader to={`/teacher/exams/${examId}`} label="試験詳細に戻る" />
 
+      {/* This page has 3 independently-saved sections (below); this banner is
+          the one place that shows every unsaved one at once, so a save click
+          in one section is never mistaken for saving another. */}
+      {unsavedSections.length > 0 && (
+        <div className="mb-4 rounded border border-mp-orange bg-mp-orange/10 px-3 py-2 text-sm font-bold text-mp-orange">
+          ● 未保存の変更があります： {unsavedSections.join('、')}
+        </div>
+      )}
+
       <form
         onSubmit={handleSave}
         className="mb-6 rounded-lg border border-mp-border bg-mp-surface p-4"
       >
+        <h2 className="mb-3 text-sm font-bold text-mp-muted">
+          基本情報（タイトル・配点・言語・問題文・初期テンプレート）
+        </h2>
+
         <label className="mb-1 block text-sm text-mp-muted" htmlFor="task-title">
           タイトル
         </label>
@@ -523,10 +558,10 @@ export function TaskEditorPage() {
         <div className="flex items-center gap-3">
           <button
             type="submit"
-            disabled={saving || !dirty}
+            disabled={saving || !basicInfoDirty}
             className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
           >
-            {saving ? '保存中...' : '保存'}
+            {saving ? '保存中...' : '基本情報を保存'}
           </button>
           <button
             type="button"
@@ -535,8 +570,8 @@ export function TaskEditorPage() {
           >
             問題を削除
           </button>
-          {dirty ? (
-            <span className="text-xs font-bold text-mp-orange">● 未保存の変更があります</span>
+          {basicInfoDirty ? (
+            <span className="text-xs font-bold text-mp-orange">● 未保存</span>
           ) : savedFlash ? (
             <span className="text-xs font-bold text-mp-green">保存しました</span>
           ) : null}
@@ -545,7 +580,12 @@ export function TaskEditorPage() {
 
       <div className="mb-6">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-bold">テストケース</h2>
+          <div>
+            <h2 className="text-lg font-bold">テストケース</h2>
+            <p className="text-xs text-mp-muted">
+              各行は「このテストケースを保存」で個別に保存されます（基本情報とは別）。
+            </p>
+          </div>
           <div className="flex flex-wrap gap-2">
             {(task.language === 'JAVA' || task.language === 'C') && (
               <button
@@ -603,6 +643,7 @@ export function TaskEditorPage() {
                   prev ? { ...prev, testCases: prev.testCases.filter((t) => t.id !== id) } : prev,
                 )
               }
+              onDirtyChange={(dirty) => handleTestCaseDirtyChange(tc.id, dirty)}
             />
           ))}
         </div>
@@ -616,6 +657,7 @@ export function TaskEditorPage() {
         canCheck={task.testCases.length > 0}
         checking={checking}
         onRunCheck={runSolutionCheck}
+        onDirtyChange={setSolutionDirty}
       />
 
       {(checkRows || checkError) && (
@@ -762,8 +804,8 @@ function findSolution(task: TaskDetail, language: Language): string {
 }
 
 // The teacher-only reference solution for this task's language, with its own
-// "保存" button — saved separately from the task metadata form. Also drives
-// "解答例でテストケースを検証" (results are rendered by the parent).
+// "解答例を保存" button — saved separately from the task metadata form. Also
+// drives "解答例でテストケースを検証" (results are rendered by the parent).
 function SolutionEditor({
   taskId,
   language,
@@ -771,6 +813,7 @@ function SolutionEditor({
   canCheck,
   checking,
   onRunCheck,
+  onDirtyChange,
 }: {
   taskId: string;
   language: Language;
@@ -778,15 +821,32 @@ function SolutionEditor({
   canCheck: boolean;
   checking: boolean;
   onRunCheck: (code: string) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [code, setCode] = useState(initialCode);
+  // Tracked separately from `initialCode` (a prop that only changes on a full
+  // task reload) so dirty correctly clears right after a successful save,
+  // not just after the page is reloaded.
+  const [savedCode, setSavedCode] = useState(initialCode);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  const dirty = code !== savedCode;
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dirty]);
+  useEffect(() => {
+    return () => onDirtyChange?.(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleSave() {
     setSaving(true);
     try {
       await upsertSolution(taskId, language, code);
+      setSavedCode(code);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } finally {
@@ -810,12 +870,13 @@ function SolutionEditor({
         />
       </div>
       <div className="flex flex-wrap items-center gap-2">
+        {dirty && <span className="text-xs font-bold text-mp-orange">● 未保存</span>}
         <button
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || !dirty}
           className="rounded border border-mp-border bg-mp-surface-hover px-3 py-1.5 text-sm hover:opacity-90 disabled:opacity-50"
         >
-          {saving ? '保存中...' : saved ? '保存しました' : '保存'}
+          {saving ? '保存中...' : saved ? '保存しました' : '解答例を保存'}
         </button>
         <button
           onClick={() => onRunCheck(code)}
