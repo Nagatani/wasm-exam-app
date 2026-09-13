@@ -8,6 +8,7 @@ import { isRegradeCapable, isServerExec, judgeInputFromContainer, judgeLanguage 
 import { isJudgeConfigured, runOnJudge, JudgeError } from '../lib/judgeClient';
 import { withJudgeSlot, QueueRejectedError } from '../lib/executionQueue';
 import { judgeSubmission } from '../lib/judge';
+import { PORTABLE_TASK_FORMAT } from '../lib/taskPortable';
 
 export const tasksRouter = Router();
 
@@ -28,6 +29,9 @@ const taskUpdateSchema = z.object({
     .optional(),
   floatTolerance: z.number().positive().optional(),
   allowPartialCredit: z.boolean().optional(),
+  // Task-bank fields — free-form labels + the public/private discovery flag.
+  tags: z.array(z.string().min(1).max(40)).max(20).optional(),
+  isPublic: z.boolean().optional(),
 });
 
 const testCaseInputSchema = z.object({
@@ -58,6 +62,55 @@ tasksRouter.get('/:taskId', async (req, res) => {
   }
 
   res.json({ task });
+});
+
+// Portable JSON download — statement, test cases, reference solutions, same
+// content `duplicate` copies, but as a file a teacher can move between exam
+// instances / share outside the shared task bank (which only ever works
+// within one server). See ../lib/taskPortable.ts for the shape.
+tasksRouter.get('/:taskId/export', async (req, res) => {
+  const task = await prisma.task.findUnique({
+    where: { id: req.params.taskId },
+    include: { testCases: { orderBy: { order: 'asc' } }, solutions: true },
+  });
+  if (!task) {
+    res.status(404).json({ error: '問題が見つかりません。' });
+    return;
+  }
+
+  const payload = {
+    format: PORTABLE_TASK_FORMAT,
+    tasks: [
+      {
+        title: task.title,
+        statementMarkdown: task.statementMarkdown,
+        language: task.language,
+        starterCode: task.starterCode,
+        points: task.points,
+        comparisonMode: task.comparisonMode,
+        floatTolerance: task.floatTolerance,
+        allowPartialCredit: task.allowPartialCredit,
+        tags: task.tags,
+        testCases: task.testCases.map((tc) => ({
+          input: tc.input,
+          expectedOutput: tc.expectedOutput,
+          isSample: tc.isSample,
+          order: tc.order,
+          timeLimitMs: tc.timeLimitMs,
+          memoryLimitMb: tc.memoryLimitMb,
+        })),
+        solutions: task.solutions.map((s) => ({ language: s.language, code: s.code })),
+      },
+    ],
+  };
+
+  const safeName = task.title.replace(/[\\/:*?"<>|]/g, '_').slice(0, 80) || 'task';
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="task.json"; filename*=UTF-8''${encodeURIComponent(`${safeName}.json`)}`,
+  );
+  res.send(JSON.stringify(payload, null, 2));
 });
 
 tasksRouter.patch('/:taskId', async (req, res) => {
