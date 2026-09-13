@@ -11,7 +11,9 @@ import {
   upsertSolution,
   checkSolution,
   regradeTask,
+  exportTask,
 } from '../api/tasks';
+import { getTaskBankTags } from '../api/taskBank';
 import { ApiError } from '../api/client';
 import { uploadTaskImage } from '../api/uploads';
 import type { ComparisonMode, Language, TaskDetail } from '../types/exam';
@@ -90,7 +92,13 @@ function taskFormKey(t: TaskDetail): string {
     comparisonMode: t.comparisonMode,
     floatTolerance: t.floatTolerance,
     allowPartialCredit: t.allowPartialCredit,
+    tags: t.tags,
+    isPublic: t.isPublic,
   });
+}
+
+function parseTagsInput(text: string): string[] {
+  return [...new Set(text.split(',').map((t) => t.trim()).filter(Boolean))];
 }
 
 export function TaskEditorPage() {
@@ -130,6 +138,21 @@ export function TaskEditorPage() {
   // notice a missed "保存" click on a section they've scrolled away from.
   const [dirtyTestCaseIds, setDirtyTestCaseIds] = useState<Set<string>>(new Set());
   const [solutionDirty, setSolutionDirty] = useState(false);
+  // Task-bank fields. `tagsText` is the raw comma-separated input the teacher
+  // is typing — kept separate from `task.tags` (the parsed array actually
+  // saved) so an in-progress "abc, " doesn't get silently collapsed mid-edit.
+  const [tagsText, setTagsText] = useState('');
+  const [bankTags, setBankTags] = useState<string[]>([]);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getTaskBankTags()
+      .then(({ tags }) => setBankTags(tags))
+      .catch(() => {
+        /* autocomplete suggestions are a nicety, not worth surfacing an error for */
+      });
+  }, []);
 
   function handleTestCaseDirtyChange(id: string, dirty: boolean) {
     setDirtyTestCaseIds((prev) => {
@@ -147,6 +170,7 @@ export function TaskEditorPage() {
     try {
       const { task } = await getTask(taskId);
       savedSnapshotRef.current = taskFormKey(task);
+      setTagsText(task.tags.join(', '));
       // Pre-fill the starter-code field with the language's skeleton when the
       // task has none yet (leaves the form marked "未保存" so the teacher saves it).
       if (!task.starterCode || task.starterCode.trim() === '') {
@@ -182,12 +206,15 @@ export function TaskEditorPage() {
         comparisonMode: task.comparisonMode,
         floatTolerance: task.floatTolerance,
         allowPartialCredit: task.allowPartialCredit,
+        tags: task.tags,
+        isPublic: task.isPublic,
       });
       setTask((prev) => {
         const next = prev ? { ...prev, ...updated } : prev;
         if (next) savedSnapshotRef.current = taskFormKey(next);
         return next;
       });
+      setTagsText(updated.tags.join(', '));
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2000);
     } catch (err) {
@@ -202,6 +229,19 @@ export function TaskEditorPage() {
     if (!confirm(`「${task.title}」を削除します。よろしいですか？`)) return;
     await deleteTask(task.id);
     navigate(`/teacher/exams/${examId}`);
+  }
+
+  async function handleExport() {
+    if (!task) return;
+    setExporting(true);
+    setExportError(null);
+    try {
+      await exportTask(task.id);
+    } catch (err) {
+      setExportError(err instanceof ApiError ? err.message : 'エクスポートに失敗しました。');
+    } finally {
+      setExporting(false);
+    }
   }
 
   async function handleAddTestCase() {
@@ -576,6 +616,44 @@ export function TaskEditorPage() {
           </div>
         </div>
 
+        <div className="mb-3 flex flex-wrap items-end gap-4">
+          <div className="min-w-64 flex-1">
+            <label className="mb-1 block text-sm text-mp-muted" htmlFor="task-tags">
+              タグ（カンマ区切り）
+            </label>
+            <input
+              id="task-tags"
+              type="text"
+              list="task-bank-tag-suggestions"
+              className={inputClass}
+              value={tagsText}
+              placeholder="例: 再帰, 文字列"
+              onChange={(e) => {
+                setTagsText(e.target.value);
+                setTask({ ...task, tags: parseTagsInput(e.target.value) });
+              }}
+            />
+            <datalist id="task-bank-tag-suggestions">
+              {bankTags.map((tag) => (
+                <option key={tag} value={tag} />
+              ))}
+            </datalist>
+          </div>
+          <div>
+            <label className="mb-1 flex items-center gap-2 text-sm text-mp-muted">
+              <input
+                type="checkbox"
+                checked={task.isPublic}
+                onChange={(e) => setTask({ ...task, isPublic: e.target.checked })}
+              />
+              問題バンクで公開する
+            </label>
+            <p className="text-xs text-mp-muted">
+              オンにすると他の教師の問題バンク検索にも表示されます（既定は自分だけに表示）。
+            </p>
+          </div>
+        </div>
+
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
           <label className="block text-sm text-mp-muted" htmlFor="task-statement">
             問題文（Markdown）
@@ -662,6 +740,7 @@ export function TaskEditorPage() {
         </div>
 
         {error && <p className="mb-3 text-sm text-mp-red">{error}</p>}
+        {exportError && <p className="mb-3 text-sm text-mp-red">{exportError}</p>}
 
         <div className="flex items-center gap-3">
           <button
@@ -670,6 +749,14 @@ export function TaskEditorPage() {
             className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
           >
             {saving ? '保存中...' : '基本情報を保存'}
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exporting}
+            className="rounded border border-mp-border bg-mp-surface px-4 py-2 font-bold hover:bg-mp-surface-hover disabled:opacity-50"
+          >
+            {exporting ? 'エクスポート中...' : 'エクスポート'}
           </button>
           <button
             type="button"

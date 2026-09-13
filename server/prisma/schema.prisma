@@ -242,6 +242,18 @@ model Task {
   // test cases that passed (rounded to the nearest point) instead of
   // all-or-nothing on a clean AC. Still 0 on a compile error — nothing ran.
   allowPartialCredit Boolean @default(false)
+  // Free-form labels for the task bank's search/filter UI (e.g. "再帰",
+  // "文字列"). No separate Tag model — a scalar array keeps authoring
+  // frictionless; the bank offers autocomplete from tags already in use
+  // rather than a managed taxonomy.
+  tags             String[] @default([])
+  // Task-bank visibility. Private (default): only visible in the bank to the
+  // teacher who owns this task's exam (`exam.createdById`). Public: visible
+  // to every teacher's bank search/duplicate-into-exam flow. This is a
+  // *discovery* boundary only, not an access-control one — it doesn't change
+  // who can open the exam/task directly, matching this app's existing
+  // "any teacher can edit any exam" admin-console model (see CLAUDE.md).
+  isPublic         Boolean  @default(false)
   createdAt        DateTime @default(now())
 
   exam        Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
