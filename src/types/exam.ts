@@ -78,10 +78,35 @@ export interface TaskDetail {
   // (sample + hidden) that passed, rounded to the nearest point — instead of
   // all-or-nothing on a clean AC. Still 0 on a compile error.
   allowPartialCredit: boolean;
+  // Task-bank fields: free-form labels + whether other teachers can find this
+  // task via the shared bank search (a discovery flag, not access control —
+  // see CLAUDE.md).
+  tags: string[];
+  isPublic: boolean;
   createdAt: string;
   testCases: TestCase[];
   solutions: Solution[];
 }
+
+// One row in a GET /api/task-bank search result.
+export interface TaskBankEntry {
+  id: string;
+  title: string;
+  language: Language;
+  points: number;
+  tags: string[];
+  isPublic: boolean;
+  testCaseCount: number;
+  examId: string;
+  examTitle: string;
+  ownerName: string;
+  // Whether the caller owns this task's exam (vs. seeing it because it's
+  // someone else's public task).
+  mine: boolean;
+  createdAt: string;
+}
+
+export type TaskBankScope = 'all' | 'mine' | 'public';
 
 export type SubmissionOverallStatus = 'AC' | 'WA' | 'CE' | 'TLE' | 'MLE';
 

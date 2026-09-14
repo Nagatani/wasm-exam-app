@@ -8,10 +8,35 @@ import { getStudentExam, listStudentExams, startAttempt } from '../api/student';
 import {
   getRuntimeReadiness,
   prewarmAllClientRunners,
+  prewarmClientRunner,
   type RunnerReadiness,
 } from '../runner/clientRunner';
 import { ApiError } from '../api/client';
+import { LANGUAGE_LABEL } from '../lib/language';
+import type { Language } from '../types/exam';
 import type { StudentExamSummary } from '../types/student';
+
+type Readiness = { c: RunnerReadiness; python: RunnerReadiness };
+
+// Poll once per StudentDashboard mount and share the result between the
+// summary card and each exam row's start-button gate, instead of each
+// spinning up its own interval.
+function useRuntimeReadiness(): Readiness {
+  const [ready, setReady] = useState<Readiness>(getRuntimeReadiness());
+  useEffect(() => {
+    const id = setInterval(() => setReady(getRuntimeReadiness()), 1500);
+    return () => clearInterval(id);
+  }, []);
+  return ready;
+}
+
+// Languages this exam needs that aren't ready yet — only C/Python ever need
+// warm-up, so JS/TS/Java always come back clear.
+function missingRuntimes(languages: Language[], ready: Readiness): Language[] {
+  return languages.filter(
+    (l) => (l === 'C' && ready.c !== 'ready') || (l === 'PYTHON' && ready.python !== 'ready'),
+  );
+}
 
 const READINESS_LABEL: Record<RunnerReadiness, string> = {
   idle: '未取得',
@@ -20,14 +45,7 @@ const READINESS_LABEL: Record<RunnerReadiness, string> = {
   error: '取得に失敗',
 };
 
-function RuntimeReadinessCard() {
-  const [ready, setReady] = useState(getRuntimeReadiness());
-
-  useEffect(() => {
-    const id = setInterval(() => setReady(getRuntimeReadiness()), 1500);
-    return () => clearInterval(id);
-  }, []);
-
+function RuntimeReadinessCard({ ready }: { ready: Readiness }) {
   const row = (label: string, state: RunnerReadiness) => (
     <span className="flex items-center gap-1">
       <span
@@ -54,10 +72,7 @@ function RuntimeReadinessCard() {
         {row('C（コンパイラ ~106MB）', ready.c)}
         {row('Python（~10MB）', ready.python)}
         <button
-          onClick={() => {
-            prewarmAllClientRunners();
-            setReady(getRuntimeReadiness());
-          }}
+          onClick={() => prewarmAllClientRunners()}
           className="rounded border border-mp-border bg-mp-bg px-2 py-0.5 text-xs font-bold hover:bg-mp-surface-hover"
         >
           今すぐ準備する
@@ -88,6 +103,7 @@ export function StudentDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const ready = useRuntimeReadiness();
 
   useEffect(() => {
     listStudentExams()
@@ -143,7 +159,7 @@ export function StudentDashboard() {
 
       <p className="mb-4 text-mp-muted">ようこそ、{profile?.displayName} さん。</p>
 
-      <RuntimeReadinessCard />
+      <RuntimeReadinessCard ready={ready} />
 
       {error && <p className="mb-4 text-sm text-mp-red">{error}</p>}
 
@@ -155,6 +171,11 @@ export function StudentDashboard() {
         <ul className="divide-y divide-mp-border rounded-lg border border-mp-border bg-mp-surface">
           {exams.map((exam) => {
             const busy = busyId === exam.id;
+            // Only gate a *fresh* start — an attempt already in progress has
+            // its clock running, so blocking resume would just burn more of
+            // the student's exam time waiting instead of less.
+            const missing = exam.hasInProgress ? [] : missingRuntimes(exam.languages, ready);
+            const blockedByRuntime = missing.length > 0;
             return (
               <li
                 key={exam.id}
@@ -208,17 +229,34 @@ export function StudentDashboard() {
                       {busy ? '読み込み中...' : '受験を再開する'}
                     </button>
                   ) : exam.canStart ? (
-                    <button
-                      onClick={() => handleStartNew(exam.id)}
-                      disabled={busy}
-                      className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
-                    >
-                      {busy
-                        ? '読み込み中...'
-                        : exam.attemptsUsed > 0
-                          ? 'もう一度受験する'
-                          : '受験する'}
-                    </button>
+                    <div className="flex flex-col items-end gap-1">
+                      <button
+                        onClick={() => handleStartNew(exam.id)}
+                        disabled={busy || blockedByRuntime}
+                        title={
+                          blockedByRuntime
+                            ? `${missing.map((l) => LANGUAGE_LABEL[l]).join('・')} の実行環境の準備が完了するまで開始できません（試験時間の浪費を防ぐため）。`
+                            : undefined
+                        }
+                        className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
+                      >
+                        {busy
+                          ? '読み込み中...'
+                          : blockedByRuntime
+                            ? '準備中...'
+                            : exam.attemptsUsed > 0
+                              ? 'もう一度受験する'
+                              : '受験する'}
+                      </button>
+                      {blockedByRuntime && (
+                        <button
+                          onClick={() => missing.forEach((l) => prewarmClientRunner(l))}
+                          className="text-xs font-bold text-mp-cyan underline hover:opacity-80"
+                        >
+                          今すぐ準備する（{missing.map((l) => LANGUAGE_LABEL[l]).join('・')}）
+                        </button>
+                      )}
+                    </div>
                   ) : null}
                 </div>
               </li>

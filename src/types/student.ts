@@ -7,6 +7,8 @@ export interface StudentExamSummary {
   timeLimitMinutes: number;
   taskCount: number;
   totalPoints: number;
+  // Distinct languages used by this exam's tasks (order not meaningful).
+  languages: Language[];
   // null = unlimited retakes.
   maxAttempts: number | null;
   // ISO datetimes or null.

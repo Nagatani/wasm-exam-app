@@ -7,6 +7,7 @@ import { ApiError } from '../api/client';
 import type { ExamDetail, ExamStatus } from '../types/exam';
 import type { CourseSummary } from '../types/course';
 import { BackHeader } from '../components/BackHeader';
+import { TaskBankPicker } from '../components/TaskBankPicker';
 import { PageSkeleton } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
@@ -40,6 +41,7 @@ export function ExamDetailPage() {
   const [publishIssues, setPublishIssues] = useState<PublishIssue[] | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [reorderError, setReorderError] = useState<string | null>(null);
+  const [bankPickerOpen, setBankPickerOpen] = useState(false);
   const savedSnapshotRef = useRef('');
 
   function refreshPublishCheck(id: string) {
@@ -73,6 +75,22 @@ export function ExamDetailPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examId]);
+
+  // Same fetch as `load()`, but without the `loading` flip — used to refresh
+  // the task list after a bank picker action (add / import) without
+  // replacing the whole page with <PageSkeleton /> (which would unmount the
+  // still-open picker modal along with it, discarding its in-progress
+  // search).
+  async function reloadTasksQuietly() {
+    if (!examId) return;
+    try {
+      const { exam } = await getExam(examId);
+      setExam(exam);
+      refreshPublishCheck(examId);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '試験の取得に失敗しました。');
+    }
+  }
 
   async function handleSave(e: FormEvent) {
     e.preventDefault();
@@ -376,6 +394,12 @@ export function ExamDetailPage() {
             成績を見る
           </Link>
           <button
+            onClick={() => setBankPickerOpen(true)}
+            className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover"
+          >
+            問題バンクから追加
+          </button>
+          <button
             onClick={handleAddTask}
             className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90"
           >
@@ -388,12 +412,20 @@ export function ExamDetailPage() {
         <EmptyState
           message="まだ問題が登録されていません。"
           action={
-            <button
-              onClick={handleAddTask}
-              className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90"
-            >
-              + 問題を追加
-            </button>
+            <div className="flex flex-wrap justify-center gap-2">
+              <button
+                onClick={() => setBankPickerOpen(true)}
+                className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover"
+              >
+                問題バンクから追加
+              </button>
+              <button
+                onClick={handleAddTask}
+                className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90"
+              >
+                + 問題を追加
+              </button>
+            </div>
           }
         />
       ) : (
@@ -462,6 +494,14 @@ export function ExamDetailPage() {
             ))}
           </ul>
         </>
+      )}
+
+      {bankPickerOpen && (
+        <TaskBankPicker
+          examId={exam.id}
+          onClose={() => setBankPickerOpen(false)}
+          onAdded={() => void reloadTasksQuietly()}
+        />
       )}
     </div>
   );

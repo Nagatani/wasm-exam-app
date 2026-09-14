@@ -194,7 +194,7 @@ studentRouter.get('/exams', async (req, res) => {
       orderBy: { createdAt: 'desc' },
       include: {
         _count: { select: { tasks: true } },
-        tasks: { select: { points: true } },
+        tasks: { select: { points: true, language: true } },
       },
     })
   ).filter((e) => examVisible(e.courseId, enrolled));
@@ -243,6 +243,7 @@ studentRouter.get('/exams', async (req, res) => {
         timeLimitMinutes: exam.timeLimitMinutes,
         taskCount: exam._count.tasks,
         totalPoints: exam.tasks.reduce((sum, t) => sum + t.points, 0),
+        languages: [...new Set(exam.tasks.map((t) => t.language))],
         maxAttempts: exam.maxAttempts, // null = unlimited
         opensAt: exam.opensAt,
         closesAt: exam.closesAt,

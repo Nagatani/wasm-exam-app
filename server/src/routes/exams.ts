@@ -7,6 +7,7 @@ import { toCsv, UTF8_BOM } from '../lib/csv';
 import { languageSchema } from '../lib/language';
 import { isServerExec } from '../lib/attempts';
 import { isJudgeConfigured } from '../lib/judgeClient';
+import { portableTaskFileSchema } from '../lib/taskPortable';
 
 export const examsRouter = Router();
 
@@ -425,4 +426,51 @@ examsRouter.post('/:examId/tasks', async (req, res) => {
   });
 
   res.status(201).json({ task });
+});
+
+// Import one or more tasks from a portable JSON export (see
+// ../lib/taskPortable.ts) — the counterpart to GET /api/tasks/:taskId/export.
+// Always private on arrival (isPublic defaults false) regardless of the
+// source's flag; a teacher opts back into the bank explicitly after review.
+examsRouter.post('/:examId/tasks/import', async (req, res) => {
+  const exam = await prisma.exam.findUnique({
+    where: { id: req.params.examId },
+    include: { _count: { select: { tasks: true } } },
+  });
+  if (!exam) {
+    res.status(404).json({ error: '試験が見つかりません。' });
+    return;
+  }
+
+  const parsed = portableTaskFileSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'インポートするファイルの形式が正しくありません。' });
+    return;
+  }
+
+  const base = exam._count.tasks;
+  const created = [];
+  for (const [i, t] of parsed.data.tasks.entries()) {
+    const task = await prisma.task.create({
+      data: {
+        examId: exam.id,
+        order: base + i,
+        title: t.title,
+        statementMarkdown: t.statementMarkdown,
+        language: t.language,
+        starterCode: t.starterCode,
+        points: t.points,
+        comparisonMode: t.comparisonMode,
+        floatTolerance: t.floatTolerance,
+        allowPartialCredit: t.allowPartialCredit,
+        tags: t.tags,
+        testCases: { create: t.testCases },
+        solutions: { create: t.solutions },
+      },
+      include: { testCases: { orderBy: { order: 'asc' } }, solutions: true },
+    });
+    created.push(task);
+  }
+
+  res.status(201).json({ tasks: created });
 });
