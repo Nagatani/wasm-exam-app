@@ -24,7 +24,7 @@
 
 | 課題 | 現状 | 打ち手 |
 |---|---|---|
-| WA の理由が分からない | 非公開テストは `WA（非公開）` のみ | ✅ サンプルは `SampleDiff`（行単位ハイライト・末尾空白可視化・行数差の注記）。残: 非公開テストにも答えを漏らさない範囲のヒント（「出力の行数が違います」等） |
+| WA の理由が分からない | 非公開テストは `WA（非公開）` のみ | ✅ サンプルは `SampleDiff`（行単位ハイライト・末尾空白可視化・行数差の注記）。✅（2026-09-14）非公開テストにも答えを漏らさない範囲のヒントを追加：`judgeSubmission` が WA 判定時に緩い比較モード（行末空白・空行無視・大文字小文字無視）を順に試し、一致するものがあればそのカテゴリだけを伝える（実際の期待値・行数は一切含めない）。一致するものがなければ行数差の有無だけ最後にチェック。`server/src/lib/judge.ts` の `computeWaHint`。2-2節「Presentation Error の区別」も実質これでカバー（新しい判定ステータスは追加せず、既存の WA にヒントを添えるだけに留めた——`RE` のようにマイグレーションが要る判定値の追加は避けた）。 |
 | ~~TLE/MLE が WA に丸められる~~ ✅ | — | `judge.ts` の `computeOverall` が `tle`/`mle` ステージから `TLE`/`MLE` を emit（失敗ケースが全て同種のときのみ）。Java は `timedOut`→`tle` / `oom`→`mle`、C/JS/Python は timeout→`tle`（クライアント MLE は未検出）。バッジは各画面で橙色 |
 | ~~コンパイルエラーがエディタと結びつかない~~ ✅ | — | `src/lib/compileErrors.ts` が stderr をパースし `CodeEditor` の `markers` 経由で該当行に赤波線。次の編集で自動クリア。残: JS の位置情報は不安定（`(行:列)` があるときのみ） |
 | ~~エラーメッセージが漠然としている~~ ✅ | — | `apiFetch`（`src/api/client.ts`）が `fetch` 自体の失敗（オフライン・サーバー未到達）を「サーバーに接続できませんでした」に、`cRunner.ts`/`pyRunner.ts` がツールチェイン取得失敗を「実行環境の読み込みに失敗しました」に翻訳。judge 側（停止・混雑・言語未設定）はもともとサーバー側で日本語の文言を返していたため対応済み。タイムアウトは元から `TLE` バッジで独立表示 |
@@ -53,13 +53,13 @@
 | ~~問題文が6行 textarea~~ ✅ | — | 編集 / 分割 / プレビューの3モード＋エディタ拡大（14〜16行）。画像アップロード（`POST /api/uploads`、PNG/JPEG/GIF/WebP・5MB上限、教師専用、`rehype-raw` は入れず `![]()` 構文だけで挿入）も追加。カーソル位置に挿入、`server/uploads` に保存し `/uploads/*` で公開配信（画像は非個人情報のため認証なし配信）。コンテナ構成（`docker-compose.prod.yml`）では専用ボリュームで永続化 |
 | ~~並び替えが数値入力~~ ✅ | — | タスク一覧（`ExamDetailPage`）・テストケース一覧（`TaskEditorPage`）ともドラッグ＆ドロップ（⠿ハンドル）＋▲▼ボタンで並び替え可能に（`src/lib/reorder.ts`）。移動した行だけ個別PATCHで保存、失敗時はサーバーから再読み込み |
 | ~~使い回し~~ ✅ | — | 問題一覧の「複製」でテストケース・解答例ごとタスク複製（`POST /api/tasks/:id/duplicate`、`examId` 指定で他試験へも）。✅（2026-09-13）試験横断の**問題バンク**: `GET /api/task-bank`（タイトル/言語/タグ/公開範囲で検索、`Task.tags[]`＋`isPublic` — 既定は自分の試験のみに表示、オンで他教師の検索にも表示。新モデルは追加せず既存タスクをそのままバンク化）。`ExamDetailPage`の「問題バンクから追加」から検索→`duplicate`で追加。加えてJSONエクスポート/インポート（`GET /api/tasks/:id/export` / `POST /api/exams/:id/tasks/import`、`wasm-exam-task/v1`形式）で試験インスタンス間の共有にも対応。詳細は`CLAUDE.md`「Task bank」節。 |
-| ~~テストケースの一括入力がない~~ ✅ | — | 「一括追加」で `===`／`---`／`@sample` 区切りの貼り付け（`POST /api/tasks/:id/test-cases/bulk`、≤200件）。残: ファイルアップロード |
+| ~~テストケースの一括入力がない~~ ✅ | — | 「一括追加」で `===`／`---`／`@sample` 区切りの貼り付け（`POST /api/tasks/:id/test-cases/bulk`、≤200件）。✅（2026-09-15）ファイルアップロードにも対応: 「ファイルから読み込む」で `.txt` ファイルの内容を同じテキストエリアに読み込む（2MB上限）。新規APIは追加せず、貼り付けと全く同じ確認・送信フローを経由（ファイルの内容をそのまま流し込むだけで自動送信はしない）。 |
 | ~~公開前チェックがない~~ ✅ | — | `GET /api/exams/:examId/publish-check` → 試験詳細に「公開前チェック」パネル（テストケース/サンプル/配点/比較モード整合/judge 未設定/日時矛盾）。公開はブロックしない |
 
 ### 2-2. テストケースの検証（作問時の最大のストレス）
 
 - ~~**解答例をテストケースに突き合わせる手段がない**~~ ✅ 問題編集画面の「解答例でテストケースを検証」で全ケースを実行し、期待される出力との一致/不一致を表示。不一致行は「実際の出力を期待値にする」で即上書き。C/JS/TS/Python はブラウザ、Java は judge。
-- ~~**判定が `trim()` 完全一致のみ**~~ ✅ 問題ごとに比較モードを選択：`EXACT` / `TRIM_TRAILING_WS`（行末空白・末尾空行無視）/ `IGNORE_BLANK_LINES`（空行無視）/ `FLOAT`（数値を許容誤差付き）/ `IGNORE_CASE`（2026-09-14 追加、大文字小文字を無視。行末空白・末尾空行の無視も込み）。`server/src/lib/judge.ts` の `compareOutput`（クライアント側ミラー `src/lib/compareOutput.ts`）。マイグレーション `20260914122155_add_ignore_case_comparison`。残: Presentation Error の区別（`EXACT` で不一致でも緩い比較なら一致する場合に WA と区別して知らせる — 比較モードの追加ではなく別機能、1-2節の非公開テストヒントとも関連）。
+- ~~**判定が `trim()` 完全一致のみ**~~ ✅ 問題ごとに比較モードを選択：`EXACT` / `TRIM_TRAILING_WS`（行末空白・末尾空行無視）/ `IGNORE_BLANK_LINES`（空行無視）/ `FLOAT`（数値を許容誤差付き）/ `IGNORE_CASE`（2026-09-14 追加、大文字小文字を無視。行末空白・末尾空行の無視も込み）。`server/src/lib/judge.ts` の `compareOutput`（クライアント側ミラー `src/lib/compareOutput.ts`）。マイグレーション `20260914122155_add_ignore_case_comparison`。Presentation Error の区別は✅（2026-09-14、1-2節参照）——新しい判定ステータスは追加せず、WA に非開示のヒントを添える形でカバー。
 - ~~**部分点がない**（全テスト AC 以外は0点）~~ ✅ `Task.allowPartialCredit`（既定 false）。有効時は `judgeSubmission` の `computeScore` が `round(配点 × 通過数 / 総数)` で採点（判定バッジ自体はAC/WA/TLE/MLE/CEのまま）。コンパイルエラーは設定に関わらず常に0点。問題編集画面の「部分点を認める」チェックボックスで切り替え。生徒側の「実行」プレビューにも得点表示を追加（従来はバッジのみで得点非表示だった）。マイグレーション `20260911150357_add_task_partial_credit`。
 
 ### 2-3. 採点・レビュー
@@ -86,8 +86,8 @@
   - **tmpfs は Docker既定で `noexec`** — ネイティブバイナリを書いた `/work` から直接 `exec` できず、`docker-compose.yml` の `/work` tmpfs に `exec` オプションを追加して解決（実機ビルドで発見、コード読みだけでは気づけなかった）。
   - ~~**judge コンテナの外向きネットワーク遮断は未対応のまま**~~ ✅（2026-09-11）。`judge` に `internal: true` を付けると **Docker Desktop（macOS の開発機）でホスト→コンテナの公開ポートが死ぬ**ことを実機で確認したため、`server` を公開ポート経由で `judge` に到達させる開発構成のままでは遮断できなかった。回避策として `server` 自体もコンテナ化し、`judge` と同じ Docker 内部ネットワークに同居させ（サービス名DNSで到達）、`judge` には公開ポートを一切持たせない構成（`docker-compose.prod.yml`）を追加。「ホスト公開ポート方式が Docker Desktop で壊れる」ことが原因であり Docker のフレーバーやホスト OS に依存しないため、Linux 限定にする必要はなかった。DNS 解決・生 IP 接続の両方の遮断とコンテナ間到達性を実機で検証済み。詳細は [`docs/operations.md`](./operations.md) 「デプロイ手順（方法B：コンテナ化した運用構成）」。
   - **本採点（生徒の「実行」／最終提出）をサーバー実行に寄せるか**、**JS/TS/Python まで広げるか**は、いずれも 2026-09-11 の協議で「まずは C ＋再採点専用に絞る」と決定し、意図的に見送り。公平性を上げたい・再採点対象を増やしたいという具体的な必要が出たら再検討。
-- **同時実行制御が単一プロセス前提のセマフォ**（`executionQueue.ts`）。`server` を多重化すると効かない。クラス一斉受験で `server` を1本に固定するか、キューを外出し（Redis 等）するかを [`operations.md`](./operations.md) で明言。
-- **バックアップが手動 `pg_dump`**。個人情報を持つので、自動スナップショット＋リストア手順を明記。
+- ~~**同時実行制御が単一プロセス前提のセマフォ**（`executionQueue.ts`）。`server` を多重化すると効かない~~ ✅（2026-09-14）[`operations.md`](./operations.md) 「judgeサービス」節に明言: 単一インスタンス運用を推奨、複数インスタンス化にはRedis等への置き換えが前提と明記（置き換え自体は未実装・具体的必要が出たら着手）。
+- ~~**バックアップが手動 `pg_dump`**~~ ✅（2026-09-14）`server/scripts/backup-db.sh`＋`backup-db-docker.sh`（開発DB向け、コンテナ内`pg_dump`でクライアントのバージョン不一致を回避）とその対の`restore-*.sh`を追加。`BACKUP_RETENTION_DAYS`で自動間引き、cron/launchd例つき。実機で バックアップ→別DBへリストア→主要テーブル件数の完全一致まで検証済み。詳細は[`operations.md`](./operations.md)「バックアップ・リストア」節。
 - **Node 22.11 のネイティブバインディング問題**が残存（`build`/`lint` が `MODULE_NOT_FOUND` で落ちる）。`package.json` の `engines` と CI で 22.12+ を強制。
 
 ---

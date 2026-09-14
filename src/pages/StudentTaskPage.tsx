@@ -567,6 +567,9 @@ export function StudentTaskPage() {
                         )}
                       </div>
                     )}
+                    {!tc.isSample && result?.status === 'WA' && result.hint && (
+                      <p className="text-mp-muted">ヒント: {result.hint}</p>
+                    )}
                   </div>
                 );
               })}

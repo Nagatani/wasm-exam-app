@@ -112,6 +112,10 @@ export interface PerTestCaseResult {
   isSample: boolean;
   status: PerTestCaseStatus;
   actualOutput: string;
+  // Non-revealing category for a WA (e.g. "may just be a whitespace/case
+  // difference") — never the expected output itself, so it's safe to show
+  // for a hidden test case too. Only present on the run-preview response.
+  hint?: string;
 }
 
 export type OverallStatus = 'AC' | 'WA' | 'CE' | 'TLE' | 'MLE';
