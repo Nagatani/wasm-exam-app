@@ -255,7 +255,13 @@ studentRouter.get('/exams', async (req, res) => {
           !notYetOpen &&
           !closed &&
           (hasInProgress || canStartAnother(exam.maxAttempts, submitted.length)),
-        latestScore: latestSubmitted?.score ?? null,
+        // Hidden while a retake is in progress (2026-09-15, user decision):
+        // a student mid-retake shouldn't see the prior attempt's score, so
+        // it isn't influenced by it before finishing the new one. Reappears
+        // once that attempt is submitted (it then becomes the new
+        // `latestSubmitted`) — this only ever hides the *old* score during
+        // the live retake window, not the student's own just-finished result.
+        latestScore: hasInProgress ? null : (latestSubmitted?.score ?? null),
       };
     }),
   });
