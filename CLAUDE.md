@@ -74,6 +74,16 @@ A second way to run "operationally" (alongside host-run `npm start` above, not r
 - `npm run docker:prod` (root `package.json`) is `docker compose -f docker-compose.prod.yml up -d --build`. `.dockerignore` (repo root) keeps `server/Dockerfile`'s build context (the repo root, since it needs both `src/` and `server/`) from sending `node_modules`/`.git`/etc.
 - See `docs/operations.md` "デプロイ手順（方法B：コンテナ化した運用構成）" for the operator-facing walkthrough, including how this changes DB-migration and log-viewing commands.
 
+### Database backup / restore (2026-09-14)
+
+`server/scripts/` has two script pairs, both writing/reading `wasm-exam-<timestamp>.dump` (pg_dump custom format) under `server/backups/` (gitignored — dumps carry the same personal data the DB does) with `BACKUP_RETENTION_DAYS`-based pruning (default 30, `0` disables it):
+
+- `backup-db.sh` / `restore-db.sh` — host `pg_dump`/`pg_restore` against `DATABASE_URL` (env or `server/.env`). For a managed/external production PostgreSQL, or any DB reachable from wherever these run.
+- `backup-db-docker.sh` / `restore-db-docker.sh` — same, but via `docker compose exec db pg_dump/pg_restore` against `docker-compose.yml`'s dev `db` service, so the client always matches the container's exact PostgreSQL version. **This exists because of a real version-mismatch failure hit while adding these scripts**: this repo pins `postgres:16`, but a Homebrew-installed `pg_dump` 14 on the host could neither write a dump the 16 server would accept (`server version mismatch`) nor read a dump the 16 server produced (`unsupported version in file header`) — running both inside the container sidesteps the question entirely. Must be invoked from the repo root (where `docker-compose.yml` lives) — Compose resolves its project by the *current directory's* name, so running from elsewhere (e.g. a different git worktree, matching the `docker-compose.yml`/`docker-compose.prod.yml` "same project directory" gotcha noted above) reports `service "db" is not running` even though the container is up; pass `COMPOSE_PROJECT_NAME` explicitly to target it from anywhere else.
+- Both `backup-*.sh` scripts clean up their own output file if the underlying dump command fails partway (the shell redirect / `pg_dump --file` creates the file before the command can error, so a naive version leaves a misleading 0-byte "backup" behind — hit and fixed while testing this).
+- **Verified end-to-end** (not just written): `backup-db-docker.sh` against the real dev DB → `restore-db-docker.sh` into a disposable scratch database (never the real one) → exact row-count match on `exams`/`tasks`/`users`/`submissions` between source and restored DB (note: `pg_stat_user_tables.n_live_tup` is a stale autovacuum estimate, not a live count — don't use it to verify a restore; compare real `SELECT COUNT(*)`s instead, which is what this check actually did). Scratch DB dropped afterward.
+- See `docs/operations.md` "バックアップ・リストア" for the operator-facing walkthrough and a cron example.
+
 ### Auth: student-ID + password, custom sessions
 
 Login/signup only ever ask for **学籍番号 (student/staff ID) + password** — there is no email concept anywhere in this stack (that was a Firebase-era workaround and no longer applies; `users.studentNumber` is just the primary human-facing identifier now).

@@ -28,6 +28,11 @@ server/generated
 # recreated on startup (fs.mkdirSync) if missing.
 server/uploads
 
+# Local pg_dump snapshots (server/scripts/backup-db.sh's default output dir)
+# — contain personal data (student IDs, names, scores, initial passwords),
+# never commit them.
+server/backups
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

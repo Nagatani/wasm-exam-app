@@ -86,8 +86,8 @@
   - **tmpfs は Docker既定で `noexec`** — ネイティブバイナリを書いた `/work` から直接 `exec` できず、`docker-compose.yml` の `/work` tmpfs に `exec` オプションを追加して解決（実機ビルドで発見、コード読みだけでは気づけなかった）。
   - ~~**judge コンテナの外向きネットワーク遮断は未対応のまま**~~ ✅（2026-09-11）。`judge` に `internal: true` を付けると **Docker Desktop（macOS の開発機）でホスト→コンテナの公開ポートが死ぬ**ことを実機で確認したため、`server` を公開ポート経由で `judge` に到達させる開発構成のままでは遮断できなかった。回避策として `server` 自体もコンテナ化し、`judge` と同じ Docker 内部ネットワークに同居させ（サービス名DNSで到達）、`judge` には公開ポートを一切持たせない構成（`docker-compose.prod.yml`）を追加。「ホスト公開ポート方式が Docker Desktop で壊れる」ことが原因であり Docker のフレーバーやホスト OS に依存しないため、Linux 限定にする必要はなかった。DNS 解決・生 IP 接続の両方の遮断とコンテナ間到達性を実機で検証済み。詳細は [`docs/operations.md`](./operations.md) 「デプロイ手順（方法B：コンテナ化した運用構成）」。
   - **本採点（生徒の「実行」／最終提出）をサーバー実行に寄せるか**、**JS/TS/Python まで広げるか**は、いずれも 2026-09-11 の協議で「まずは C ＋再採点専用に絞る」と決定し、意図的に見送り。公平性を上げたい・再採点対象を増やしたいという具体的な必要が出たら再検討。
-- **同時実行制御が単一プロセス前提のセマフォ**（`executionQueue.ts`）。`server` を多重化すると効かない。クラス一斉受験で `server` を1本に固定するか、キューを外出し（Redis 等）するかを [`operations.md`](./operations.md) で明言。
-- **バックアップが手動 `pg_dump`**。個人情報を持つので、自動スナップショット＋リストア手順を明記。
+- ~~**同時実行制御が単一プロセス前提のセマフォ**（`executionQueue.ts`）。`server` を多重化すると効かない~~ ✅（2026-09-14）[`operations.md`](./operations.md) 「judgeサービス」節に明言: 単一インスタンス運用を推奨、複数インスタンス化にはRedis等への置き換えが前提と明記（置き換え自体は未実装・具体的必要が出たら着手）。
+- ~~**バックアップが手動 `pg_dump`**~~ ✅（2026-09-14）`server/scripts/backup-db.sh`＋`backup-db-docker.sh`（開発DB向け、コンテナ内`pg_dump`でクライアントのバージョン不一致を回避）とその対の`restore-*.sh`を追加。`BACKUP_RETENTION_DAYS`で自動間引き、cron/launchd例つき。実機で バックアップ→別DBへリストア→主要テーブル件数の完全一致まで検証済み。詳細は[`operations.md`](./operations.md)「バックアップ・リストア」節。
 - **Node 22.11 のネイティブバインディング問題**が残存（`build`/`lint` が `MODULE_NOT_FOUND` で落ちる）。`package.json` の `engines` と CI で 22.12+ を強制。
 
 ---

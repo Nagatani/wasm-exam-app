@@ -145,7 +145,7 @@ Cross-Origin-Embedder-Policy: require-corp
 - `judge/` のコード（`Judge.java` / `Dockerfile`）を変更したら、方法Aなら `docker compose build judge && docker compose up -d judge`、方法Bなら `npm run docker:prod` で再ビルド。
 - ログ: 方法A `docker compose logs -f judge` ／ 方法B `docker compose -f docker-compose.prod.yml logs -f judge`
 - ヘルスチェック: 方法A `curl http://localhost:4001/health` → `{"ok":true}`。方法Bはホストから直接は叩けません（`judge` にホスト公開ポートがないため）——`docker compose -f docker-compose.prod.yml exec server node -e "fetch('http://judge:8080/health').then(r=>r.text()).then(console.log)"` のように `server` コンテナ経由で確認してください。
-- スケール注意: `server` 側の同時実行制御は**単一プロセス前提の簡易セマフォ**です。`server` を複数インスタンスで動かす場合、全体の同時実行は「インスタンス数 × `JUDGE_CONCURRENCY`」になります。judge側の `JUDGE_MAX_CONCURRENT` とコンテナのリソース上限で頭打ちにしてください。
+- スケール注意: `server` 側の同時実行制御（`server/src/lib/executionQueue.ts`）は**単一プロセス前提のインメモリなセマフォ**です。`server` を複数インスタンスで動かす場合、全体の同時実行は「インスタンス数 × `JUDGE_CONCURRENCY`」に増え、かつユーザーあたり同時1ジョブの制限もインスタンスをまたいでは効きません（同じユーザーが別インスタンスに当たれば複数ジョブが同時に通る）。**推奨: `server` は単一インスタンスで運用してください**（このアプリの規模・利用形態——1クラスが同じ時間帯に受験する、というピークの読みやすさ——なら単一インスタンスで十分機能します）。複数インスタンス化がどうしても必要になった場合は、このセマフォをRedis等の外部ストアに置き換える設計変更が前提になります（未実装・具体的な必要が出たら着手）。
 
 ## クライアントランタイムの配信・キャッシュ（一斉受験対策）
 
@@ -167,9 +167,36 @@ C（clang ツールチェイン、初回 ~106MB）と Python（Pyodide、初回 
 
 ## データベース
 
-- バックアップは通常のPostgreSQL運用（`pg_dump` / スナップショット等）。個人情報（学籍番号・氏名・成績・初期パスワード）が入るため、institutionの要件に従って保護してください。
 - `docker-compose.yml` の `db` はnamed volume（`pgdata`）に保存する開発用です。本番はmanaged PostgreSQLを推奨。
 - ポート注意: 開発機では `docker-compose.yml` がホスト **5433** にマップしています（5432で稼働する別のPostgreSQLとの衝突回避）。本番の `DATABASE_URL` は実際の接続先に合わせてください。
+
+### バックアップ・リストア（2026-09-14）
+
+個人情報（学籍番号・氏名・成績・初期パスワード）を持つため、自動スナップショットを推奨します。**マネージドPostgreSQL（本番の主要選択肢）を使っている場合は、まずそのサービス自体のバックアップ/PITR機能を優先してください**——ここで説明するスクリプトは、自前でPostgreSQLを動かしている場合（開発環境の `docker-compose.yml` の `db`、または自前ホストの本番DB）向けです。
+
+`server/scripts/` に2系統のスクリプトがあります。**PostgreSQLクライアントのバージョンをサーバーに合わせる必要がある**ことに注意してください（`pg_dump`/`pg_restore` は基本的にサーバーと同じかそれ以上のメジャーバージョンでないと動きません。例えば本リポジトリの開発用DBは `postgres:16` 固定ですが、Homebrew等でインストールされた `pg_dump` がそれより古いと `server version mismatch` で失敗し、逆に古いバージョンで作ったダンプを新しい `pg_restore` で読めても、新しいダンプを古い `pg_restore` で読むことはできません — 実機検証で確認済み）。
+
+- **`backup-db.sh` / `restore-db.sh`**（`DATABASE_URL` 経由、ホストのPostgreSQLクライアントを使用）: マネージドDBや自前ホストの本番DBなど、`DATABASE_URL` で到達できる任意のPostgreSQLに対して使えます。呼び出し側の環境（管理用マシン等）に、対象DBのメジャーバージョンと一致する `pg_dump`/`pg_restore` を用意してください。
+  ```bash
+  # バックアップ（既定の出力先: server/backups/、.gitignore 済み）
+  npm --prefix server run backup
+  # 保存先を変える場合
+  BACKUP_RETENTION_DAYS=14 server/scripts/backup-db.sh /path/to/backup/dir
+
+  # リストア（DESTRUCTIVE — 対象DBの中身は全て消えて置き換わります）
+  server/scripts/restore-db.sh server/backups/wasm-exam-20260914-120000.dump
+  ```
+- **`backup-db-docker.sh` / `restore-db-docker.sh`**（`docker compose exec` 経由、コンテナ内の `pg_dump`/`pg_restore` を使用）: 開発環境（方法Aの `docker compose up -d db`）向け。コンテナ自身のPostgreSQLバージョンと常に一致するため、上記のクライアントバージョン問題が原理的に起きません。**リポジトリのルートで実行してください**（`docker-compose.yml` のあるディレクトリで `docker compose` のプロジェクトを解決するため — 別ディレクトリ／別のworktreeから実行すると `service "db" is not running` になります。その場合は `COMPOSE_PROJECT_NAME` を実際に `db` を起動したプロジェクト名に合わせてください）。
+  ```bash
+  server/scripts/backup-db-docker.sh
+  server/scripts/restore-db-docker.sh server/backups/wasm-exam-20260914-120000.dump
+  ```
+- どちらの組も、バックアップは `wasm-exam-<タイムスタンプ>.dump`（pg_dumpのカスタム形式）を既定で `server/backups/`（gitignore済み）に保存し、`BACKUP_RETENTION_DAYS`（既定30、0で無効化）より古いものを自動で間引きます。リストアは `--clean` で対象DBの既存オブジェクトを全て削除してから復元する**破壊的操作**なので、必ず確認プロンプトが出ます。復元後は `npm --prefix server run prisma:deploy` でスキーマとマイグレーション履歴が一致していることを確認してください。
+- **自動化**: cron（Linux）や launchd（macOS）から `backup-db.sh` / `backup-db-docker.sh` を定期実行してください。例（毎日3時、Linux cron）:
+  ```
+  0 3 * * * cd /path/to/wasm-exam-app && server/scripts/backup-db-docker.sh >> /var/log/wasm-exam-backup.log 2>&1
+  ```
+- 実機検証済み（2026-09-14）: `backup-db-docker.sh` でダンプを取得 → 別名の使い捨てDBへ `restore-db-docker.sh` で復元 → 主要テーブル（`exams`/`tasks`/`users`/`submissions`）の実件数が元DBと完全一致することを確認。失敗時（例: バージョン不一致）に空の `.dump` ファイルが残らないことも確認済み（途中で失敗した出力は自動削除）。
 
 ## アップロードされた画像（問題文用）
 
