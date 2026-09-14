@@ -924,7 +924,28 @@ function BulkTestCasePanel({
   onImport: (text: string) => void;
 }) {
   const [text, setText] = useState('');
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
   const placeholder = `3\n---\n6\n===\n@sample\n10\n---\n20`;
+
+  // Loads a file's content into the same textarea a paste would — the
+  // teacher still reviews/edits it and clicks "この内容で追加" themselves,
+  // rather than importing straight from the file, so a bad file is caught
+  // before anything is created.
+  async function handleFile(file: File) {
+    setFileError(null);
+    if (file.size > 2_000_000) {
+      setFileError('ファイルが大きすぎます（2MBまで）。');
+      return;
+    }
+    try {
+      setText(await file.text());
+      setFileName(file.name);
+    } catch {
+      setFileError('ファイルを読み込めませんでした。');
+    }
+  }
+
   return (
     <div className="mb-3 rounded-lg border border-mp-border bg-mp-surface p-3">
       <p className="mb-2 text-xs text-mp-muted">
@@ -932,12 +953,32 @@ function BulkTestCasePanel({
         入力と期待される出力の区切りは <code>---</code> だけの行。ケースの1行目を{' '}
         <code>@sample</code> にするとサンプル扱いになります。既存のテストケースの後ろに追加されます。
       </p>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <label className="cursor-pointer rounded border border-mp-border bg-mp-bg px-2 py-1 text-xs font-semibold hover:bg-mp-surface-hover">
+          ファイルから読み込む
+          <input
+            type="file"
+            accept=".txt,text/plain"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file) void handleFile(file);
+            }}
+          />
+        </label>
+        {fileName && <span className="text-xs text-mp-muted">{fileName} を読み込みました。</span>}
+      </div>
+      {fileError && <p className="mb-1 text-sm text-mp-red">{fileError}</p>}
       <textarea
         rows={8}
         className={codeClass}
         placeholder={placeholder}
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => {
+          setText(e.target.value);
+          setFileName(null);
+        }}
       />
       {error && <p className="mt-1 text-sm text-mp-red">{error}</p>}
       <button
