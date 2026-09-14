@@ -20,6 +20,13 @@ export interface PerTestCaseResult {
   isSample: boolean;
   status: PerTestCaseStatus;
   actualOutput: string;
+  // A coarse, non-revealing category for *why* a WA happened (e.g. "the
+  // output would match under looser whitespace rules") — never the expected
+  // content itself, so it's safe to show even for a hidden test case. Only
+  // ever set on a WA that came from an actual output mismatch (not on a
+  // missing/RE/TLE/MLE result, which already says why on its own). See
+  // `computeWaHint` below.
+  hint?: string;
 }
 
 export type OverallStatus = 'AC' | 'WA' | 'CE' | 'TLE' | 'MLE';
@@ -101,6 +108,27 @@ export function compareOutput(expected: string, actual: string, cmp: Comparison)
   }
 }
 
+// Non-revealing WA diagnosis: try each looser comparison mode (skipping
+// whichever one `judgeSubmission` was already using — that one just failed)
+// and report only the *category* of the closest one that would have passed,
+// never the expected content. Checked in order of specificity — whitespace
+// and case differences are checked before falling back to a generic
+// "line count differs" structural signal, since e.g. IGNORE_BLANK_LINES can
+// itself change the effective line count, so a raw line-count check alone
+// would misdiagnose a blank-line difference as something else.
+function computeWaHint(expected: string, actual: string, cmp: Comparison): string | undefined {
+  const tryMode = (mode: ComparisonMode) =>
+    mode !== cmp.mode && compareOutput(expected, actual, { mode, floatTolerance: cmp.floatTolerance });
+
+  if (tryMode('TRIM_TRAILING_WS')) return '行末の空白や改行の違いの可能性があります。';
+  if (tryMode('IGNORE_BLANK_LINES')) return '空行の有無や位置の違いの可能性があります。';
+  if (tryMode('IGNORE_CASE')) return '大文字・小文字の違いの可能性があります。';
+  if (expected.split('\n').length !== actual.split('\n').length) {
+    return '出力の行数が期待と異なります。';
+  }
+  return undefined;
+}
+
 const STAGE_TO_STATUS: Record<'runtime_error' | 'tle' | 'mle', PerTestCaseStatus> = {
   runtime_error: 'RE',
   tle: 'TLE',
@@ -147,10 +175,12 @@ export function judgeSubmission(
         actualOutput: outcome.stdout,
       };
     }
-    const status: PerTestCaseStatus = compareOutput(tc.expectedOutput, outcome.stdout, comparison)
-      ? 'AC'
-      : 'WA';
-    return { testCaseId: tc.id, isSample: tc.isSample, status, actualOutput: outcome.stdout };
+    const matched = compareOutput(tc.expectedOutput, outcome.stdout, comparison);
+    const status: PerTestCaseStatus = matched ? 'AC' : 'WA';
+    const hint = matched
+      ? undefined
+      : computeWaHint(tc.expectedOutput, outcome.stdout, comparison);
+    return { testCaseId: tc.id, isSample: tc.isSample, status, actualOutput: outcome.stdout, hint };
   });
 
   const overallStatus = computeOverall(results);
