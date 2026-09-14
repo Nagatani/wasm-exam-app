@@ -36,7 +36,12 @@ interface JudgeableTestCase {
   isSample: boolean;
 }
 
-export type ComparisonMode = 'EXACT' | 'TRIM_TRAILING_WS' | 'IGNORE_BLANK_LINES' | 'FLOAT';
+export type ComparisonMode =
+  | 'EXACT'
+  | 'TRIM_TRAILING_WS'
+  | 'IGNORE_BLANK_LINES'
+  | 'FLOAT'
+  | 'IGNORE_CASE';
 
 export interface Comparison {
   mode: ComparisonMode;
@@ -76,6 +81,8 @@ export function compareOutput(expected: string, actual: string, cmp: Comparison)
           .join('\n');
       return strip(expected) === strip(actual);
     }
+    case 'IGNORE_CASE':
+      return normalizeLines(expected).toLowerCase() === normalizeLines(actual).toLowerCase();
     case 'FLOAT': {
       const e = expected.trim().split(/\s+/).filter(Boolean);
       const a = actual.trim().split(/\s+/).filter(Boolean);

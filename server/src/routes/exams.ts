@@ -41,6 +41,7 @@ const comparisonModeSchema = z.enum([
   'TRIM_TRAILING_WS',
   'IGNORE_BLANK_LINES',
   'FLOAT',
+  'IGNORE_CASE',
 ]);
 
 const taskInputSchema = z.object({

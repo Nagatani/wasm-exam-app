@@ -59,7 +59,7 @@
 ### 2-2. テストケースの検証（作問時の最大のストレス）
 
 - ~~**解答例をテストケースに突き合わせる手段がない**~~ ✅ 問題編集画面の「解答例でテストケースを検証」で全ケースを実行し、期待される出力との一致/不一致を表示。不一致行は「実際の出力を期待値にする」で即上書き。C/JS/TS/Python はブラウザ、Java は judge。
-- ~~**判定が `trim()` 完全一致のみ**~~ ✅ 問題ごとに比較モードを選択：`EXACT` / `TRIM_TRAILING_WS`（行末空白・末尾空行無視）/ `IGNORE_BLANK_LINES`（空行無視）/ `FLOAT`（数値を許容誤差付き）。`server/src/lib/judge.ts` の `compareOutput`（クライアント側ミラー `src/lib/compareOutput.ts`）。残: 大文字小文字無視 / Presentation Error の区別。
+- ~~**判定が `trim()` 完全一致のみ**~~ ✅ 問題ごとに比較モードを選択：`EXACT` / `TRIM_TRAILING_WS`（行末空白・末尾空行無視）/ `IGNORE_BLANK_LINES`（空行無視）/ `FLOAT`（数値を許容誤差付き）/ `IGNORE_CASE`（2026-09-14 追加、大文字小文字を無視。行末空白・末尾空行の無視も込み）。`server/src/lib/judge.ts` の `compareOutput`（クライアント側ミラー `src/lib/compareOutput.ts`）。マイグレーション `20260914122155_add_ignore_case_comparison`。残: Presentation Error の区別（`EXACT` で不一致でも緩い比較なら一致する場合に WA と区別して知らせる — 比較モードの追加ではなく別機能、1-2節の非公開テストヒントとも関連）。
 - ~~**部分点がない**（全テスト AC 以外は0点）~~ ✅ `Task.allowPartialCredit`（既定 false）。有効時は `judgeSubmission` の `computeScore` が `round(配点 × 通過数 / 総数)` で採点（判定バッジ自体はAC/WA/TLE/MLE/CEのまま）。コンパイルエラーは設定に関わらず常に0点。問題編集画面の「部分点を認める」チェックボックスで切り替え。生徒側の「実行」プレビューにも得点表示を追加（従来はバッジのみで得点非表示だった）。マイグレーション `20260911150357_add_task_partial_credit`。
 
 ### 2-3. 採点・レビュー

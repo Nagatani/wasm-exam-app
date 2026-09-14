@@ -25,7 +25,7 @@ const taskUpdateSchema = z.object({
   starterCode: z.string().nullable().optional(),
   points: z.number().int().nonnegative().optional(),
   comparisonMode: z
-    .enum(['EXACT', 'TRIM_TRAILING_WS', 'IGNORE_BLANK_LINES', 'FLOAT'])
+    .enum(['EXACT', 'TRIM_TRAILING_WS', 'IGNORE_BLANK_LINES', 'FLOAT', 'IGNORE_CASE'])
     .optional(),
   floatTolerance: z.number().positive().optional(),
   allowPartialCredit: z.boolean().optional(),

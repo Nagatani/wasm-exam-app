@@ -3,13 +3,19 @@
 // panel so its 一致/不一致 matches what the real judge will decide. The server
 // remains the sole authority for actual submissions.
 
-export type ComparisonMode = 'EXACT' | 'TRIM_TRAILING_WS' | 'IGNORE_BLANK_LINES' | 'FLOAT';
+export type ComparisonMode =
+  | 'EXACT'
+  | 'TRIM_TRAILING_WS'
+  | 'IGNORE_BLANK_LINES'
+  | 'FLOAT'
+  | 'IGNORE_CASE';
 
 export const COMPARISON_MODE_LABEL: Record<ComparisonMode, string> = {
   EXACT: '完全一致（前後の空白のみ無視）',
   TRIM_TRAILING_WS: '行末の空白と末尾の空行を無視',
   IGNORE_BLANK_LINES: '空行をすべて無視（行末空白も無視）',
   FLOAT: '数値を許容誤差付きで比較（空白区切り）',
+  IGNORE_CASE: '大文字・小文字を無視（行末空白も無視）',
 };
 
 function normalizeLines(s: string): string {
@@ -59,5 +65,7 @@ export function compareOutput(
       }
       return true;
     }
+    case 'IGNORE_CASE':
+      return normalizeLines(expected).toLowerCase() === normalizeLines(actual).toLowerCase();
   }
 }

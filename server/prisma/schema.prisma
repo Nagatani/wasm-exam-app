@@ -44,6 +44,7 @@ enum ComparisonMode {
   TRIM_TRAILING_WS // strip each line's trailing spaces/tabs + trailing blank lines
   IGNORE_BLANK_LINES // TRIM_TRAILING_WS, then drop empty lines entirely
   FLOAT // whitespace-tokenised; numeric tokens compared within `floatTolerance`
+  IGNORE_CASE // TRIM_TRAILING_WS, then case-insensitive comparison
 }
 
 model User {

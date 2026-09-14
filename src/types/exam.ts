@@ -21,7 +21,12 @@ export interface TaskSummary {
   points: number;
 }
 
-export type ComparisonMode = 'EXACT' | 'TRIM_TRAILING_WS' | 'IGNORE_BLANK_LINES' | 'FLOAT';
+export type ComparisonMode =
+  | 'EXACT'
+  | 'TRIM_TRAILING_WS'
+  | 'IGNORE_BLANK_LINES'
+  | 'FLOAT'
+  | 'IGNORE_CASE';
 
 export interface ExamDetail {
   id: string;
