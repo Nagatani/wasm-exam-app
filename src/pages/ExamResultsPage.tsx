@@ -16,6 +16,7 @@ import type {
   TaskResultColumn,
 } from '../types/exam';
 import { BackHeader } from '../components/BackHeader';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PageSkeleton } from '../components/Skeleton';
 import { statusGlyph } from '../lib/status';
 
@@ -78,6 +79,11 @@ export function ExamResultsPage() {
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [revertingId, setRevertingId] = useState<string | null>(null);
+  const [revertTarget, setRevertTarget] = useState<{
+    studentId: string;
+    displayName: string;
+    studentNumber: string;
+  } | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
   const [rowFilter, setRowFilter] = useState<RowFilter>('all');
@@ -196,15 +202,8 @@ export function ExamResultsPage() {
     });
   }
 
-  async function handleRevert(studentId: string, displayName: string, studentNumber: string) {
+  async function handleRevert(studentId: string) {
     if (!examId) return;
-    if (
-      !confirm(
-        `${displayName}（${studentNumber}）のこの試験の受験結果をすべて削除し、受験をなかったことにします。この操作は取り消せません。よろしいですか？`,
-      )
-    ) {
-      return;
-    }
     setRevertingId(studentId);
     setError(null);
     try {
@@ -367,7 +366,11 @@ export function ExamResultsPage() {
                       expanded={expandedIds.has(student.id)}
                       onToggle={() => toggleExpanded(student.id)}
                       onRevert={() =>
-                        handleRevert(student.id, student.displayName, student.studentNumber)
+                        setRevertTarget({
+                          studentId: student.id,
+                          displayName: student.displayName,
+                          studentNumber: student.studentNumber,
+                        })
                       }
                       reverting={revertingId === student.id}
                     />
@@ -378,6 +381,24 @@ export function ExamResultsPage() {
           )}
         </>
       )}
+
+      <ConfirmDialog
+        open={revertTarget !== null}
+        title="差し戻し"
+        message={
+          revertTarget
+            ? `${revertTarget.displayName}（${revertTarget.studentNumber}）のこの試験の受験結果をすべて削除し、受験をなかったことにします。この操作は取り消せません。よろしいですか？`
+            : ''
+        }
+        confirmLabel="差し戻す"
+        onConfirm={() => {
+          if (!revertTarget) return;
+          const { studentId } = revertTarget;
+          setRevertTarget(null);
+          void handleRevert(studentId);
+        }}
+        onCancel={() => setRevertTarget(null)}
+      />
     </div>
   );
 }
@@ -552,7 +573,7 @@ function StudentResultRowGroup({
             }}
             disabled={!student.lastSubmittedAt || reverting}
             title="この生徒の受験結果をすべて削除し、受験をなかったことにします。"
-            className="rounded bg-mp-red px-3 py-1 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
+            className="rounded border border-mp-red/50 px-3 py-1 text-sm text-mp-red hover:bg-mp-red hover:text-mp-btn-fg disabled:opacity-50"
           >
             {reverting ? '削除中...' : '差し戻し'}
           </button>

@@ -161,20 +161,23 @@ export function TestCaseRow({
           />
           サンプルとして生徒に表示する
         </label>
-        <div className="flex items-center gap-2">
-          {dirty && (
-            <span className="text-xs font-bold text-mp-orange">● 未保存</span>
-          )}
-          <button
-            onClick={handleSave}
-            disabled={saving || !dirty}
-            className="rounded border border-mp-border bg-mp-surface-hover px-3 py-1 text-sm hover:opacity-90 disabled:opacity-50"
-          >
-            {saving ? '保存中...' : 'このテストケースを保存'}
-          </button>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            {dirty && (
+              <span className="text-xs font-bold text-mp-orange">● 未保存</span>
+            )}
+            <button
+              onClick={handleSave}
+              disabled={saving || !dirty}
+              className="rounded border border-mp-border bg-mp-surface-hover px-3 py-1 text-sm hover:opacity-90 disabled:opacity-50"
+            >
+              {saving ? '保存中...' : 'このテストケースを保存'}
+            </button>
+          </div>
           <button
             onClick={handleDelete}
-            className="rounded bg-mp-red px-3 py-1 text-sm font-bold text-mp-btn-fg hover:opacity-90"
+            aria-label="このテストケースを削除"
+            className="rounded border border-mp-red/50 px-2 py-1 text-xs text-mp-red hover:bg-mp-red hover:text-mp-btn-fg"
           >
             削除
           </button>

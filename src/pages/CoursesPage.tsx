@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { SkeletonRows } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState';
 import { BackHeader } from '../components/BackHeader';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ApiError } from '../api/client';
 import {
   createCourse,
@@ -226,6 +227,7 @@ function CourseRosterPanel({
   const [acctText, setAcctText] = useState('');
   const [creating, setCreating] = useState(false);
   const [lastCreated, setLastCreated] = useState<BulkCreateResult | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   async function load() {
     try {
@@ -310,9 +312,6 @@ function CourseRosterPanel({
   }
 
   async function handleDeleteCourse() {
-    if (!confirm('このクラスを削除します。所属する試験はクラス指定が外れます（試験自体は残ります）。よろしいですか？')) {
-      return;
-    }
     try {
       await deleteCourse(courseId);
       onChanged();
@@ -362,7 +361,7 @@ function CourseRosterPanel({
                     </span>
                     <button
                       onClick={() => handleRemove(s.userId, `${s.studentNumber} ${s.displayName}`)}
-                      className="rounded bg-mp-red px-2 py-0.5 text-xs font-bold text-mp-btn-fg hover:opacity-90"
+                      className="rounded border border-mp-red/50 px-2 py-0.5 text-xs text-mp-red hover:bg-mp-red hover:text-mp-btn-fg"
                     >
                       削除
                     </button>
@@ -372,9 +371,12 @@ function CourseRosterPanel({
             )}
           </div>
 
-          <div>
-            <p className="mb-1 text-xs font-bold text-mp-muted">
-              生徒アカウントを一括作成（1行に「学籍番号,氏名」、CSV可）— 既存の学籍番号はスキップされます。作成後、初期パスワード一覧が印刷用に開きます
+          <div className="rounded-lg border border-l-4 border-mp-border border-l-mp-cyan bg-mp-bg p-2">
+            <p className="mb-1 text-xs font-bold text-mp-cyan">
+              新規：生徒アカウントを一括作成
+            </p>
+            <p className="mb-1 text-xs text-mp-muted">
+              1行に「学籍番号,氏名」、CSV可。既存の学籍番号はスキップされます。作成後、初期パスワード一覧が印刷用に開きます
             </p>
             <textarea
               rows={4}
@@ -405,9 +407,12 @@ function CourseRosterPanel({
             </div>
           </div>
 
-          <div>
-            <p className="mb-1 text-xs font-bold text-mp-muted">
-              学籍番号を追加（1行ずつ、またはCSVを貼り付け — 各行の先頭列を学籍番号として読みます）
+          <div className="rounded-lg border border-l-4 border-mp-border border-l-mp-green bg-mp-bg p-2">
+            <p className="mb-1 text-xs font-bold text-mp-green">
+              既存：学籍番号を追加
+            </p>
+            <p className="mb-1 text-xs text-mp-muted">
+              1行ずつ、またはCSVを貼り付け（各行の先頭列を学籍番号として読みます）。既にアカウントがある生徒をこのクラスに登録します
             </p>
             <textarea
               rows={4}
@@ -452,14 +457,28 @@ function CourseRosterPanel({
             </div>
           )}
 
-          <button
-            onClick={handleDeleteCourse}
-            className="rounded bg-mp-red px-3 py-1 text-sm font-bold text-mp-btn-fg hover:opacity-90"
-          >
-            クラスを削除
-          </button>
+          <div className="border-t border-mp-border pt-3">
+            <button
+              onClick={() => setDeleteConfirmOpen(true)}
+              className="rounded border border-mp-red/50 px-3 py-1 text-sm text-mp-red hover:bg-mp-red hover:text-mp-btn-fg"
+            >
+              クラスを削除
+            </button>
+          </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="クラスを削除"
+        message={`「${detail?.name ?? ''}」を削除します。所属する試験はクラス指定が外れます（試験自体は残ります）。よろしいですか？`}
+        confirmLabel="削除する"
+        onConfirm={() => {
+          setDeleteConfirmOpen(false);
+          void handleDeleteCourse();
+        }}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
     </div>
   );
 }

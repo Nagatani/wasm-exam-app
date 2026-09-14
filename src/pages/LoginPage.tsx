@@ -37,7 +37,7 @@ export function LoginPage() {
       >
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-xl font-bold text-mp-cyan">
-            C言語 プログラミング演習システム
+            プログラミング演習システム
           </h1>
           <ThemeToggle />
         </div>

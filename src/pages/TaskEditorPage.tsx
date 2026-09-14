@@ -30,6 +30,7 @@ import { runClientSide } from '../runner/clientRunner';
 import { TestCaseRow } from '../components/TestCaseRow';
 import { CodeEditor } from '../components/CodeEditor';
 import { BackHeader } from '../components/BackHeader';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PageSkeleton } from '../components/Skeleton';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { changedOrders, moveItem } from '../lib/reorder';
@@ -144,6 +145,7 @@ export function TaskEditorPage() {
   const [tagsText, setTagsText] = useState('');
   const [bankTags, setBankTags] = useState<string[]>([]);
   const [exporting, setExporting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -226,7 +228,6 @@ export function TaskEditorPage() {
 
   async function handleDelete() {
     if (!task) return;
-    if (!confirm(`「${task.title}」を削除します。よろしいですか？`)) return;
     await deleteTask(task.id);
     navigate(`/teacher/exams/${examId}`);
   }
@@ -482,7 +483,7 @@ export function TaskEditorPage() {
           the one place that shows every unsaved one at once, so a save click
           in one section is never mistaken for saving another. */}
       {unsavedSections.length > 0 && (
-        <div className="mb-4 rounded border border-mp-orange bg-mp-orange/10 px-3 py-2 text-sm font-bold text-mp-orange">
+        <div className="sticky top-0 z-20 mb-4 rounded border border-mp-orange bg-mp-bg px-3 py-2 text-sm font-bold text-mp-orange shadow-sm">
           ● 未保存の変更があります： {unsavedSections.join('、')}
         </div>
       )}
@@ -742,36 +743,50 @@ export function TaskEditorPage() {
         {error && <p className="mb-3 text-sm text-mp-red">{error}</p>}
         {exportError && <p className="mb-3 text-sm text-mp-red">{exportError}</p>}
 
-        <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            disabled={saving || !basicInfoDirty}
-            className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
-          >
-            {saving ? '保存中...' : '基本情報を保存'}
-          </button>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            {basicInfoDirty ? (
+              <span className="text-xs font-bold text-mp-orange">● 未保存</span>
+            ) : savedFlash ? (
+              <span className="text-xs font-bold text-mp-green">保存しました</span>
+            ) : null}
+            <button
+              type="submit"
+              disabled={saving || !basicInfoDirty}
+              className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
+            >
+              {saving ? '保存中...' : '基本情報を保存'}
+            </button>
+            <button
+              type="button"
+              onClick={handleExport}
+              disabled={exporting}
+              className="rounded border border-mp-border bg-mp-surface px-4 py-2 font-bold hover:bg-mp-surface-hover disabled:opacity-50"
+            >
+              {exporting ? 'エクスポート中...' : 'エクスポート'}
+            </button>
+          </div>
           <button
             type="button"
-            onClick={handleExport}
-            disabled={exporting}
-            className="rounded border border-mp-border bg-mp-surface px-4 py-2 font-bold hover:bg-mp-surface-hover disabled:opacity-50"
-          >
-            {exporting ? 'エクスポート中...' : 'エクスポート'}
-          </button>
-          <button
-            type="button"
-            onClick={handleDelete}
-            className="rounded bg-mp-red px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90"
+            onClick={() => setDeleteConfirmOpen(true)}
+            className="rounded border border-mp-red/50 px-3 py-1.5 text-sm text-mp-red hover:bg-mp-red hover:text-mp-btn-fg"
           >
             問題を削除
           </button>
-          {basicInfoDirty ? (
-            <span className="text-xs font-bold text-mp-orange">● 未保存</span>
-          ) : savedFlash ? (
-            <span className="text-xs font-bold text-mp-green">保存しました</span>
-          ) : null}
         </div>
       </form>
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="問題を削除"
+        message={`「${task.title}」を削除します。この操作は取り消せません。よろしいですか？`}
+        confirmLabel="削除する"
+        onConfirm={() => {
+          setDeleteConfirmOpen(false);
+          void handleDelete();
+        }}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
 
       <div className="mb-6">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">

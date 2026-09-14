@@ -15,6 +15,7 @@ import type {
   SubmitTaskResult,
 } from '../types/student';
 import { UserDrawer } from '../components/UserDrawer';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PageSkeleton } from '../components/Skeleton';
 import { statusGlyph } from '../lib/status';
 
@@ -39,6 +40,7 @@ export function StudentExamFinishedPage() {
   const [submitting, setSubmitting] = useState(false);
   const [statusText, setStatusText] = useState('');
   const [retaking, setRetaking] = useState(false);
+  const [submitStage, setSubmitStage] = useState<'none' | 'undrafted' | 'final'>('none');
   const autoSubmittedRef = useRef(false);
 
   const loadResult = useCallback(async () => {
@@ -49,22 +51,8 @@ export function StudentExamFinishedPage() {
   }, [examId]);
 
   const handleSubmit = useCallback(
-    async (auto: boolean) => {
+    async () => {
       if (!examId || !payload || submitting) return;
-      if (!auto) {
-        const undrafted = payload.tasks.filter((t) => !t.hasDraft);
-        if (
-          undrafted.length > 0 &&
-          !window.confirm(
-            `${undrafted.length} 問が下書き未保存です。未提出（0点）として提出します。よろしいですか？`,
-          )
-        ) {
-          return;
-        }
-        if (!window.confirm('この内容で最終提出します。提出後は再提出できません。よろしいですか？')) {
-          return;
-        }
-      }
       setSubmitting(true);
       setError(null);
       try {
@@ -132,7 +120,7 @@ export function StudentExamFinishedPage() {
     if (mode !== 'review' || !payload || autoSubmittedRef.current) return;
     if (Date.now() >= new Date(payload.attempt.deadline).getTime()) {
       autoSubmittedRef.current = true;
-      void handleSubmit(true);
+      void handleSubmit();
     }
   }, [mode, payload, handleSubmit]);
 
@@ -222,7 +210,10 @@ export function StudentExamFinishedPage() {
               </button>
             )}
             <button
-              onClick={() => handleSubmit(false)}
+              onClick={() => {
+                const undrafted = payload?.tasks.filter((t) => !t.hasDraft) ?? [];
+                setSubmitStage(undrafted.length > 0 ? 'undrafted' : 'final');
+              }}
               disabled={submitting}
               className="flex-1 rounded bg-mp-purple px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
             >
@@ -230,6 +221,26 @@ export function StudentExamFinishedPage() {
             </button>
           </div>
         </div>
+
+        <ConfirmDialog
+          open={submitStage === 'undrafted'}
+          title="下書き未保存の問題があります"
+          message={`${payload?.tasks.filter((t) => !t.hasDraft).length ?? 0} 問が下書き未保存です。このまま提出すると未提出（0点）として扱われます。よろしいですか？`}
+          confirmLabel="続ける"
+          onConfirm={() => setSubmitStage('final')}
+          onCancel={() => setSubmitStage('none')}
+        />
+        <ConfirmDialog
+          open={submitStage === 'final'}
+          title="最終提出"
+          message="この内容で最終提出します。提出後は再提出できません。よろしいですか？"
+          confirmLabel="提出する"
+          onConfirm={() => {
+            setSubmitStage('none');
+            void handleSubmit();
+          }}
+          onCancel={() => setSubmitStage('none')}
+        />
       </div>
     );
   }

@@ -113,6 +113,7 @@ export function TeacherDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showAdminMenu, setShowAdminMenu] = useState(false);
 
   async function loadExams() {
     setLoading(true);
@@ -135,27 +136,16 @@ export function TeacherDashboard() {
       <AppHeader
         title="講師管理画面"
         actions={
-          <div className="flex gap-2">
-            <Link
-              to="/teacher/courses"
-              className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm hover:bg-mp-surface-hover"
-            >
-              クラス管理
-            </Link>
-            <Link
-              to="/teacher/sandbox"
-              className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm hover:bg-mp-surface-hover"
-            >
-              サンドボックス動作確認
-            </Link>
-          </div>
+          <Link
+            to="/teacher/courses"
+            className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm hover:bg-mp-surface-hover"
+          >
+            クラス管理
+          </Link>
         }
       />
 
       <p className="mb-4 text-mp-muted">ようこそ、{profile?.displayName} さん。</p>
-
-      <ServiceStatusStrip />
-      <PromoteTeacherForm />
 
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-bold">試験一覧</h2>
@@ -220,6 +210,27 @@ export function TeacherDashboard() {
           ))}
         </ul>
       )}
+
+      <div className="mt-8 border-t border-mp-border pt-4">
+        <button
+          onClick={() => setShowAdminMenu((v) => !v)}
+          className="text-sm text-mp-muted hover:text-mp-fg"
+        >
+          {showAdminMenu ? '▼' : '▶'} 管理者メニュー
+        </button>
+        {showAdminMenu && (
+          <div className="mt-2 space-y-3">
+            <ServiceStatusStrip />
+            <PromoteTeacherForm />
+            <Link
+              to="/teacher/sandbox"
+              className="inline-block text-xs text-mp-muted underline hover:text-mp-fg"
+            >
+              サンドボックス動作確認（開発用の動作検証ツール）
+            </Link>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

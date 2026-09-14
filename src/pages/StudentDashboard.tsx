@@ -212,7 +212,7 @@ export function StudentDashboard() {
                   )}
                 </div>
                 <div className="flex gap-2">
-                  {exam.attemptsUsed > 0 && (
+                  {exam.attemptsUsed > 0 && !exam.hasInProgress && (
                     <button
                       onClick={() => navigate(`/student/exams/${exam.id}/finished`)}
                       className="rounded border border-mp-border bg-mp-surface px-4 py-2 font-bold hover:bg-mp-surface-hover"

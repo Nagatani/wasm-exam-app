@@ -7,6 +7,7 @@ import { ApiError } from '../api/client';
 import type { ExamDetail, ExamStatus } from '../types/exam';
 import type { CourseSummary } from '../types/course';
 import { BackHeader } from '../components/BackHeader';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { TaskBankPicker } from '../components/TaskBankPicker';
 import { PageSkeleton } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState';
@@ -42,6 +43,7 @@ export function ExamDetailPage() {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [reorderError, setReorderError] = useState<string | null>(null);
   const [bankPickerOpen, setBankPickerOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const savedSnapshotRef = useRef('');
 
   function refreshPublishCheck(id: string) {
@@ -125,7 +127,6 @@ export function ExamDetailPage() {
 
   async function handleDelete() {
     if (!exam) return;
-    if (!confirm(`「${exam.title}」を削除します。よろしいですか？`)) return;
     await deleteExam(exam.id);
     navigate('/teacher');
   }
@@ -335,28 +336,42 @@ export function ExamDetailPage() {
 
         {error && <p className="mb-3 text-sm text-mp-red">{error}</p>}
 
-        <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            disabled={saving || !dirty}
-            className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
-          >
-            {saving ? '保存中...' : '保存'}
-          </button>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            {dirty ? (
+              <span className="text-xs font-bold text-mp-orange">● 未保存の変更があります</span>
+            ) : savedFlash ? (
+              <span className="text-xs font-bold text-mp-green">保存しました</span>
+            ) : null}
+            <button
+              type="submit"
+              disabled={saving || !dirty}
+              className="rounded bg-mp-cyan px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
+            >
+              {saving ? '保存中...' : '保存'}
+            </button>
+          </div>
           <button
             type="button"
-            onClick={handleDelete}
-            className="rounded bg-mp-red px-4 py-2 font-bold text-mp-btn-fg hover:opacity-90"
+            onClick={() => setDeleteConfirmOpen(true)}
+            className="rounded border border-mp-red/50 px-3 py-1.5 text-sm text-mp-red hover:bg-mp-red hover:text-mp-btn-fg"
           >
             試験を削除
           </button>
-          {dirty ? (
-            <span className="text-xs font-bold text-mp-orange">● 未保存の変更があります</span>
-          ) : savedFlash ? (
-            <span className="text-xs font-bold text-mp-green">保存しました</span>
-          ) : null}
         </div>
       </form>
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="試験を削除"
+        message={`「${exam.title}」を削除します。この操作は取り消せません。よろしいですか？`}
+        confirmLabel="削除する"
+        onConfirm={() => {
+          setDeleteConfirmOpen(false);
+          void handleDelete();
+        }}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
 
       {publishIssues !== null && (
         <div className="mb-6 rounded-lg border border-mp-border bg-mp-surface p-3 text-sm">

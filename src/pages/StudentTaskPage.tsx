@@ -336,14 +336,18 @@ export function StudentTaskPage() {
                 残り時間: {timeUp ? '00:00（時間切れ）' : formatRemaining(remainingMs)}
               </span>
             )}
-            <button
-              onClick={goToReview}
-              disabled={busy}
-              className="rounded bg-mp-purple px-3 py-1 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
-            >
-              試験を提出する
-            </button>
-            <UserDrawer />
+            <div className="border-l border-mp-border pl-3">
+              <button
+                onClick={goToReview}
+                disabled={busy}
+                className="rounded bg-mp-purple px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
+              >
+                試験を提出する
+              </button>
+            </div>
+            <div className="border-l border-mp-border pl-3">
+              <UserDrawer />
+            </div>
           </div>
         </div>
 
@@ -458,8 +462,18 @@ export function StudentTaskPage() {
               disabled={busy || timeUp}
               className="flex-1 rounded bg-mp-green px-3 py-2 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
             >
-              {savingDraft ? '保存中...' : dirty ? '下書き保存' : draftSavedFlash ? '保存しました' : '下書き保存済み'}
+              {savingDraft ? '保存中...' : '下書き保存'}
             </button>
+          </div>
+
+          <div className="text-xs">
+            {dirty ? (
+              <span className="font-bold text-mp-orange">● 未保存</span>
+            ) : draftSavedFlash ? (
+              <span className="font-bold text-mp-green">● 保存しました</span>
+            ) : (
+              <span className="text-mp-muted">● 下書き保存済み</span>
+            )}
           </div>
 
           <p className="rounded border border-mp-border bg-mp-bg p-2 text-xs text-mp-muted">
