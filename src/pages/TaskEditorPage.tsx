@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import {
@@ -27,6 +27,8 @@ import {
   isUntouchedTemplate,
 } from '../lib/language';
 import { runClientSide } from '../runner/clientRunner';
+import type { AiAssistApplyDraft } from '../components/AiAssistPanel';
+import { isAiAssistEnabled, onAiAssistSettingsChanged } from '../ai/aiAssistSettings';
 import { TestCaseRow } from '../components/TestCaseRow';
 import { CodeEditor } from '../components/CodeEditor';
 import { BackHeader } from '../components/BackHeader';
@@ -35,6 +37,13 @@ import { FileLoadButton } from '../components/FileLoadButton';
 import { PageSkeleton } from '../components/Skeleton';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { changedOrders, moveItem } from '../lib/reorder';
+
+// Lazy: AiAssistPanel pulls in @mlc-ai/web-llm (several MB) via ../ai/
+// aiAssist — only worth fetching once we already know AI作問サポート is
+// enabled for this browser (checked below with the lightweight
+// aiAssistSettings.ts, which has no such dependency), not just from opening
+// this page.
+const AiAssistPanel = lazy(() => import('../components/AiAssistPanel'));
 
 // Bulk import format: cases separated by a line that is exactly `===`; within
 // a case, input and expected are separated by a line that is exactly `---`; a
@@ -148,6 +157,24 @@ export function TaskEditorPage() {
   const [exporting, setExporting] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  // Set when an AiAssistPanel draft's solution is applied — overrides the
+  // saved solution as SolutionEditor's *editable* starting point (still
+  // unsaved until "解答例を保存"). The counter forces SolutionEditor to
+  // remount (via its `key`) so a second AI apply is picked up too, not just
+  // the first (React wouldn't otherwise re-run useState's initializer).
+  const [aiSolutionOverride, setAiSolutionOverride] = useState<string | null>(null);
+  const [aiApplyCounter, setAiApplyCounter] = useState(0);
+  const [aiAssistEnabled, setAiAssistEnabledState] = useState(isAiAssistEnabled);
+
+  useEffect(() => onAiAssistSettingsChanged(() => setAiAssistEnabledState(isAiAssistEnabled())), []);
+
+  // An override is only meant to seed SolutionEditor for the language it was
+  // generated for — clear it on a language change so switching away and
+  // back doesn't leak a stale AI draft into an unrelated language's editor.
+  useEffect(() => {
+    setAiSolutionOverride(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task?.language]);
 
   useEffect(() => {
     getTaskBankTags()
@@ -244,6 +271,31 @@ export function TaskEditorPage() {
     } finally {
       setExporting(false);
     }
+  }
+
+  // Applies an AiAssistPanel draft the teacher has already reviewed:
+  // statement/starter code go straight into the (still-unsaved) basic-info
+  // form state, test cases are created for real via the same bulk-create
+  // endpoint "一括追加" uses (they've never had a separate draft state — an
+  // empty row from "＋テストケースを追加" is already persisted immediately
+  // too), and the solution is handed to SolutionEditor as an override it
+  // must still be explicitly saved.
+  async function handleApplyAiDraft(draft: AiAssistApplyDraft) {
+    if (!task) return;
+    setTask((prev) =>
+      prev
+        ? { ...prev, statementMarkdown: draft.statementMarkdown, starterCode: draft.starterCode }
+        : prev,
+    );
+    if (draft.testCases.length > 0) {
+      const { testCases } = await bulkCreateTestCases(
+        task.id,
+        draft.testCases.map((tc, i) => ({ ...tc, isSample: i === 0 })),
+      );
+      setTask((prev) => (prev ? { ...prev, testCases } : prev));
+    }
+    setAiSolutionOverride(draft.solutionCode);
+    setAiApplyCounter((c) => c + 1);
   }
 
   async function handleAddTestCase() {
@@ -656,6 +708,22 @@ export function TaskEditorPage() {
           </div>
         </div>
 
+        {aiAssistEnabled ? (
+          <Suspense fallback={<p className="mb-3 text-xs text-mp-muted">読み込み中...</p>}>
+            <AiAssistPanel
+              language={task.language}
+              hasExistingContent={
+                task.statementMarkdown.trim() !== '' || !isUntouchedTemplate(task.starterCode ?? '')
+              }
+              onApply={handleApplyAiDraft}
+            />
+          </Suspense>
+        ) : (
+          <p className="mb-3 text-xs text-mp-muted">
+            AI作問サポートは無効です。⚙️メニューから有効にできます。
+          </p>
+        )}
+
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
           <label className="block text-sm text-mp-muted" htmlFor="task-statement">
             問題文（Markdown）
@@ -905,10 +973,11 @@ export function TaskEditorPage() {
       </div>
 
       <SolutionEditor
-        key={`${task.id}-${task.language}`}
+        key={`${task.id}-${task.language}-${aiApplyCounter}`}
         taskId={task.id}
         language={task.language}
-        initialCode={findSolution(task, task.language)}
+        initialCode={aiSolutionOverride ?? findSolution(task, task.language)}
+        initialSavedCode={findSolution(task, task.language)}
         canCheck={task.testCases.length > 0}
         checking={checking}
         onRunCheck={runSolutionCheck}
@@ -1069,6 +1138,7 @@ function SolutionEditor({
   taskId,
   language,
   initialCode,
+  initialSavedCode,
   canCheck,
   checking,
   onRunCheck,
@@ -1077,6 +1147,12 @@ function SolutionEditor({
   taskId: string;
   language: Language;
   initialCode: string;
+  // The actual last-persisted solution, when it differs from `initialCode`
+  // (e.g. an AiAssistPanel apply seeds `initialCode` with a not-yet-saved
+  // draft) — used only to seed `savedCode` below, so `dirty` starts `true`
+  // instead of comparing the draft against itself. Defaults to `initialCode`
+  // for the normal case (nothing to apply, both are the same saved value).
+  initialSavedCode?: string;
   canCheck: boolean;
   checking: boolean;
   onRunCheck: (code: string) => void;
@@ -1086,7 +1162,7 @@ function SolutionEditor({
   // Tracked separately from `initialCode` (a prop that only changes on a full
   // task reload) so dirty correctly clears right after a successful save,
   // not just after the page is reloaded.
-  const [savedCode, setSavedCode] = useState(initialCode);
+  const [savedCode, setSavedCode] = useState(initialSavedCode ?? initialCode);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 

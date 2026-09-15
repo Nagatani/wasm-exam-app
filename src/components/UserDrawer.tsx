@@ -1,8 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { logOut } from '../api/auth';
 import { useAuth } from '../contexts/AuthContext';
 import { ThemeToggle } from './ThemeToggle';
+
+// Lazy: this (and @mlc-ai/web-llm underneath it) is several MB of JS that
+// must never land in the shared main bundle every page pulls in just by
+// rendering UserDrawer — including every student page. Rendered only once
+// the drawer is actually opened by a teacher (see `open && profile.role ===
+// 'TEACHER'` below), not merely mounted, so opening the drawer itself stays
+// cheap for the (much more common) case of a teacher who never touches it.
+const AiAssistSettings = lazy(() => import('./AiAssistSettings'));
 
 const ROLE_LABEL: Record<'STUDENT' | 'TEACHER', string> = {
   STUDENT: '学生',
@@ -117,6 +125,14 @@ export function UserDrawer() {
             <p className="mb-1 text-xs font-bold text-mp-muted">表示テーマ</p>
             <ThemeToggle />
           </div>
+
+          {open && profile.role === 'TEACHER' && (
+            <Suspense
+              fallback={<p className="mb-4 text-xs text-mp-muted">読み込み中...</p>}
+            >
+              <AiAssistSettings />
+            </Suspense>
+          )}
 
           <Link
             to="/change-password"

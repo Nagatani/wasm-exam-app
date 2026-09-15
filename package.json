@@ -13,6 +13,7 @@
     "docker:prod": "docker compose -f docker-compose.prod.yml up -d --build"
   },
   "dependencies": {
+    "@mlc-ai/web-llm": "^0.2.85",
     "@monaco-editor/react": "^4.7.0",
     "@wasmer/sdk": "^0.10.0",
     "react": "^19.2.7",

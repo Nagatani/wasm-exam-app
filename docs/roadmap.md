@@ -153,6 +153,31 @@
 
 ---
 
+## 7. AI作問サポート（✅ 実装済み — 2026-09-16）
+
+教師から「問題の作問サポート機能」の要望。実現方式（外部LLM API／サーバー自己ホストLLM／ブラウザ内蔵LLM）を提示したところ「ブラウザ内蔵LLM」を選択、加えて「教師ごとに有効/無効を選択式に」「容量使用・削除方法の注意書きを併設」という条件が付いた。
+
+### 方針・設計判断
+
+- **ライブラリ・モデル**: `@mlc-ai/web-llm`（WebGPU、`CreateWebWorkerMLCEngine`）。既定モデルは `Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC`（約2.5GB、コード生成向けの日本語対応小型モデル）に固定、モデル選択UIは作らない。サーバー側の変更・新規APIは一切なし（モデル重みはCDNから取得— Pyodideが既にjsDelivrから取得しているのと同じ「匿名アセット取得」で、生徒の個人情報が絡む話ではない）。
+- **有効/無効は「教師ごと」ではなく「このブラウザごと」**（`src/ai/aiAssistSettings.ts`、`localStorage`。`ThemeContext`と同じ発想）。ダウンロードしたモデル本体がそのブラウザにしか存在せず他デバイスに同期しようがないため、サーバー側のアカウント設定にする意味が薄いという判断。
+- **期待される出力をLLMに書かせない**: 問題文・初期テンプレート・テストケースの**入力値**・解答例コードのみLLMに生成させ、期待される出力は生成された解答例コードを実際に実行して求める。C/JS/TS/Pythonは既存の`runClientSide()`（`src/runner/clientRunner.ts`）を再利用（`SolutionCheckPanel`の「解答例でテストケースを検証」と同じ発想の再利用）。Javaは自動検証を行わず（既存の`check-solution`エンドポイントがDB保存済みテストケース前提で下書きには使えないため）、期待される出力は空欄で追加し「⚠️自動検証非対応」と明示。
+- **バンドルサイズ**: `@mlc-ai/web-llm`はライブラリ単体で数MB（モデル重み抜き）あり、素朴に静的importすると`UserDrawer`（全ページで表示）経由で生徒ページも含めた共通バンドルに混入することが実機ビルドで判明。`React.lazy` + `Suspense`で`AiAssistSettings`（ドロワーを実際に開くまで取得しない）・`AiAssistPanel`（有効化済みと分かってから取得）を分離し、生徒・未使用の教師には一切ロードさせない。
+
+### 実装
+
+- `src/ai/aiAssist.ts`: モデルのロード状態管理（`idle`/`loading`/`ready`/`error`）、`generateTaskDraft()`（JSON mode制約付き生成）、`estimateStorageUsageBytes()`、`clearAiAssistCache()`（`deleteModelAllInfoInCache`）、`isWebGpuSupported()`。
+- `src/ai/aiAssist.worker.ts`: `WebWorkerMLCEngineHandler`を動かすESモジュールWorker（既存のC/JS/Python用Workerと異なり`{type:'module'}`が必要）。
+- `src/components/AiAssistSettings.tsx`: `UserDrawer`内・教師専用セクション。トグルON時に容量目安・ブラウザ限定である旨の注意文を表示してから実行、有効時は保存領域使用量の概算表示と`ConfirmDialog`経由の削除ボタン。
+- `src/components/AiAssistPanel.tsx`: `TaskEditorPage`の「解答言語」直後に配置。プロンプト＋テストケース数→生成→プレビュー（テストケース件数、Java注記）→「この内容を反映する」。反映は既存の保存経路をそのまま使う（統計文・初期テンプレートは基本情報フォームの未保存state、テストケースは`bulkCreateTestCases`で実際に作成、解答例は`SolutionEditor`に未保存の上書きとして流し込み — 新しい永続化の仕組みは何も作っていない）。
+- `TaskEditorPage`側で`isAiAssistEnabled()`を見て有効時のみ`AiAssistPanel`を`lazy`ロード、既存フィールドに内容がある場合は上書き前に確認。
+
+### 検証（実機、実際のモデルダウンロードあり）
+
+トグルON→注意文→約2.5GBのモデルダウンロード（進捗表示込み）→Java問題での生成→プレビュー（テストケース4件、Java注記）→反映（基本情報・テストケース4件・解答例が正しく未保存状態で反映されることを確認）→保存→キャッシュ削除→トグルOFF、まで一通り確認。C言語での`runClientSide`検証も最終的に成功（生成→コンパイル→実行→期待値算出まで完走）したが、確認中に一時的な自動化ブラウザ環境固有の遅延が発生した（既存の`SandboxPage`でも同様の遅延が再現したため、今回追加したコードの問題ではないと判断）。テストデータ・アカウントは確認後に削除済み。
+
+---
+
 ## 5. 提出モデル（✅ 実装済み — 2026-09-10）
 
 > 旧: 「設問ごとの送信＝1回きり・不可逆・自動で次の問題へ」「受験は 1 回のみ」。下記の決定事項どおりに置き換え済み。実装の詳細は [`CLAUDE.md`](../CLAUDE.md) の「Student exam-taking flow」「Attempt lifecycle, drafts & final submission」、利用手順は [`teacher-guide.md`](./teacher-guide.md) を参照。マイグレーション `20260910120000_add_attempt_lifecycle` の適用が必要。
