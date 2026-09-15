@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { AppHeader } from '../components/AppHeader';
 import { SkeletonRows } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState';
-import { createExam, listExams } from '../api/exams';
+import { createExam, duplicateExam, listExams } from '../api/exams';
 import { listCourses } from '../api/courses';
 import { getServiceHealth, promoteToTeacher, type ServiceHealth } from '../api/admin';
 import { ApiError } from '../api/client';
@@ -114,6 +114,7 @@ export function TeacherDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
 
   async function loadExams() {
     setLoading(true);
@@ -130,6 +131,19 @@ export function TeacherDashboard() {
   useEffect(() => {
     loadExams();
   }, []);
+
+  async function handleDuplicate(examId: string) {
+    setDuplicatingId(examId);
+    setError(null);
+    try {
+      await duplicateExam(examId);
+      await loadExams();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '試験の複製に失敗しました。');
+    } finally {
+      setDuplicatingId(null);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
@@ -184,10 +198,10 @@ export function TeacherDashboard() {
       ) : (
         <ul className="divide-y divide-mp-border rounded-lg border border-mp-border bg-mp-surface">
           {exams.map((exam) => (
-            <li key={exam.id}>
+            <li key={exam.id} className="flex items-center gap-2 px-4 py-3 hover:bg-mp-surface-hover">
               <Link
                 to={`/teacher/exams/${exam.id}`}
-                className="flex items-center justify-between px-4 py-3 hover:bg-mp-surface-hover"
+                className="flex flex-1 items-center justify-between gap-2"
               >
                 <div>
                   <p className="font-bold">{exam.title}</p>
@@ -206,6 +220,13 @@ export function TeacherDashboard() {
                   {STATUS_LABEL[exam.status]}
                 </span>
               </Link>
+              <button
+                onClick={() => handleDuplicate(exam.id)}
+                disabled={duplicatingId === exam.id}
+                className="shrink-0 rounded border border-mp-border bg-mp-surface px-2 py-1 text-xs font-bold hover:bg-mp-surface-hover disabled:opacity-50"
+              >
+                {duplicatingId === exam.id ? '複製中...' : '複製'}
+              </button>
             </li>
           ))}
         </ul>

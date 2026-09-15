@@ -3,6 +3,7 @@ import { SkeletonRows } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState';
 import { BackHeader } from '../components/BackHeader';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { FileLoadButton } from '../components/FileLoadButton';
 import { ApiError } from '../api/client';
 import {
   createCourse,
@@ -378,6 +379,9 @@ function CourseRosterPanel({
             <p className="mb-1 text-xs text-mp-muted">
               1行に「学籍番号,氏名」、CSV可。既存の学籍番号はスキップされます。作成後、初期パスワード一覧が印刷用に開きます
             </p>
+            <div className="mb-1">
+              <FileLoadButton onLoaded={(loaded) => setAcctText(loaded)} />
+            </div>
             <textarea
               rows={4}
               className="w-full rounded border border-mp-border bg-mp-surface px-2 py-1 font-mono text-sm text-mp-fg"
@@ -414,6 +418,9 @@ function CourseRosterPanel({
             <p className="mb-1 text-xs text-mp-muted">
               1行ずつ、またはCSVを貼り付け（各行の先頭列を学籍番号として読みます）。既にアカウントがある生徒をこのクラスに登録します
             </p>
+            <div className="mb-1">
+              <FileLoadButton onLoaded={(loaded) => setRosterText(loaded)} />
+            </div>
             <textarea
               rows={4}
               className="w-full rounded border border-mp-border bg-mp-surface px-2 py-1 font-mono text-sm text-mp-fg"

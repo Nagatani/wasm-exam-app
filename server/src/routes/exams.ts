@@ -108,6 +108,86 @@ examsRouter.post('/', async (req, res) => {
   res.status(201).json({ exam });
 });
 
+// Duplicate an entire exam: metadata + every task (statement, test cases,
+// reference solutions, tags — same fields POST /api/tasks/:taskId/duplicate
+// copies) in one call, instead of a teacher recreating a whole exam by hand
+// or duplicating tasks into a fresh exam one at a time. Deliberately resets
+// what would otherwise carry stale/unsafe state into the copy: always
+// DRAFT (never silently publish a copy) and opensAt/closesAt cleared (a
+// copied exam needs its own schedule, not the source's). courseId and
+// maxAttempts are kept as-is since neither has any visibility effect on a
+// DRAFT exam.
+examsRouter.post('/:examId/duplicate', async (req, res) => {
+  const src = await prisma.exam.findUnique({
+    where: { id: req.params.examId },
+    include: {
+      tasks: {
+        orderBy: { order: 'asc' },
+        include: { testCases: { orderBy: { order: 'asc' } }, solutions: true },
+      },
+    },
+  });
+  if (!src) {
+    res.status(404).json({ error: '試験が見つかりません。' });
+    return;
+  }
+
+  const created = await prisma.exam.create({
+    data: {
+      title: `${src.title}（コピー）`,
+      description: src.description,
+      timeLimitMinutes: src.timeLimitMinutes,
+      maxAttempts: src.maxAttempts,
+      courseId: src.courseId,
+      status: 'DRAFT',
+      createdById: req.user!.id,
+      tasks: {
+        create: src.tasks.map((t) => ({
+          order: t.order,
+          title: t.title,
+          statementMarkdown: t.statementMarkdown,
+          language: t.language,
+          starterCode: t.starterCode,
+          points: t.points,
+          comparisonMode: t.comparisonMode,
+          floatTolerance: t.floatTolerance,
+          allowPartialCredit: t.allowPartialCredit,
+          tags: t.tags,
+          testCases: {
+            create: t.testCases.map((tc) => ({
+              input: tc.input,
+              expectedOutput: tc.expectedOutput,
+              isSample: tc.isSample,
+              order: tc.order,
+              timeLimitMs: tc.timeLimitMs,
+              memoryLimitMb: tc.memoryLimitMb,
+            })),
+          },
+          solutions: {
+            create: t.solutions.map((s) => ({ language: s.language, code: s.code })),
+          },
+        })),
+      },
+    },
+    include: { _count: { select: { tasks: true } }, course: { select: { id: true, name: true } } },
+  });
+
+  res.status(201).json({
+    exam: {
+      id: created.id,
+      title: created.title,
+      description: created.description,
+      timeLimitMinutes: created.timeLimitMinutes,
+      status: created.status,
+      createdAt: created.createdAt,
+      updatedAt: created.updatedAt,
+      taskCount: created._count.tasks,
+      courseId: created.courseId,
+      courseName: created.course?.name ?? null,
+    },
+  });
+});
+
 // Pre-publish sanity check — surfaces things a teacher usually wants to fix
 // before making an exam visible to students. Advisory only; publishing isn't
 // blocked.

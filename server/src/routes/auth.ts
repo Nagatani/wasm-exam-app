@@ -46,15 +46,24 @@ authRouter.post('/signup', async (req, res) => {
 
   const passwordHash = await bcrypt.hash(password, 12);
 
-  // role always defaults to STUDENT here — promotion to teacher only ever
-  // happens via POST /api/admin/promote-to-teacher, gated on the caller
-  // already being a teacher. See server/src/routes/admin.ts.
+  // Every signup is STUDENT except the very first account ever created,
+  // which becomes TEACHER (2026-09-16, user decision): the first registered
+  // user is expected to be the administrator setting the system up, and
+  // requiring a raw SQL promote for that one account was pure friction.
+  // Every signup after that stays STUDENT — promotion to teacher from then
+  // on only ever happens via POST /api/admin/promote-to-teacher, gated on
+  // the caller already being a teacher (server/src/routes/admin.ts). This
+  // check-then-create isn't wrapped in a serializable transaction — a
+  // deliberate, accepted race (two signups landing in the same instant
+  // before any user exists could both become TEACHER) since the window only
+  // exists for the few seconds between a fresh deploy and the first signup.
+  const userCount = await prisma.user.count();
   const user = await prisma.user.create({
     data: {
       studentNumber,
       passwordHash,
       displayName: studentNumber,
-      role: 'STUDENT',
+      role: userCount === 0 ? 'TEACHER' : 'STUDENT',
     },
   });
 

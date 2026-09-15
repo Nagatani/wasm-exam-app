@@ -403,6 +403,7 @@ tasksRouter.post('/:taskId/duplicate', async (req, res) => {
       comparisonMode: src.comparisonMode,
       floatTolerance: src.floatTolerance,
       allowPartialCredit: src.allowPartialCredit,
+      tags: src.tags,
       testCases: {
         create: src.testCases.map((tc) => ({
           input: tc.input,

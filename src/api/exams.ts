@@ -49,6 +49,10 @@ export function deleteExam(examId: string) {
   return apiFetch<void>(`/api/exams/${examId}`, { method: 'DELETE' });
 }
 
+export function duplicateExam(examId: string) {
+  return apiFetch<{ exam: ExamSummary }>(`/api/exams/${examId}/duplicate`, { method: 'POST' });
+}
+
 export function getExamResults(examId: string) {
   return apiFetch<ExamResults>(`/api/exams/${examId}/results`);
 }
