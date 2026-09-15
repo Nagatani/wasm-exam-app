@@ -35,7 +35,7 @@ export function PasswordField({
         <input
           id={id}
           type={visible ? 'text' : 'password'}
-          className="w-full rounded border border-mp-border bg-mp-bg px-3 py-2 pr-14 text-mp-fg"
+          className="w-full rounded-lg border border-mp-border bg-mp-bg px-3 py-2 pr-14 text-mp-fg transition focus:border-mp-cyan focus:outline-none"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           autoComplete={autoComplete}

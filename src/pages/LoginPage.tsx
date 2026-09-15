@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { logIn } from '../api/auth';
 import { ApiError } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
-import { ThemeToggle } from '../components/ThemeToggle';
 import { PasswordField } from '../components/PasswordField';
 
 export function LoginPage() {
@@ -30,16 +29,16 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-mp-bg px-4">
+    <div className="auth-bg flex min-h-screen items-center justify-center px-4 py-12">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm rounded-lg border border-mp-border bg-mp-surface p-6"
+        className="relative w-full max-w-sm rounded-2xl border border-mp-border/60 bg-mp-surface/85 p-8 shadow-2xl backdrop-blur-sm"
       >
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-mp-cyan">
-            プログラミング演習システム
-          </h1>
-          <ThemeToggle />
+        <div className="mb-6 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-mp-cyan/15 text-xl font-bold text-mp-cyan">
+            {'</>'}
+          </div>
+          <h1 className="text-xl font-bold text-mp-cyan">プログラミング演習システム</h1>
         </div>
 
         <label className="mb-1 block text-sm text-mp-muted" htmlFor="studentId">
@@ -47,7 +46,7 @@ export function LoginPage() {
         </label>
         <input
           id="studentId"
-          className="mb-4 w-full rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+          className="mb-4 w-full rounded-lg border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg transition focus:border-mp-cyan focus:outline-none"
           value={studentId}
           onChange={(e) => setStudentId(e.target.value)}
           autoComplete="username"
@@ -68,7 +67,7 @@ export function LoginPage() {
         <button
           type="submit"
           disabled={submitting}
-          className="w-full rounded bg-mp-cyan py-2 font-bold text-mp-btn-fg transition hover:opacity-90 disabled:opacity-50"
+          className="w-full rounded-lg bg-mp-cyan py-2.5 font-bold text-mp-btn-fg transition hover:opacity-90 active:scale-[0.99] disabled:opacity-50"
         >
           {submitting ? 'ログイン中...' : 'ログイン'}
         </button>

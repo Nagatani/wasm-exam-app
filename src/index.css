@@ -189,6 +189,46 @@ body {
   font-weight: 700;
 }
 
+/*
+ * Decorative backdrop for the pre-auth pages (login / signup). No photo
+ * asset — soft blurred color blobs plus a faint dot-grid, tinted from the
+ * same Monokai Pro accent tokens everything else uses, so it matches both
+ * themes automatically instead of needing its own light/dark variant.
+ */
+.auth-bg {
+  position: relative;
+  min-height: 100vh;
+  background-color: var(--mp-bg);
+  background-image:
+    radial-gradient(
+      640px circle at 12% 18%,
+      color-mix(in srgb, var(--mp-cyan) 24%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      560px circle at 88% 82%,
+      color-mix(in srgb, var(--mp-purple) 22%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      420px circle at 92% 8%,
+      color-mix(in srgb, var(--mp-green) 16%, transparent),
+      transparent 55%
+    );
+}
+.auth-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--mp-fg) 16%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 26px 26px;
+  opacity: 0.3;
+  pointer-events: none;
+}
+
 /* Indeterminate progress bar (first C compile pulls a ~100MB toolchain). */
 @keyframes mp-indeterminate {
   0% {
