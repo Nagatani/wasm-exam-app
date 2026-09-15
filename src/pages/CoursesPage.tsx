@@ -93,7 +93,7 @@ export function CoursesPage() {
 
   return (
     <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
-      <BackHeader to="/teacher" label="講師管理画面に戻る" />
+      <BackHeader to="/teacher" label="教師ダッシュボードに戻る" />
       <h1 className="mb-4 text-xl font-bold text-mp-cyan">クラス管理</h1>
 
       <div className="mb-4 flex items-center justify-between">

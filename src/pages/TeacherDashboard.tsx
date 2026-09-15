@@ -134,7 +134,7 @@ export function TeacherDashboard() {
   return (
     <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
       <AppHeader
-        title="講師管理画面"
+        title="教師ダッシュボード"
         actions={
           <Link
             to="/teacher/courses"
