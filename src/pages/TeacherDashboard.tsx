@@ -9,7 +9,8 @@ import { listCourses } from '../api/courses';
 import { getServiceHealth, promoteToTeacher, type ServiceHealth } from '../api/admin';
 import { ApiError } from '../api/client';
 import { datetimeLocalToIso } from '../lib/datetime';
-import type { ExamSummary, ExamStatus } from '../types/exam';
+import { ALL_LANGUAGES, LANGUAGE_LABEL } from '../lib/language';
+import type { ExamSummary, ExamStatus, Language } from '../types/exam';
 import type { CourseSummary } from '../types/course';
 
 function ServiceStatusStrip() {
@@ -265,6 +266,7 @@ function CreateExamForm({ onCreated }: { onCreated: () => void }) {
   const [opensAt, setOpensAt] = useState('');
   const [closesAt, setClosesAt] = useState('');
   const [courseId, setCourseId] = useState('');
+  const [defaultLanguage, setDefaultLanguage] = useState<Language>('C');
   const [courses, setCourses] = useState<CourseSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -288,6 +290,7 @@ function CreateExamForm({ onCreated }: { onCreated: () => void }) {
         opensAt: datetimeLocalToIso(opensAt),
         closesAt: datetimeLocalToIso(closesAt),
         courseId: courseId || null,
+        defaultLanguage,
       });
       onCreated();
     } catch (err) {
@@ -361,6 +364,25 @@ function CreateExamForm({ onCreated }: { onCreated: () => void }) {
       </div>
       <p className="mb-3 text-xs text-mp-muted">
         複数回受験できる場合、最後に提出した回の点数が成績になります。
+      </p>
+
+      <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-default-language">
+        既定の解答言語
+      </label>
+      <select
+        id="exam-default-language"
+        className="mb-1 rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+        value={defaultLanguage}
+        onChange={(e) => setDefaultLanguage(e.target.value as Language)}
+      >
+        {ALL_LANGUAGES.map((lang) => (
+          <option key={lang} value={lang}>
+            {LANGUAGE_LABEL[lang]}
+          </option>
+        ))}
+      </select>
+      <p className="mb-3 text-xs text-mp-muted">
+        新しく追加する問題の初期値として使われます（問題ごとに個別に変更できます）。
       </p>
 
       <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-course">

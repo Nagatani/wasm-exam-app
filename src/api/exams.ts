@@ -4,6 +4,7 @@ import type {
   ExamResults,
   ExamStatus,
   ExamSummary,
+  Language,
   SubmissionDetail,
 } from '../types/exam';
 
@@ -20,6 +21,9 @@ interface ExamInput {
   closesAt?: string | null;
   // Course id or null (unscope). Omit to keep.
   courseId?: string | null;
+  // Default language for new tasks in this exam. Omit to keep (default C on
+  // create).
+  defaultLanguage?: Language;
   status?: ExamStatus;
 }
 

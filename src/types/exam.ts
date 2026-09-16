@@ -41,6 +41,10 @@ export interface ExamDetail {
   closesAt: string | null;
   // Class scoping. null → visible to every student.
   courseId: string | null;
+  // Default Task.language for new tasks created in this exam. Only used at
+  // task-creation time — never retroactive, and each task's own language
+  // stays freely editable regardless of this value.
+  defaultLanguage: Language;
   status: ExamStatus;
   createdById: string;
   createdAt: string;

@@ -4,7 +4,8 @@ import { deleteExam, getExam, getPublishCheck, updateExam, type PublishIssue } f
 import { createTask, duplicateTask, updateTask } from '../api/tasks';
 import { listCourses } from '../api/courses';
 import { ApiError } from '../api/client';
-import type { ExamDetail, ExamStatus } from '../types/exam';
+import { ALL_LANGUAGES, LANGUAGE_LABEL } from '../lib/language';
+import type { ExamDetail, ExamStatus, Language } from '../types/exam';
 import type { CourseSummary } from '../types/course';
 import { BackHeader } from '../components/BackHeader';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -25,6 +26,7 @@ function examFormKey(e: ExamDetail): string {
     opensAt: e.opensAt,
     closesAt: e.closesAt,
     courseId: e.courseId,
+    defaultLanguage: e.defaultLanguage,
     status: e.status,
   });
 }
@@ -108,6 +110,7 @@ export function ExamDetailPage() {
         opensAt: exam.opensAt,
         closesAt: exam.closesAt,
         courseId: exam.courseId,
+        defaultLanguage: exam.defaultLanguage,
         status: exam.status,
       });
       setExam((prev) => {
@@ -277,9 +280,28 @@ export function ExamDetailPage() {
               <option value="PUBLISHED">公開中</option>
             </select>
           </div>
+          <div>
+            <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-default-language">
+              既定の解答言語
+            </label>
+            <select
+              id="exam-default-language"
+              className="rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+              value={exam.defaultLanguage}
+              onChange={(e) =>
+                setExam({ ...exam, defaultLanguage: e.target.value as Language })
+              }
+            >
+              {ALL_LANGUAGES.map((lang) => (
+                <option key={lang} value={lang}>
+                  {LANGUAGE_LABEL[lang]}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         <p className="mb-3 text-xs text-mp-muted">
-          複数回受験できる場合、最後に提出した回の点数が成績になります。各回とも制限時間は受験開始からのカウントダウンです。
+          複数回受験できる場合、最後に提出した回の点数が成績になります。各回とも制限時間は受験開始からのカウントダウンです。新しく追加する問題は既定の解答言語で作成されます（既存の問題の言語には影響しません。問題ごとに個別に変更できます）。
         </p>
 
         <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-course">

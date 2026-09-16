@@ -33,6 +33,9 @@ const examInputSchema = z.object({
   closesAt: z.coerce.date().nullable().optional(),
   // Class scoping. `null` → visible to every student; omit to keep.
   courseId: z.string().nullable().optional(),
+  // Default Task.language for new tasks created in this exam (omit to keep;
+  // Prisma's own @default(C) applies on create). Never retroactive.
+  defaultLanguage: languageSchema.optional(),
   status: z.enum(['DRAFT', 'PUBLISHED']).optional(),
 });
 
@@ -48,7 +51,9 @@ const taskInputSchema = z.object({
   order: z.number().int(),
   title: z.string().min(1, 'タイトルは必須です。'),
   statementMarkdown: z.string().default(''),
-  language: languageSchema.default('C'),
+  // Omit to fall back to the exam's defaultLanguage (see the /:examId/tasks
+  // handler below) rather than a hardcoded language.
+  language: languageSchema.optional(),
   starterCode: z.string().nullable().optional(),
   points: z.number().int().nonnegative().default(0),
   comparisonMode: comparisonModeSchema.optional(),
@@ -100,6 +105,9 @@ examsRouter.post('/', async (req, res) => {
       ...(parsed.data.opensAt !== undefined ? { opensAt: parsed.data.opensAt } : {}),
       ...(parsed.data.closesAt !== undefined ? { closesAt: parsed.data.closesAt } : {}),
       ...(parsed.data.courseId !== undefined ? { courseId: parsed.data.courseId } : {}),
+      ...(parsed.data.defaultLanguage !== undefined
+        ? { defaultLanguage: parsed.data.defaultLanguage }
+        : {}),
       status: parsed.data.status ?? 'DRAFT',
       createdById: req.user!.id,
     },
@@ -139,6 +147,7 @@ examsRouter.post('/:examId/duplicate', async (req, res) => {
       timeLimitMinutes: src.timeLimitMinutes,
       maxAttempts: src.maxAttempts,
       courseId: src.courseId,
+      defaultLanguage: src.defaultLanguage,
       status: 'DRAFT',
       createdById: req.user!.id,
       tasks: {
@@ -500,7 +509,9 @@ examsRouter.post('/:examId/tasks', async (req, res) => {
       order: parsed.data.order,
       title: parsed.data.title,
       statementMarkdown: parsed.data.statementMarkdown,
-      language: parsed.data.language,
+      // Falls back to the exam's default when the caller doesn't specify one
+      // (the common case: "＋問題を追加" never sends a language at all).
+      language: parsed.data.language ?? exam.defaultLanguage,
       starterCode: parsed.data.starterCode ?? null,
       points: parsed.data.points,
     },

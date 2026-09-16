@@ -154,6 +154,13 @@ model Exam {
   // Optional class scoping. null → visible to every STUDENT (pre-course
   // behaviour); set → only students enrolled in that course.
   courseId         String?
+  // Default `Task.language` for new tasks created in this exam (2026-09-16,
+  // teacher request — re-picking a language for every task in an exam that's
+  // almost always monolingual was pure friction). Only ever used as the
+  // initial value at task-creation time; changing it never retroactively
+  // touches already-created tasks, and any task's language stays freely
+  // editable on its own.
+  defaultLanguage  Language   @default(C)
   status           ExamStatus @default(DRAFT)
   createdById      String
   createdAt        DateTime   @default(now())
