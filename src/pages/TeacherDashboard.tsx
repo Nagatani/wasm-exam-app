@@ -4,6 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { AppHeader } from '../components/AppHeader';
 import { SkeletonRows } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState';
+import { HelpPopover } from '../components/HelpPopover';
+import { EXAM_MODE_HELP_TEXT } from '../lib/examModeHelp';
 import { createExam, duplicateExam, listExams } from '../api/exams';
 import { listCourses } from '../api/courses';
 import { getServiceHealth, promoteToTeacher, type ServiceHealth } from '../api/admin';
@@ -337,8 +339,9 @@ function CreateExamForm({ onCreated }: { onCreated: () => void }) {
         onChange={(e) => setDescription(e.target.value)}
       />
 
-      <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-mode">
+      <label className="mb-1 flex items-center text-sm text-mp-muted" htmlFor="exam-mode">
         モード
+        <HelpPopover text={EXAM_MODE_HELP_TEXT} />
       </label>
       <select
         id="exam-mode"
@@ -350,7 +353,7 @@ function CreateExamForm({ onCreated }: { onCreated: () => void }) {
         <option value="PRACTICE">演習（時間制限なし・何度でも挑戦可）</option>
       </select>
       <p className="mb-3 text-xs text-mp-muted">
-        演習モードでは制限時間・受験可能回数・公開スケジュールは使われず、生徒はいつでも何度でも提出できます。
+        演習モードでは制限時間・受験可能回数・公開スケジュールは使われず、生徒はいつでも何度でも提出できます。テストの代わりには使わないでください（成績ダッシュボードはありません）。
       </p>
 
       {mode === 'EXAM' && (

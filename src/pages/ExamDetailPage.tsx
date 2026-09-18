@@ -12,6 +12,8 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { TaskBankPicker } from '../components/TaskBankPicker';
 import { PageSkeleton } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState';
+import { HelpPopover } from '../components/HelpPopover';
+import { EXAM_MODE_HELP_TEXT } from '../lib/examModeHelp';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { datetimeLocalToIso, toDatetimeLocalValue } from '../lib/datetime';
 import { changedOrders, moveItem } from '../lib/reorder';
@@ -227,8 +229,9 @@ export function ExamDetailPage() {
 
         <div className="mb-3 flex flex-wrap gap-4">
           <div>
-            <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-mode">
+            <label className="mb-1 flex items-center text-sm text-mp-muted" htmlFor="exam-mode">
               モード
+              <HelpPopover text={EXAM_MODE_HELP_TEXT} />
             </label>
             <select
               id="exam-mode"
@@ -322,7 +325,7 @@ export function ExamDetailPage() {
         </div>
         <p className="mb-3 text-xs text-mp-muted">
           {exam.mode === 'PRACTICE'
-            ? '演習モードでは制限時間・受験可能回数・公開スケジュールは使われず、生徒はいつでも何度でも提出できます。'
+            ? '演習モードでは制限時間・受験可能回数・公開スケジュールは使われず、生徒はいつでも何度でも提出できます。テストの代わりには使わないでください（成績ダッシュボードはありません）。'
             : '複数回受験できる場合、最後に提出した回の点数が成績になります。各回とも制限時間は受験開始からのカウントダウンです。'}
           新しく追加する問題は既定の解答言語で作成されます（既存の問題の言語には影響しません。問題ごとに個別に変更できます）。
         </p>
