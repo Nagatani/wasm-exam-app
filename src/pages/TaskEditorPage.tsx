@@ -91,7 +91,7 @@ const codeClass =
   'w-full rounded border border-mp-border bg-mp-bg px-3 py-2 font-mono text-sm text-mp-fg';
 
 const AI_HINT_ENABLED_HELP_TEXT =
-  'この問題を演習モードで解いている生徒に、段階的なAIヒント機能を提供します。ヒントは生徒のブラウザ内で完結するAIモデル（生徒自身がブラウザでオプトインした場合のみ動作）が生成し、問題文・現在のコード・直近の実行結果をもとに作られます。生徒のコードや解答はこのサーバーやAIモデルの外部には送信されません。' +
+  'この問題を演習モードで解いている生徒に、段階的なAIヒント機能を提供します（試験モードのタスクとして使われている場合は、このチェックの有無にかかわらず影響しません）。ヒントは生徒のブラウザ内で完結するAIモデル（生徒自身がブラウザでオプトインした場合のみ動作）が生成し、問題文・現在のコード・直近の実行結果をもとに作られます。生徒のコードや解答はこのサーバーやAIモデルの外部には送信されません。' +
   '\n\n注意: AIモデルは指示に完全には従いません。特にヒント3（修正方針）は、単純な問題では答えに近い内容になることがあります（実際に確認済み）。不安な場合は「公開する最大段階」で1や2に制限してください。';
 
 const AI_HINT_MAX_STAGE_HELP_TEXT =
@@ -693,9 +693,6 @@ export function TaskEditorPage() {
               AIヒントを許可する（演習モード）
               <HelpPopover text={AI_HINT_ENABLED_HELP_TEXT} />
             </label>
-            <p className="text-xs text-mp-muted">
-              演習モードの問題でのみ有効です。生徒が段階的なAIヒント（ブラウザ側でオプトインした場合のみ）を利用できるようになります。試験モードには影響しません。
-            </p>
             {task.aiHintEnabled && (
               <div className="mt-2">
                 <label
@@ -717,9 +714,6 @@ export function TaskEditorPage() {
                   <option value={2}>ヒント2まで（疑わしい箇所まで）</option>
                   <option value={3}>ヒント3まで（修正方針まで）</option>
                 </select>
-                <p className="mt-1 text-xs text-mp-muted">
-                  ヒント3（修正方針）は、簡単な問題では答えに近い内容になることがあります。心配な場合は1や2に制限してください。
-                </p>
               </div>
             )}
           </div>

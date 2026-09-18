@@ -345,16 +345,13 @@ function CreateExamForm({ onCreated }: { onCreated: () => void }) {
       </label>
       <select
         id="exam-mode"
-        className="mb-1 rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+        className="mb-3 rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
         value={mode}
         onChange={(e) => setMode(e.target.value as ExamMode)}
       >
         <option value="EXAM">試験（時間制限あり）</option>
         <option value="PRACTICE">演習（時間制限なし・何度でも挑戦可）</option>
       </select>
-      <p className="mb-3 text-xs text-mp-muted">
-        演習モードでは制限時間・受験可能回数・公開スケジュールは使われず、生徒はいつでも何度でも提出できます。テストの代わりには使わないでください（成績ダッシュボードはありません）。
-      </p>
 
       {mode === 'EXAM' && (
         <>
