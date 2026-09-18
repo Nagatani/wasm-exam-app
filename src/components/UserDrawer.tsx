@@ -11,6 +11,10 @@ import { ThemeToggle } from './ThemeToggle';
 // 'TEACHER'` below), not merely mounted, so opening the drawer itself stays
 // cheap for the (much more common) case of a teacher who never touches it.
 const AiAssistSettings = lazy(() => import('./AiAssistSettings'));
+// Same lazy/gated-by-role reasoning as AiAssistSettings above, but for the
+// student-facing practice-mode AI hint feature (gated `role === 'STUDENT'`
+// below instead of 'TEACHER').
+const AiHintSettings = lazy(() => import('./AiHintSettings'));
 
 const ROLE_LABEL: Record<'STUDENT' | 'TEACHER', string> = {
   STUDENT: '学生',
@@ -131,6 +135,14 @@ export function UserDrawer() {
               fallback={<p className="mb-4 text-xs text-mp-muted">読み込み中...</p>}
             >
               <AiAssistSettings />
+            </Suspense>
+          )}
+
+          {open && profile.role === 'STUDENT' && (
+            <Suspense
+              fallback={<p className="mb-4 text-xs text-mp-muted">読み込み中...</p>}
+            >
+              <AiHintSettings />
             </Suspense>
           )}
 

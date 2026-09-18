@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { CodeEditor } from '../components/CodeEditor';
@@ -10,6 +10,7 @@ import {
   runPracticeTask,
   submitPracticeTask,
 } from '../api/practice';
+import { isAiHintEnabled, onAiHintSettingsChanged } from '../ai/aiHintSettings';
 import { prewarmClientRunner, runClientSide } from '../runner/clientRunner';
 import { statusGlyph } from '../lib/status';
 import {
@@ -27,6 +28,12 @@ import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { ApiError } from '../api/client';
 import type { JudgeOutcome, JudgeVerdict } from '../types/student';
 import type { PracticeSubmissionSummary, PracticeTask, PracticeTaskSummary } from '../types/practice';
+
+// Lazy: HintPanel pulls in @mlc-ai/web-llm (several MB) via ../ai/aiHint —
+// only worth fetching once we already know both the task allows it and this
+// browser opted in (checked below with the lightweight aiHintSettings.ts,
+// which has no such dependency), not just from opening this page.
+const HintPanel = lazy(() => import('../components/HintPanel'));
 
 // Practice mode's task page — same judging UI/UX as the exam flow's
 // StudentTaskPage, but with every ExamAttempt/TaskDraft/deadline concept
@@ -103,6 +110,9 @@ export function PracticeTaskPage() {
   const [compileMarkers, setCompileMarkers] = useState<EditorMarker[]>([]);
   const [submissions, setSubmissions] = useState<PracticeSubmissionSummary[]>([]);
   const [lastSubmitFlash, setLastSubmitFlash] = useState(false);
+  const [aiHintOptedIn, setAiHintOptedIn] = useState(isAiHintEnabled);
+
+  useEffect(() => onAiHintSettingsChanged(() => setAiHintOptedIn(isAiHintEnabled())), []);
 
   const runActionRef = useRef<() => void>(() => {});
   const handleCmdEnter = useCallback(() => runActionRef.current(), []);
@@ -461,6 +471,20 @@ export function PracticeTaskPage() {
             <pre className="whitespace-pre-wrap rounded bg-mp-bg p-3 text-xs text-mp-red">
               {compileError}
             </pre>
+          )}
+
+          {task.aiHintEnabled && aiHintOptedIn && (
+            <Suspense
+              fallback={<p className="text-xs text-mp-muted">読み込み中...</p>}
+            >
+              <HintPanel
+                key={task.id}
+                task={task}
+                code={code}
+                verdict={verdict}
+                compileStderr={compileError}
+              />
+            </Suspense>
           )}
 
           {verdict && verdict.overallStatus !== 'CE' && (

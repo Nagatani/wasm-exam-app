@@ -191,6 +191,7 @@ examsRouter.post('/:examId/duplicate', async (req, res) => {
           floatTolerance: t.floatTolerance,
           allowPartialCredit: t.allowPartialCredit,
           tags: t.tags,
+          aiHintEnabled: t.aiHintEnabled,
           testCases: {
             create: t.testCases.map((tc) => ({
               input: tc.input,
@@ -590,6 +591,7 @@ examsRouter.post('/:examId/tasks/import', async (req, res) => {
         floatTolerance: t.floatTolerance,
         allowPartialCredit: t.allowPartialCredit,
         tags: t.tags,
+        aiHintEnabled: t.aiHintEnabled,
         testCases: { create: t.testCases },
         solutions: { create: t.solutions },
       },

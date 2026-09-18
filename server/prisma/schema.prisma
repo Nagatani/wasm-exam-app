@@ -280,6 +280,10 @@ model Task {
   // who can open the exam/task directly, matching this app's existing
   // "any teacher can edit any exam" admin-console model (see CLAUDE.md).
   isPublic         Boolean  @default(false)
+  // Teacher opt-in for the practice-mode (ExamMode.PRACTICE) staged AI hint
+  // feature — no effect on the timed exam flow, which never renders the hint
+  // panel regardless of this flag. See src/components/HintPanel.tsx.
+  aiHintEnabled    Boolean  @default(false)
   createdAt        DateTime @default(now())
 
   exam        Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)

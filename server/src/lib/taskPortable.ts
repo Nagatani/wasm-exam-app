@@ -42,6 +42,9 @@ export const portableTaskSchema = z
     floatTolerance: z.number().positive(),
     allowPartialCredit: z.boolean(),
     tags: z.array(z.string()).default([]),
+    // Defaulted (not required) so a file exported before this field existed
+    // still validates.
+    aiHintEnabled: z.boolean().default(false),
     testCases: z.array(portableTestCaseSchema),
     solutions: z.array(portableSolutionSchema),
   })

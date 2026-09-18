@@ -101,7 +101,7 @@ studentRouter.get('/exams', async (req, res) => {
   const enrolled = await enrolledCourseIds(userId);
   const exams = (
     await prisma.exam.findMany({
-      where: { status: 'PUBLISHED' },
+      where: { status: 'PUBLISHED', mode: 'EXAM' },
       orderBy: { createdAt: 'desc' },
       include: {
         _count: { select: { tasks: true } },
@@ -184,16 +184,13 @@ studentRouter.get('/exams', async (req, res) => {
 studentRouter.post('/exams/:examId/attempts', async (req, res) => {
   const userId = req.user!.id;
   const exam = await prisma.exam.findUnique({
-    where: { id: req.params.examId, status: 'PUBLISHED' },
+    where: { id: req.params.examId, status: 'PUBLISHED', mode: 'EXAM' },
     include: { _count: { select: { tasks: true } } },
   });
   if (!exam || !examVisible(exam.courseId, await enrolledCourseIds(userId))) {
+    // Also 404s for a mode:PRACTICE exam (excluded by the query above) —
+    // practice-mode exams never have an ExamAttempt, see routes/practice.ts.
     res.status(404).json({ error: '試験が見つかりません。' });
-    return;
-  }
-  if (exam.mode !== 'EXAM') {
-    // Practice-mode exams never have an ExamAttempt — see server/src/routes/practice.ts.
-    res.status(400).json({ error: 'この試験は演習モードのため、受験開始は不要です。' });
     return;
   }
   if (exam._count.tasks === 0) {
@@ -263,7 +260,7 @@ studentRouter.post('/exams/:examId/attempts', async (req, res) => {
 studentRouter.get('/exams/:examId', async (req, res) => {
   const userId = req.user!.id;
   const exam = await prisma.exam.findUnique({
-    where: { id: req.params.examId, status: 'PUBLISHED' },
+    where: { id: req.params.examId, status: 'PUBLISHED', mode: 'EXAM' },
     include: {
       tasks: {
         orderBy: { order: 'asc' },
@@ -458,7 +455,7 @@ studentRouter.post('/tasks/:taskId/run', async (req, res) => {
 studentRouter.get('/exams/:examId/attempt', async (req, res) => {
   const userId = req.user!.id;
   const exam = await prisma.exam.findUnique({
-    where: { id: req.params.examId, status: 'PUBLISHED' },
+    where: { id: req.params.examId, status: 'PUBLISHED', mode: 'EXAM' },
     include: {
       tasks: {
         orderBy: { order: 'asc' },
@@ -537,7 +534,7 @@ studentRouter.post('/exams/:examId/submit', async (req, res) => {
   }
 
   const exam = await prisma.exam.findUnique({
-    where: { id: req.params.examId, status: 'PUBLISHED' },
+    where: { id: req.params.examId, status: 'PUBLISHED', mode: 'EXAM' },
     include: {
       tasks: { orderBy: { order: 'asc' }, include: { testCases: true } },
     },
@@ -681,7 +678,7 @@ studentRouter.post('/exams/:examId/submit', async (req, res) => {
 studentRouter.get('/exams/:examId/result', async (req, res) => {
   const userId = req.user!.id;
   const exam = await prisma.exam.findUnique({
-    where: { id: req.params.examId, status: 'PUBLISHED' },
+    where: { id: req.params.examId, status: 'PUBLISHED', mode: 'EXAM' },
     include: {
       tasks: {
         orderBy: { order: 'asc' },

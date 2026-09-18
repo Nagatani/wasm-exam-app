@@ -15,6 +15,7 @@ interface TaskInput {
   allowPartialCredit?: boolean;
   tags?: string[];
   isPublic?: boolean;
+  aiHintEnabled?: boolean;
 }
 
 interface TestCaseInput {

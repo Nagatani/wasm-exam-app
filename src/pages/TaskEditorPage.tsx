@@ -105,6 +105,7 @@ function taskFormKey(t: TaskDetail): string {
     allowPartialCredit: t.allowPartialCredit,
     tags: t.tags,
     isPublic: t.isPublic,
+    aiHintEnabled: t.aiHintEnabled,
   });
 }
 
@@ -238,6 +239,7 @@ export function TaskEditorPage() {
         allowPartialCredit: task.allowPartialCredit,
         tags: task.tags,
         isPublic: task.isPublic,
+        aiHintEnabled: task.aiHintEnabled,
       });
       setTask((prev) => {
         const next = prev ? { ...prev, ...updated } : prev;
@@ -666,6 +668,19 @@ export function TaskEditorPage() {
             </label>
             <p className="text-xs text-mp-muted">
               通過したテストケース数に比例した点数（四捨五入）。既定は全テストAC以外0点。
+            </p>
+          </div>
+          <div>
+            <label className="mb-1 flex items-center gap-2 text-sm text-mp-muted">
+              <input
+                type="checkbox"
+                checked={task.aiHintEnabled}
+                onChange={(e) => setTask({ ...task, aiHintEnabled: e.target.checked })}
+              />
+              AIヒントを許可する（演習モード）
+            </label>
+            <p className="text-xs text-mp-muted">
+              演習モードの問題でのみ有効です。生徒が段階的なAIヒント（ブラウザ側でオプトインした場合のみ）を利用できるようになります。試験モードには影響しません。
             </p>
           </div>
         </div>

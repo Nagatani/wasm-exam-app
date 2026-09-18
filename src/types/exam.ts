@@ -99,6 +99,9 @@ export interface TaskDetail {
   // see CLAUDE.md).
   tags: string[];
   isPublic: boolean;
+  // Practice-mode staged AI hint panel opt-in — no effect on the timed exam
+  // flow (StudentTaskPage never renders the hint panel regardless).
+  aiHintEnabled: boolean;
   createdAt: string;
   testCases: TestCase[];
   solutions: Solution[];

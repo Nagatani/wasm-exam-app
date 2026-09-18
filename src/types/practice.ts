@@ -42,6 +42,8 @@ export interface PracticeTask {
   language: Language;
   starterCode: string | null;
   points: number;
+  // Teacher opt-in for the staged AI hint panel (src/components/HintPanel.tsx).
+  aiHintEnabled: boolean;
   testCases: StudentTestCase[];
 }
 

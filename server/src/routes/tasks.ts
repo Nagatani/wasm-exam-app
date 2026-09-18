@@ -32,6 +32,9 @@ const taskUpdateSchema = z.object({
   // Task-bank fields — free-form labels + the public/private discovery flag.
   tags: z.array(z.string().min(1).max(40)).max(20).optional(),
   isPublic: z.boolean().optional(),
+  // Practice-mode staged AI hint panel opt-in — no effect on the timed exam
+  // flow. See src/components/HintPanel.tsx.
+  aiHintEnabled: z.boolean().optional(),
 });
 
 const testCaseInputSchema = z.object({
@@ -91,6 +94,7 @@ tasksRouter.get('/:taskId/export', async (req, res) => {
         floatTolerance: task.floatTolerance,
         allowPartialCredit: task.allowPartialCredit,
         tags: task.tags,
+        aiHintEnabled: task.aiHintEnabled,
         testCases: task.testCases.map((tc) => ({
           input: tc.input,
           expectedOutput: tc.expectedOutput,
@@ -404,6 +408,7 @@ tasksRouter.post('/:taskId/duplicate', async (req, res) => {
       floatTolerance: src.floatTolerance,
       allowPartialCredit: src.allowPartialCredit,
       tags: src.tags,
+      aiHintEnabled: src.aiHintEnabled,
       testCases: {
         create: src.testCases.map((tc) => ({
           input: tc.input,
