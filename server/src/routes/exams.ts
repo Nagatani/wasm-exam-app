@@ -192,6 +192,7 @@ examsRouter.post('/:examId/duplicate', async (req, res) => {
           allowPartialCredit: t.allowPartialCredit,
           tags: t.tags,
           aiHintEnabled: t.aiHintEnabled,
+          aiHintMaxStage: t.aiHintMaxStage,
           testCases: {
             create: t.testCases.map((tc) => ({
               input: tc.input,
@@ -592,6 +593,7 @@ examsRouter.post('/:examId/tasks/import', async (req, res) => {
         allowPartialCredit: t.allowPartialCredit,
         tags: t.tags,
         aiHintEnabled: t.aiHintEnabled,
+        aiHintMaxStage: t.aiHintMaxStage,
         testCases: { create: t.testCases },
         solutions: { create: t.solutions },
       },

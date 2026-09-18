@@ -45,6 +45,7 @@ export const portableTaskSchema = z
     // Defaulted (not required) so a file exported before this field existed
     // still validates.
     aiHintEnabled: z.boolean().default(false),
+    aiHintMaxStage: z.number().int().min(1).max(3).default(3),
     testCases: z.array(portableTestCaseSchema),
     solutions: z.array(portableSolutionSchema),
   })

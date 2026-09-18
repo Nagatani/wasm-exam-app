@@ -16,6 +16,7 @@ interface TaskInput {
   tags?: string[];
   isPublic?: boolean;
   aiHintEnabled?: boolean;
+  aiHintMaxStage?: number;
 }
 
 interface TestCaseInput {

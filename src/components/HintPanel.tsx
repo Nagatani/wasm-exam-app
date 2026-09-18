@@ -19,6 +19,11 @@ const STAGES: HintStage[] = [1, 2, 3];
  * PracticeTaskPage only mounts this (lazily) once it has confirmed both the
  * task's teacher-set `aiHintEnabled` flag and this browser's student opt-in
  * (aiHintSettings.ts) are true — this component doesn't re-check either.
+ *
+ * `task.aiHintMaxStage` (1-3, teacher-set) caps how many of the 3 stages are
+ * offered at all — added after real-model testing showed stage 3 can land
+ * close to the literal answer for simple bugs, so a teacher can restrict a
+ * task to stage 1 or 2 only.
  */
 export function HintPanel({
   task,
@@ -31,6 +36,7 @@ export function HintPanel({
   verdict: JudgeVerdict | null;
   compileStderr: string | null;
 }) {
+  const visibleStages = STAGES.filter((s) => s <= task.aiHintMaxStage);
   const [unlockedStage, setUnlockedStage] = useState<0 | 1 | 2 | 3>(0);
   const [hints, setHints] = useState<Partial<Record<HintStage, string>>>({});
   const [loadingStage, setLoadingStage] = useState<HintStage | null>(null);
@@ -81,7 +87,7 @@ export function HintPanel({
         </p>
       )}
       <div className="flex flex-col gap-2">
-        {STAGES.map((stage) => {
+        {visibleStages.map((stage) => {
           const available = isStageAvailable(stage);
           const revealed = hints[stage] !== undefined;
           return (

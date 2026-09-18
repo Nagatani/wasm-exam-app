@@ -35,6 +35,9 @@ const taskUpdateSchema = z.object({
   // Practice-mode staged AI hint panel opt-in — no effect on the timed exam
   // flow. See src/components/HintPanel.tsx.
   aiHintEnabled: z.boolean().optional(),
+  // How many of the 3 fixed hint stages are exposed, only meaningful when
+  // aiHintEnabled.
+  aiHintMaxStage: z.number().int().min(1).max(3).optional(),
 });
 
 const testCaseInputSchema = z.object({
@@ -95,6 +98,7 @@ tasksRouter.get('/:taskId/export', async (req, res) => {
         allowPartialCredit: task.allowPartialCredit,
         tags: task.tags,
         aiHintEnabled: task.aiHintEnabled,
+        aiHintMaxStage: task.aiHintMaxStage,
         testCases: task.testCases.map((tc) => ({
           input: tc.input,
           expectedOutput: tc.expectedOutput,
@@ -409,6 +413,7 @@ tasksRouter.post('/:taskId/duplicate', async (req, res) => {
       allowPartialCredit: src.allowPartialCredit,
       tags: src.tags,
       aiHintEnabled: src.aiHintEnabled,
+      aiHintMaxStage: src.aiHintMaxStage,
       testCases: {
         create: src.testCases.map((tc) => ({
           input: tc.input,

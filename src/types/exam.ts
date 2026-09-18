@@ -102,6 +102,8 @@ export interface TaskDetail {
   // Practice-mode staged AI hint panel opt-in — no effect on the timed exam
   // flow (StudentTaskPage never renders the hint panel regardless).
   aiHintEnabled: boolean;
+  // How many of the 3 fixed hint stages (1-3) are exposed when enabled.
+  aiHintMaxStage: number;
   createdAt: string;
   testCases: TestCase[];
   solutions: Solution[];

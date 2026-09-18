@@ -124,6 +124,7 @@ practiceRouter.get('/tasks/:taskId', async (req, res) => {
       starterCode: task.starterCode,
       points: task.points,
       aiHintEnabled: task.aiHintEnabled,
+      aiHintMaxStage: task.aiHintMaxStage,
       // Hidden (non-sample) test cases expose only `input` — same redaction
       // rule as the exam flow (server/src/routes/student.ts).
       testCases: task.testCases.map((tc) => ({

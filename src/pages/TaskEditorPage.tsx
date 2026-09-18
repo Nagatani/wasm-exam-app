@@ -106,6 +106,7 @@ function taskFormKey(t: TaskDetail): string {
     tags: t.tags,
     isPublic: t.isPublic,
     aiHintEnabled: t.aiHintEnabled,
+    aiHintMaxStage: t.aiHintMaxStage,
   });
 }
 
@@ -240,6 +241,7 @@ export function TaskEditorPage() {
         tags: task.tags,
         isPublic: task.isPublic,
         aiHintEnabled: task.aiHintEnabled,
+        aiHintMaxStage: task.aiHintMaxStage,
       });
       setTask((prev) => {
         const next = prev ? { ...prev, ...updated } : prev;
@@ -682,6 +684,28 @@ export function TaskEditorPage() {
             <p className="text-xs text-mp-muted">
               演習モードの問題でのみ有効です。生徒が段階的なAIヒント（ブラウザ側でオプトインした場合のみ）を利用できるようになります。試験モードには影響しません。
             </p>
+            {task.aiHintEnabled && (
+              <div className="mt-2">
+                <label className="mb-1 block text-sm text-mp-muted" htmlFor="task-ai-hint-max-stage">
+                  公開する最大段階
+                </label>
+                <select
+                  id="task-ai-hint-max-stage"
+                  className="rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+                  value={task.aiHintMaxStage}
+                  onChange={(e) =>
+                    setTask({ ...task, aiHintMaxStage: Number(e.target.value) })
+                  }
+                >
+                  <option value={1}>ヒント1まで（着眼点のみ）</option>
+                  <option value={2}>ヒント2まで（疑わしい箇所まで）</option>
+                  <option value={3}>ヒント3まで（修正方針まで）</option>
+                </select>
+                <p className="mt-1 text-xs text-mp-muted">
+                  ヒント3（修正方針）は、簡単な問題では答えに近い内容になることがあります。心配な場合は1や2に制限してください。
+                </p>
+              </div>
+            )}
           </div>
         </div>
 

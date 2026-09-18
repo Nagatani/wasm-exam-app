@@ -44,6 +44,8 @@ export interface PracticeTask {
   points: number;
   // Teacher opt-in for the staged AI hint panel (src/components/HintPanel.tsx).
   aiHintEnabled: boolean;
+  // How many of the 3 fixed hint stages (1-3) are exposed when enabled.
+  aiHintMaxStage: number;
   testCases: StudentTestCase[];
 }
 

@@ -284,6 +284,12 @@ model Task {
   // feature — no effect on the timed exam flow, which never renders the hint
   // panel regardless of this flag. See src/components/HintPanel.tsx.
   aiHintEnabled    Boolean  @default(false)
+  // How many of the 3 fixed hint stages (1=着眼点, 2=疑わしい箇所, 3=修正方針)
+  // are exposed to students, only meaningful when aiHintEnabled. 1-3,
+  // validated at the app layer (Zod), not the DB. Added 2026-09-19 after
+  // real-model testing showed stage 3 sometimes reveals content close to the
+  // answer for simple bugs — lets a teacher cap a task at 1 or 2 instead.
+  aiHintMaxStage   Int      @default(3)
   createdAt        DateTime @default(now())
 
   exam        Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
