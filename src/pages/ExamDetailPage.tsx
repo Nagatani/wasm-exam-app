@@ -5,7 +5,7 @@ import { createTask, duplicateTask, updateTask } from '../api/tasks';
 import { listCourses } from '../api/courses';
 import { ApiError } from '../api/client';
 import { ALL_LANGUAGES, LANGUAGE_LABEL } from '../lib/language';
-import type { ExamDetail, ExamStatus, Language } from '../types/exam';
+import type { ExamDetail, ExamMode, ExamStatus, Language } from '../types/exam';
 import type { CourseSummary } from '../types/course';
 import { BackHeader } from '../components/BackHeader';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -21,6 +21,7 @@ function examFormKey(e: ExamDetail): string {
   return JSON.stringify({
     title: e.title,
     description: e.description,
+    mode: e.mode,
     timeLimitMinutes: e.timeLimitMinutes,
     maxAttempts: e.maxAttempts,
     opensAt: e.opensAt,
@@ -105,10 +106,11 @@ export function ExamDetailPage() {
       const { exam: updated } = await updateExam(exam.id, {
         title: exam.title,
         description: exam.description,
-        timeLimitMinutes: exam.timeLimitMinutes,
-        maxAttempts: exam.maxAttempts,
-        opensAt: exam.opensAt,
-        closesAt: exam.closesAt,
+        mode: exam.mode,
+        timeLimitMinutes: exam.mode === 'PRACTICE' ? null : exam.timeLimitMinutes,
+        maxAttempts: exam.mode === 'PRACTICE' ? null : exam.maxAttempts,
+        opensAt: exam.mode === 'PRACTICE' ? null : exam.opensAt,
+        closesAt: exam.mode === 'PRACTICE' ? null : exam.closesAt,
         courseId: exam.courseId,
         defaultLanguage: exam.defaultLanguage,
         status: exam.status,
@@ -223,49 +225,67 @@ export function ExamDetailPage() {
           onChange={(e) => setExam({ ...exam, description: e.target.value })}
         />
 
-        <div className="mb-3 flex gap-4">
+        <div className="mb-3 flex flex-wrap gap-4">
           <div>
-            <label className="mb-1 block text-sm text-mp-muted" htmlFor="time-limit">
-              制限時間（分）
+            <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-mode">
+              モード
             </label>
-            <input
-              id="time-limit"
-              type="number"
-              min={1}
-              className="w-32 rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
-              value={exam.timeLimitMinutes}
-              onChange={(e) => setExam({ ...exam, timeLimitMinutes: Number(e.target.value) })}
-              required
-            />
+            <select
+              id="exam-mode"
+              className="rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+              value={exam.mode}
+              onChange={(e) => setExam({ ...exam, mode: e.target.value as ExamMode })}
+            >
+              <option value="EXAM">試験（時間制限あり）</option>
+              <option value="PRACTICE">演習（時間制限なし・何度でも挑戦可）</option>
+            </select>
           </div>
-          <div>
-            <label className="mb-1 block text-sm text-mp-muted" htmlFor="max-attempts">
-              受験可能回数
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                id="max-attempts"
-                type="number"
-                min={1}
-                disabled={exam.maxAttempts === null}
-                className="w-20 rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg disabled:opacity-50"
-                value={exam.maxAttempts ?? 1}
-                onChange={(e) =>
-                  setExam({ ...exam, maxAttempts: Math.max(1, Number(e.target.value)) })
-                }
-              />
-              <label className="flex items-center gap-1 text-sm text-mp-muted">
+          {exam.mode === 'EXAM' && (
+            <>
+              <div>
+                <label className="mb-1 block text-sm text-mp-muted" htmlFor="time-limit">
+                  制限時間（分）
+                </label>
                 <input
-                  type="checkbox"
-                  checked={exam.maxAttempts === null}
-                  onChange={(e) =>
-                    setExam({ ...exam, maxAttempts: e.target.checked ? null : 1 })
-                  }
+                  id="time-limit"
+                  type="number"
+                  min={1}
+                  className="w-32 rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+                  value={exam.timeLimitMinutes ?? 60}
+                  onChange={(e) => setExam({ ...exam, timeLimitMinutes: Number(e.target.value) })}
+                  required
                 />
-                無制限
-              </label>
-            </div>
-          </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-mp-muted" htmlFor="max-attempts">
+                  受験可能回数
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="max-attempts"
+                    type="number"
+                    min={1}
+                    disabled={exam.maxAttempts === null}
+                    className="w-20 rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg disabled:opacity-50"
+                    value={exam.maxAttempts ?? 1}
+                    onChange={(e) =>
+                      setExam({ ...exam, maxAttempts: Math.max(1, Number(e.target.value)) })
+                    }
+                  />
+                  <label className="flex items-center gap-1 text-sm text-mp-muted">
+                    <input
+                      type="checkbox"
+                      checked={exam.maxAttempts === null}
+                      onChange={(e) =>
+                        setExam({ ...exam, maxAttempts: e.target.checked ? null : 1 })
+                      }
+                    />
+                    無制限
+                  </label>
+                </div>
+              </div>
+            </>
+          )}
           <div>
             <label className="mb-1 block text-sm text-mp-muted" htmlFor="status">
               公開ステータス
@@ -301,7 +321,10 @@ export function ExamDetailPage() {
           </div>
         </div>
         <p className="mb-3 text-xs text-mp-muted">
-          複数回受験できる場合、最後に提出した回の点数が成績になります。各回とも制限時間は受験開始からのカウントダウンです。新しく追加する問題は既定の解答言語で作成されます（既存の問題の言語には影響しません。問題ごとに個別に変更できます）。
+          {exam.mode === 'PRACTICE'
+            ? '演習モードでは制限時間・受験可能回数・公開スケジュールは使われず、生徒はいつでも何度でも提出できます。'
+            : '複数回受験できる場合、最後に提出した回の点数が成績になります。各回とも制限時間は受験開始からのカウントダウンです。'}
+          新しく追加する問題は既定の解答言語で作成されます（既存の問題の言語には影響しません。問題ごとに個別に変更できます）。
         </p>
 
         <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-course">
@@ -322,39 +345,43 @@ export function ExamDetailPage() {
           ))}
         </select>
 
-        <div className="mb-3 flex flex-wrap gap-4">
-          <div>
-            <label className="mb-1 block text-sm text-mp-muted" htmlFor="opens-at">
-              公開開始日時（任意）
-            </label>
-            <input
-              id="opens-at"
-              type="datetime-local"
-              className="rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
-              value={toDatetimeLocalValue(exam.opensAt)}
-              onChange={(e) =>
-                setExam({ ...exam, opensAt: datetimeLocalToIso(e.target.value) })
-              }
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-mp-muted" htmlFor="closes-at">
-              受付終了日時（任意）
-            </label>
-            <input
-              id="closes-at"
-              type="datetime-local"
-              className="rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
-              value={toDatetimeLocalValue(exam.closesAt)}
-              onChange={(e) =>
-                setExam({ ...exam, closesAt: datetimeLocalToIso(e.target.value) })
-              }
-            />
-          </div>
-        </div>
-        <p className="mb-3 text-xs text-mp-muted">
-          公開開始前は一覧に表示されても受験を開始できません。受付終了後は新しい受験を開始できず、受験中の回は終了時刻で自動提出されます。
-        </p>
+        {exam.mode === 'EXAM' && (
+          <>
+            <div className="mb-3 flex flex-wrap gap-4">
+              <div>
+                <label className="mb-1 block text-sm text-mp-muted" htmlFor="opens-at">
+                  公開開始日時（任意）
+                </label>
+                <input
+                  id="opens-at"
+                  type="datetime-local"
+                  className="rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+                  value={toDatetimeLocalValue(exam.opensAt)}
+                  onChange={(e) =>
+                    setExam({ ...exam, opensAt: datetimeLocalToIso(e.target.value) })
+                  }
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-mp-muted" htmlFor="closes-at">
+                  受付終了日時（任意）
+                </label>
+                <input
+                  id="closes-at"
+                  type="datetime-local"
+                  className="rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+                  value={toDatetimeLocalValue(exam.closesAt)}
+                  onChange={(e) =>
+                    setExam({ ...exam, closesAt: datetimeLocalToIso(e.target.value) })
+                  }
+                />
+              </div>
+            </div>
+            <p className="mb-3 text-xs text-mp-muted">
+              公開開始前は一覧に表示されても受験を開始できません。受付終了後は新しい受験を開始できず、受験中の回は終了時刻で自動提出されます。
+            </p>
+          </>
+        )}
 
         {error && <p className="mb-3 text-sm text-mp-red">{error}</p>}
 
@@ -424,12 +451,14 @@ export function ExamDetailPage() {
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-bold">問題一覧</h2>
         <div className="flex gap-2">
-          <Link
-            to={`/teacher/exams/${exam.id}/results`}
-            className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover"
-          >
-            成績を見る
-          </Link>
+          {exam.mode === 'EXAM' && (
+            <Link
+              to={`/teacher/exams/${exam.id}/results`}
+              className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover"
+            >
+              成績を見る
+            </Link>
+          )}
           <button
             onClick={() => setBankPickerOpen(true)}
             className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover"

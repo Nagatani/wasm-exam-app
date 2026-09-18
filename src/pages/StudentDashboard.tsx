@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { AppHeader } from '../components/AppHeader';
 import { SkeletonRows } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState';
 import { getStudentExam, listStudentExams, startAttempt } from '../api/student';
+import { listPracticeExams } from '../api/practice';
 import {
   getRuntimeReadiness,
   prewarmAllClientRunners,
@@ -15,6 +16,7 @@ import { ApiError } from '../api/client';
 import { LANGUAGE_LABEL } from '../lib/language';
 import type { Language } from '../types/exam';
 import type { StudentExamSummary } from '../types/student';
+import type { PracticeExamSummary } from '../types/practice';
 
 type Readiness = { c: RunnerReadiness; python: RunnerReadiness };
 
@@ -100,6 +102,7 @@ export function StudentDashboard() {
   const { profile } = useAuth();
   const navigate = useNavigate();
   const [exams, setExams] = useState<StudentExamSummary[]>([]);
+  const [practiceExams, setPracticeExams] = useState<PracticeExamSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -112,6 +115,9 @@ export function StudentDashboard() {
         setError(err instanceof ApiError ? err.message : '試験一覧の取得に失敗しました。'),
       )
       .finally(() => setLoading(false));
+    listPracticeExams()
+      .then(({ exams }) => setPracticeExams(exams))
+      .catch(() => setPracticeExams([]));
     // Begin fetching the heavy client runtimes (clang ~106MB, Pyodide ~10MB)
     // now so they're likely ready by the time the student opens a task.
     prewarmAllClientRunners();
@@ -262,6 +268,33 @@ export function StudentDashboard() {
               </li>
             );
           })}
+        </ul>
+      )}
+
+      <h2 className="mb-4 mt-8 text-lg font-bold">演習</h2>
+      {practiceExams.length === 0 ? (
+        <p className="text-sm text-mp-muted">現在利用できる演習セットはありません。</p>
+      ) : (
+        <ul className="divide-y divide-mp-border rounded-lg border border-mp-border bg-mp-surface">
+          {practiceExams.map((exam) => (
+            <li key={exam.id}>
+              <Link
+                to={`/student/practice/exams/${exam.id}`}
+                className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-mp-surface-hover"
+              >
+                <div>
+                  <p className="font-bold">{exam.title}</p>
+                  {exam.description && <p className="text-sm text-mp-muted">{exam.description}</p>}
+                  <p className="text-sm text-mp-muted">
+                    問題数: {exam.taskCount} ・ 合計 {exam.totalPoints}点 ・ 時間制限なし
+                  </p>
+                </div>
+                <span className="rounded border border-mp-cyan/50 px-2 py-1 text-xs font-bold text-mp-cyan">
+                  演習
+                </span>
+              </Link>
+            </li>
+          ))}
         </ul>
       )}
     </div>

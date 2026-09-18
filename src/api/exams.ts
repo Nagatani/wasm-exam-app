@@ -1,6 +1,7 @@
 import { apiFetch, ApiError } from './client';
 import type {
   ExamDetail,
+  ExamMode,
   ExamResults,
   ExamStatus,
   ExamSummary,
@@ -13,7 +14,11 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 interface ExamInput {
   title: string;
   description?: string | null;
-  timeLimitMinutes: number;
+  // Required unless mode is PRACTICE (untimed).
+  timeLimitMinutes?: number | null;
+  // EXAM (default) or PRACTICE. Omit to keep the current value (default EXAM
+  // on create).
+  mode?: ExamMode;
   // null = unlimited retakes; omit to keep the current value (default 1).
   maxAttempts?: number | null;
   // ISO datetime strings or null (clear). Omit to keep.

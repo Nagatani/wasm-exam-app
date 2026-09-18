@@ -16,10 +16,25 @@ export const examsRouter = Router();
 // much narrower read endpoint.
 examsRouter.use(requireAuth, requireRole('TEACHER'));
 
-const examInputSchema = z.object({
+// EXAM (default): the existing timed/attempt-limited flow, timeLimitMinutes
+// required. PRACTICE: untimed/unlimited-retry learning support — the four
+// EXAM-only fields below are meaningless there and left null/default by the
+// frontend, so no such requirement applies.
+const examModeSchema = z.enum(['EXAM', 'PRACTICE']);
+
+const examInputBaseSchema = z.object({
   title: z.string().min(1, 'タイトルは必須です。'),
   description: z.string().nullable().optional(),
-  timeLimitMinutes: z.number().int().positive('制限時間は1分以上で入力してください。'),
+  // Nullable: required for mode EXAM, meaningless for mode PRACTICE — the
+  // POST (create) schema below enforces that with `.superRefine`; PATCH
+  // stays a plain `.partial()` of this base (same as every other field, no
+  // cross-field validation there, matching its pre-existing behaviour).
+  timeLimitMinutes: z
+    .number()
+    .int()
+    .positive('制限時間は1分以上で入力してください。')
+    .nullable()
+    .optional(),
   // How many times a student may take this exam. `null` = unlimited; omit to
   // keep the current value (default 1 on create).
   maxAttempts: z
@@ -37,6 +52,17 @@ const examInputSchema = z.object({
   // Prisma's own @default(C) applies on create). Never retroactive.
   defaultLanguage: languageSchema.optional(),
   status: z.enum(['DRAFT', 'PUBLISHED']).optional(),
+  mode: examModeSchema.optional(),
+});
+
+const examInputSchema = examInputBaseSchema.superRefine((data, ctx) => {
+  if (data.mode !== 'PRACTICE' && data.timeLimitMinutes == null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: '制限時間は1分以上で入力してください。',
+      path: ['timeLimitMinutes'],
+    });
+  }
 });
 
 const comparisonModeSchema = z.enum([
@@ -76,6 +102,7 @@ examsRouter.get('/', async (_req, res) => {
       title: exam.title,
       description: exam.description,
       timeLimitMinutes: exam.timeLimitMinutes,
+      mode: exam.mode,
       status: exam.status,
       createdAt: exam.createdAt,
       updatedAt: exam.updatedAt,
@@ -109,6 +136,7 @@ examsRouter.post('/', async (req, res) => {
         ? { defaultLanguage: parsed.data.defaultLanguage }
         : {}),
       status: parsed.data.status ?? 'DRAFT',
+      mode: parsed.data.mode ?? 'EXAM',
       createdById: req.user!.id,
     },
   });
@@ -145,6 +173,7 @@ examsRouter.post('/:examId/duplicate', async (req, res) => {
       title: `${src.title}（コピー）`,
       description: src.description,
       timeLimitMinutes: src.timeLimitMinutes,
+      mode: src.mode,
       maxAttempts: src.maxAttempts,
       courseId: src.courseId,
       defaultLanguage: src.defaultLanguage,
@@ -187,6 +216,7 @@ examsRouter.post('/:examId/duplicate', async (req, res) => {
       title: created.title,
       description: created.description,
       timeLimitMinutes: created.timeLimitMinutes,
+      mode: created.mode,
       status: created.status,
       createdAt: created.createdAt,
       updatedAt: created.updatedAt,
@@ -252,11 +282,15 @@ examsRouter.get('/:examId/publish-check', async (req, res) => {
   if (exam.tasks.length > 0 && totalPoints === 0) {
     issues.push({ level: 'warn', message: '合計配点が0点です。' });
   }
-  if (exam.opensAt && exam.closesAt && exam.closesAt.getTime() <= exam.opensAt.getTime()) {
-    issues.push({ level: 'error', message: '受付終了日時が公開開始日時より前（または同時）です。' });
-  }
-  if (exam.closesAt && exam.closesAt.getTime() < Date.now()) {
-    issues.push({ level: 'warn', message: '受付終了日時が既に過去です。' });
+  // opensAt/closesAt are EXAM-only concepts — a PRACTICE exam ignores them
+  // even if somehow set, so there's nothing to warn about here.
+  if (exam.mode === 'EXAM') {
+    if (exam.opensAt && exam.closesAt && exam.closesAt.getTime() <= exam.opensAt.getTime()) {
+      issues.push({ level: 'error', message: '受付終了日時が公開開始日時より前（または同時）です。' });
+    }
+    if (exam.closesAt && exam.closesAt.getTime() < Date.now()) {
+      issues.push({ level: 'warn', message: '受付終了日時が既に過去です。' });
+    }
   }
 
   res.json({ issues });
@@ -282,7 +316,7 @@ examsRouter.get('/:examId', async (req, res) => {
 });
 
 examsRouter.patch('/:examId', async (req, res) => {
-  const parsed = examInputSchema.partial().safeParse(req.body);
+  const parsed = examInputBaseSchema.partial().safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'invalid_request' });
     return;

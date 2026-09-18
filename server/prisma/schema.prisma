@@ -17,6 +17,15 @@ enum ExamStatus {
   PUBLISHED
 }
 
+// EXAM: the existing timed/attempt-limited flow (ExamAttempt/TaskDraft/Submission).
+// PRACTICE: untimed, unlimited-retry learning support — no ExamAttempt is ever
+// created for a PRACTICE exam; students submit directly against its tasks and
+// each submission is recorded as a PracticeSubmission (see below).
+enum ExamMode {
+  EXAM
+  PRACTICE
+}
+
 enum Language {
   C
   JAVA
@@ -69,6 +78,7 @@ model User {
   coursesCreated   Course[]
   enrollments      Enrollment[]
   timeExtensions   ExamTimeExtension[]
+  practiceSubmissions PracticeSubmission[]
 
   @@map("users")
 }
@@ -141,7 +151,15 @@ model Exam {
   id               String     @id @default(uuid())
   title            String
   description      String?
-  timeLimitMinutes Int
+  // Required for mode EXAM, meaningless (and left null) for mode PRACTICE —
+  // enforced in the API layer (Zod), not the DB, same as every other
+  // mode-conditional field below.
+  timeLimitMinutes Int?
+  // EXAM (default): the existing timed, attempt-limited flow. PRACTICE:
+  // untimed/unlimited-retry learning support — timeLimitMinutes/maxAttempts/
+  // opensAt/closesAt are all ignored and POST .../attempts refuses to create
+  // an ExamAttempt for it. See the ExamMode enum doc comment above.
+  mode             ExamMode   @default(EXAM)
   // How many times a student may take this exam. `null` = unlimited; a
   // positive integer caps it. Default 1 (the historical single-attempt
   // behaviour). Only *submitted* attempts count against the cap.
@@ -269,6 +287,7 @@ model Task {
   solutions   Solution[]
   submissions Submission[]
   drafts      TaskDraft[]
+  practiceSubmissions PracticeSubmission[]
 
   @@index([examId])
   @@map("tasks")
@@ -343,4 +362,28 @@ model Submission {
   @@index([studentId])
   @@index([attemptId])
   @@map("submissions")
+}
+
+// A practice-mode (ExamMode.PRACTICE) submission: unlike Submission, there is
+// no ExamAttempt/exam scoping at all — a student may submit the same task any
+// number of times, and every submission is kept as history (not overwritten).
+// Deliberately a separate model from Submission so practice activity never
+// leaks into exam grade dashboards / CSV export / the "差し戻し" reset, all of
+// which assume Submission rows belong to a graded ExamAttempt.
+model PracticeSubmission {
+  id            String           @id @default(uuid())
+  taskId        String
+  studentId     String
+  language      Language
+  code          String
+  results       Json
+  overallStatus SubmissionStatus
+  score         Int              @default(0)
+  submittedAt   DateTime         @default(now())
+
+  task    Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  student User @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, studentId])
+  @@map("practice_submissions")
 }

@@ -12,6 +12,8 @@ import { TaskEditorPage } from './pages/TaskEditorPage';
 import { SandboxPage } from './pages/SandboxPage';
 import { StudentTaskPage } from './pages/StudentTaskPage';
 import { StudentExamFinishedPage } from './pages/StudentExamFinishedPage';
+import { PracticeSetPage } from './pages/PracticeSetPage';
+import { PracticeTaskPage } from './pages/PracticeTaskPage';
 import { ExamResultsPage } from './pages/ExamResultsPage';
 import { CoursesPage } from './pages/CoursesPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
@@ -61,6 +63,22 @@ function App() {
             element={
               <ProtectedRoute role="STUDENT">
                 <StudentExamFinishedPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/student/practice/exams/:examId"
+            element={
+              <ProtectedRoute role="STUDENT">
+                <PracticeSetPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/student/practice/exams/:examId/tasks/:taskId"
+            element={
+              <ProtectedRoute role="STUDENT">
+                <PracticeTaskPage />
               </ProtectedRoute>
             }
           />

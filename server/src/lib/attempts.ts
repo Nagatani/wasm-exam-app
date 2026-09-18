@@ -100,7 +100,9 @@ export async function maybeSettleAttempt(attemptId: string): Promise<boolean> {
 
   const deadline = attemptDeadline(
     attempt.startedAt,
-    attempt.exam.timeLimitMinutes,
+    // Non-null: an ExamAttempt only ever exists for a mode:EXAM exam, which
+    // requires timeLimitMinutes at creation (server/src/routes/exams.ts).
+    attempt.exam.timeLimitMinutes!,
     attempt.exam.closesAt,
     await extraMinutesFor(attempt.examId, attempt.studentId),
   );

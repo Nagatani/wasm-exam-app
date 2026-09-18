@@ -12,18 +12,17 @@ import {
   isServerExec,
   maybeSettleAttempt,
 } from '../lib/attempts';
+import {
+  MAX_CODE_LENGTH,
+  outcomeSchema,
+  resolveOutcomes,
+  RunRequestError,
+  type ResolvedOutcomes,
+} from '../lib/execution';
 
 export const studentRouter = Router();
 
 studentRouter.use(requireAuth);
-
-const MAX_CODE_LENGTH = 200_000;
-
-const outcomeSchema = z.object({
-  testCaseId: z.string(),
-  stage: z.enum(['success', 'runtime_error', 'tle', 'mle']),
-  stdout: z.string(),
-});
 
 // ---------------------------------------------------------------------------
 // Attempt / draft helpers
@@ -77,7 +76,10 @@ async function attemptView(attemptId: string): Promise<AttemptView> {
     id: a.id,
     attemptNumber: a.attemptNumber,
     startedAt: a.startedAt,
-    deadline: attemptDeadline(a.startedAt, a.exam.timeLimitMinutes, a.exam.closesAt, extra),
+    // Non-null: an ExamAttempt only ever exists for a mode:EXAM exam (see the
+    // guard in POST /exams/:examId/attempts below), and EXAM mode requires
+    // timeLimitMinutes at creation (server/src/routes/exams.ts).
+    deadline: attemptDeadline(a.startedAt, a.exam.timeLimitMinutes!, a.exam.closesAt, extra),
     draftedTaskIds: a.drafts.map((d) => d.taskId),
   };
 }
@@ -86,100 +88,9 @@ async function attemptView(attemptId: string): Promise<AttemptView> {
 // Ephemeral "run" (preview) — judges but never persists. The task fixes the
 // language, so the body carries no language field; only the per-mode payload
 // differs (client-exec sends per-test outcomes, server-exec sends source).
+// The actual client-exec/server-exec dispatch (`resolveOutcomes`) lives in
+// ../lib/execution.ts, shared with practice mode's own /run and /submit.
 // ---------------------------------------------------------------------------
-
-const clientExecSchema = z.object({
-  compileFailed: z.boolean(),
-  outcomes: z.array(outcomeSchema),
-});
-const serverExecSchema = z.object({
-  code: z.string().min(1).max(MAX_CODE_LENGTH),
-});
-
-class RunRequestError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-type TaskWithTestCases = Prisma.TaskGetPayload<{ include: { testCases: true } }>;
-
-interface ResolvedOutcomes {
-  judgeInput: JudgeInput;
-  compileStderr: string;
-}
-
-async function resolveOutcomes(
-  body: unknown,
-  task: TaskWithTestCases,
-  userId: string,
-): Promise<ResolvedOutcomes> {
-  if (!isServerExec(task.language)) {
-    const parsed = clientExecSchema.safeParse(body);
-    if (!parsed.success) {
-      throw new RunRequestError(400, parsed.error.issues[0]?.message ?? 'invalid_request');
-    }
-    return {
-      judgeInput: { compileFailed: parsed.data.compileFailed, outcomes: parsed.data.outcomes },
-      compileStderr: '',
-    };
-  }
-
-  if (!isJudgeConfigured()) {
-    throw new RunRequestError(503, 'この言語の実行環境が現在利用できません。');
-  }
-  const parsed = serverExecSchema.safeParse(body);
-  if (!parsed.success) {
-    throw new RunRequestError(400, parsed.error.issues[0]?.message ?? 'invalid_request');
-  }
-
-  const tests = task.testCases.map((tc) => ({
-    id: tc.id,
-    stdin: tc.input,
-    timeLimitMs: tc.timeLimitMs,
-    memoryLimitMb: tc.memoryLimitMb,
-  }));
-
-  let judgeResult;
-  try {
-    judgeResult = await withJudgeSlot(userId, () => runOnJudge({ code: parsed.data.code, tests }));
-  } catch (err) {
-    if (err instanceof QueueRejectedError) {
-      throw new RunRequestError(429, err.message);
-    }
-    if (err instanceof JudgeError) {
-      throw new RunRequestError(
-        502,
-        '実行環境でエラーが発生しました。しばらくして再度お試しください。',
-      );
-    }
-    throw err;
-  }
-
-  if (!judgeResult.compile.ok) {
-    return {
-      judgeInput: { compileFailed: true, outcomes: [] },
-      compileStderr: judgeResult.compile.stderr,
-    };
-  }
-
-  const outcomes = judgeResult.results.map((r) => ({
-    testCaseId: r.id,
-    stage: r.timedOut
-      ? ('tle' as const)
-      : r.oom
-        ? ('mle' as const)
-        : (r.exitCode ?? 1) !== 0
-          ? ('runtime_error' as const)
-          : ('success' as const),
-    stdout: r.stdout,
-  }));
-
-  return { judgeInput: { compileFailed: false, outcomes }, compileStderr: '' };
-}
 
 // ---------------------------------------------------------------------------
 // Exam listing / entry
@@ -278,6 +189,11 @@ studentRouter.post('/exams/:examId/attempts', async (req, res) => {
   });
   if (!exam || !examVisible(exam.courseId, await enrolledCourseIds(userId))) {
     res.status(404).json({ error: '試験が見つかりません。' });
+    return;
+  }
+  if (exam.mode !== 'EXAM') {
+    // Practice-mode exams never have an ExamAttempt — see server/src/routes/practice.ts.
+    res.status(400).json({ error: 'この試験は演習モードのため、受験開始は不要です。' });
     return;
   }
   if (exam._count.tasks === 0) {
@@ -574,7 +490,7 @@ studentRouter.get('/exams/:examId/attempt', async (req, res) => {
       id: latest.id,
       attemptNumber: latest.attemptNumber,
       startedAt: latest.startedAt,
-      deadline: attemptDeadline(latest.startedAt, exam.timeLimitMinutes, exam.closesAt, extra),
+      deadline: attemptDeadline(latest.startedAt, exam.timeLimitMinutes!, exam.closesAt, extra),
     },
     exam: {
       id: exam.id,

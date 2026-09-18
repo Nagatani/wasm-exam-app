@@ -10,7 +10,7 @@ import { getServiceHealth, promoteToTeacher, type ServiceHealth } from '../api/a
 import { ApiError } from '../api/client';
 import { datetimeLocalToIso } from '../lib/datetime';
 import { ALL_LANGUAGES, LANGUAGE_LABEL } from '../lib/language';
-import type { ExamSummary, ExamStatus, Language } from '../types/exam';
+import type { ExamSummary, ExamStatus, ExamMode, Language } from '../types/exam';
 import type { CourseSummary } from '../types/course';
 
 function ServiceStatusStrip() {
@@ -207,19 +207,27 @@ export function TeacherDashboard() {
                 <div>
                   <p className="font-bold">{exam.title}</p>
                   <p className="text-sm text-mp-muted">
-                    問題数: {exam.taskCount} ・ 制限時間: {exam.timeLimitMinutes}分
+                    問題数: {exam.taskCount} ・{' '}
+                    {exam.mode === 'PRACTICE' ? '演習（時間制限なし）' : `制限時間: ${exam.timeLimitMinutes}分`}
                     {exam.courseName && ` ・ クラス: ${exam.courseName}`}
                   </p>
                 </div>
-                <span
-                  className={
-                    exam.status === 'PUBLISHED'
-                      ? 'rounded bg-mp-green px-2 py-1 text-xs font-bold text-mp-btn-fg'
-                      : 'rounded border border-mp-border bg-mp-surface-hover px-2 py-1 text-xs text-mp-muted'
-                  }
-                >
-                  {STATUS_LABEL[exam.status]}
-                </span>
+                <div className="flex shrink-0 items-center gap-2">
+                  {exam.mode === 'PRACTICE' && (
+                    <span className="rounded border border-mp-cyan/50 px-2 py-1 text-xs font-bold text-mp-cyan">
+                      演習
+                    </span>
+                  )}
+                  <span
+                    className={
+                      exam.status === 'PUBLISHED'
+                        ? 'rounded bg-mp-green px-2 py-1 text-xs font-bold text-mp-btn-fg'
+                        : 'rounded border border-mp-border bg-mp-surface-hover px-2 py-1 text-xs text-mp-muted'
+                    }
+                  >
+                    {STATUS_LABEL[exam.status]}
+                  </span>
+                </div>
               </Link>
               <button
                 onClick={() => handleDuplicate(exam.id)}
@@ -260,6 +268,7 @@ export function TeacherDashboard() {
 function CreateExamForm({ onCreated }: { onCreated: () => void }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [mode, setMode] = useState<ExamMode>('EXAM');
   const [timeLimitMinutes, setTimeLimitMinutes] = useState(60);
   const [unlimitedAttempts, setUnlimitedAttempts] = useState(false);
   const [maxAttempts, setMaxAttempts] = useState(1);
@@ -285,10 +294,11 @@ function CreateExamForm({ onCreated }: { onCreated: () => void }) {
       await createExam({
         title,
         description: description || null,
-        timeLimitMinutes,
-        maxAttempts: unlimitedAttempts ? null : maxAttempts,
-        opensAt: datetimeLocalToIso(opensAt),
-        closesAt: datetimeLocalToIso(closesAt),
+        mode,
+        timeLimitMinutes: mode === 'PRACTICE' ? null : timeLimitMinutes,
+        maxAttempts: mode === 'PRACTICE' ? null : unlimitedAttempts ? null : maxAttempts,
+        opensAt: mode === 'PRACTICE' ? null : datetimeLocalToIso(opensAt),
+        closesAt: mode === 'PRACTICE' ? null : datetimeLocalToIso(closesAt),
         courseId: courseId || null,
         defaultLanguage,
       });
@@ -327,44 +337,64 @@ function CreateExamForm({ onCreated }: { onCreated: () => void }) {
         onChange={(e) => setDescription(e.target.value)}
       />
 
-      <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-time-limit">
-        制限時間（分）
+      <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-mode">
+        モード
       </label>
-      <input
-        id="exam-time-limit"
-        type="number"
-        min={1}
-        className="mb-3 w-32 rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
-        value={timeLimitMinutes}
-        onChange={(e) => setTimeLimitMinutes(Number(e.target.value))}
-        required
-      />
-
-      <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-max-attempts">
-        受験可能回数
-      </label>
-      <div className="mb-3 flex items-center gap-3">
-        <input
-          id="exam-max-attempts"
-          type="number"
-          min={1}
-          disabled={unlimitedAttempts}
-          className="w-24 rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg disabled:opacity-50"
-          value={maxAttempts}
-          onChange={(e) => setMaxAttempts(Math.max(1, Number(e.target.value)))}
-        />
-        <label className="flex items-center gap-1.5 text-sm text-mp-muted">
-          <input
-            type="checkbox"
-            checked={unlimitedAttempts}
-            onChange={(e) => setUnlimitedAttempts(e.target.checked)}
-          />
-          無制限
-        </label>
-      </div>
+      <select
+        id="exam-mode"
+        className="mb-1 rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+        value={mode}
+        onChange={(e) => setMode(e.target.value as ExamMode)}
+      >
+        <option value="EXAM">試験（時間制限あり）</option>
+        <option value="PRACTICE">演習（時間制限なし・何度でも挑戦可）</option>
+      </select>
       <p className="mb-3 text-xs text-mp-muted">
-        複数回受験できる場合、最後に提出した回の点数が成績になります。
+        演習モードでは制限時間・受験可能回数・公開スケジュールは使われず、生徒はいつでも何度でも提出できます。
       </p>
+
+      {mode === 'EXAM' && (
+        <>
+          <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-time-limit">
+            制限時間（分）
+          </label>
+          <input
+            id="exam-time-limit"
+            type="number"
+            min={1}
+            className="mb-3 w-32 rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+            value={timeLimitMinutes}
+            onChange={(e) => setTimeLimitMinutes(Number(e.target.value))}
+            required
+          />
+
+          <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-max-attempts">
+            受験可能回数
+          </label>
+          <div className="mb-3 flex items-center gap-3">
+            <input
+              id="exam-max-attempts"
+              type="number"
+              min={1}
+              disabled={unlimitedAttempts}
+              className="w-24 rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg disabled:opacity-50"
+              value={maxAttempts}
+              onChange={(e) => setMaxAttempts(Math.max(1, Number(e.target.value)))}
+            />
+            <label className="flex items-center gap-1.5 text-sm text-mp-muted">
+              <input
+                type="checkbox"
+                checked={unlimitedAttempts}
+                onChange={(e) => setUnlimitedAttempts(e.target.checked)}
+              />
+              無制限
+            </label>
+          </div>
+          <p className="mb-3 text-xs text-mp-muted">
+            複数回受験できる場合、最後に提出した回の点数が成績になります。
+          </p>
+        </>
+      )}
 
       <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-default-language">
         既定の解答言語
@@ -403,32 +433,34 @@ function CreateExamForm({ onCreated }: { onCreated: () => void }) {
         ))}
       </select>
 
-      <div className="mb-3 flex flex-wrap gap-4">
-        <div>
-          <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-opens-at">
-            公開開始日時（任意）
-          </label>
-          <input
-            id="exam-opens-at"
-            type="datetime-local"
-            className="rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
-            value={opensAt}
-            onChange={(e) => setOpensAt(e.target.value)}
-          />
+      {mode === 'EXAM' && (
+        <div className="mb-3 flex flex-wrap gap-4">
+          <div>
+            <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-opens-at">
+              公開開始日時（任意）
+            </label>
+            <input
+              id="exam-opens-at"
+              type="datetime-local"
+              className="rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+              value={opensAt}
+              onChange={(e) => setOpensAt(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-closes-at">
+              受付終了日時（任意）
+            </label>
+            <input
+              id="exam-closes-at"
+              type="datetime-local"
+              className="rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
+              value={closesAt}
+              onChange={(e) => setClosesAt(e.target.value)}
+            />
+          </div>
         </div>
-        <div>
-          <label className="mb-1 block text-sm text-mp-muted" htmlFor="exam-closes-at">
-            受付終了日時（任意）
-          </label>
-          <input
-            id="exam-closes-at"
-            type="datetime-local"
-            className="rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
-            value={closesAt}
-            onChange={(e) => setClosesAt(e.target.value)}
-          />
-        </div>
-      </div>
+      )}
 
       {error && <p className="mb-3 text-sm text-mp-red">{error}</p>}
 

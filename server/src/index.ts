@@ -12,6 +12,7 @@ import { tasksRouter } from './routes/tasks';
 import { taskBankRouter } from './routes/taskBank';
 import { testCasesRouter } from './routes/testCases';
 import { studentRouter } from './routes/student';
+import { practiceRouter } from './routes/practice';
 import { uploadsRouter } from './routes/uploads';
 import { UPLOADS_DIR, UPLOADS_URL_PREFIX } from './lib/uploads';
 
@@ -51,6 +52,7 @@ app.use('/api/students', studentsRouter);
 app.use('/api/tasks', tasksRouter);
 app.use('/api/task-bank', taskBankRouter);
 app.use('/api/test-cases', testCasesRouter);
+app.use('/api/student/practice', practiceRouter);
 app.use('/api/student', studentRouter);
 app.use('/api/uploads', uploadsRouter);
 

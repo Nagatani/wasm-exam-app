@@ -1,11 +1,16 @@
 export type ExamStatus = 'DRAFT' | 'PUBLISHED';
 export type Language = 'C' | 'JAVA' | 'JS' | 'TS' | 'PYTHON';
+// EXAM: the existing timed/attempt-limited flow. PRACTICE: untimed,
+// unlimited-retry learning support — see CLAUDE.md "演習モード".
+export type ExamMode = 'EXAM' | 'PRACTICE';
 
 export interface ExamSummary {
   id: string;
   title: string;
   description: string | null;
-  timeLimitMinutes: number;
+  // null for a PRACTICE-mode exam (meaningless there).
+  timeLimitMinutes: number | null;
+  mode: ExamMode;
   status: ExamStatus;
   createdAt: string;
   updatedAt: string;
@@ -32,7 +37,9 @@ export interface ExamDetail {
   id: string;
   title: string;
   description: string | null;
-  timeLimitMinutes: number;
+  // null for a PRACTICE-mode exam (meaningless there).
+  timeLimitMinutes: number | null;
+  mode: ExamMode;
   // How many times a student may take this exam. null = unlimited.
   maxAttempts: number | null;
   // ISO datetimes or null. Before opensAt the exam is visible but not
