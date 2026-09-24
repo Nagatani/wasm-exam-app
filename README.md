@@ -137,6 +137,8 @@ docker exec wasm-exam-app-db-1 psql -U wasm_exam -d wasm_exam \
 | `npm start` | ビルド済みサーバーを起動（フロントエンド配信 + APIを1プロセスで） |
 | `npm run docker:prod` | `judge`・`server` をコンテナでビルド・起動（`docker-compose.prod.yml`、judgeのネットワーク遮断つき） |
 | `npm run lint` | oxlintによる静的解析 |
+| `npm test` | 単体テスト（採点ロジック等。DB不要） |
+| `npm run test:integration` | 結合テスト（APIを実際のDBに対して実行。開発用 `db` コンテナが必要。専用の `wasm_exam_test` DBを自動作成し、開発用DBには触れません） |
 | `npm run preview` | 本番ビルドをローカルでプレビュー |
 
 ### バックエンド（`server/`）
@@ -148,6 +150,8 @@ docker exec wasm-exam-app-db-1 psql -U wasm_exam -d wasm_exam \
 | `npm run prisma:migrate` | スキーマ変更後のマイグレーション作成・適用 |
 | `npm run prisma:deploy` | 本番環境等でのマイグレーション適用（ドリフト確認なし） |
 | `npm run prisma:generate` | Prisma Clientの再生成 |
+| `npm test` / `npm run test:integration` / `npm run test:all` | 単体テスト / 結合テスト / 両方 |
+| `npm run typecheck:test` | テストコードの型チェック |
 
 ### Docker
 

@@ -1,0 +1,11 @@
+{
+  // Typechecks the vitest suite (server/test) — the build tsconfig only
+  // covers src/. The suite also imports the frontend's client-side
+  // compareOutput mirror (../src/lib/compareOutput.ts) for the parity test.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".."
+  },
+  "include": ["src", "test", "vitest.config.mts", "../src/lib/compareOutput.ts"]
+}
