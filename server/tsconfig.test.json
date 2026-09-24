@@ -7,5 +7,5 @@
     "noEmit": true,
     "rootDir": ".."
   },
-  "include": ["src", "test", "../src/lib/compareOutput.ts"]
+  "include": ["src", "test", "vitest.config.mts", "../src/lib/compareOutput.ts"]
 }
