@@ -13,7 +13,7 @@ import {
   listCourses,
   unenrollStudent,
 } from '../api/courses';
-import { bulkCreateStudents } from '../api/students';
+import { bulkCreateStudents, resetStudentPassword } from '../api/students';
 import type {
   BulkCreateResult,
   CourseDetail,
@@ -208,6 +208,8 @@ function CourseRosterPanel({
   const [creating, setCreating] = useState(false);
   const [lastCreated, setLastCreated] = useState<BulkCreateResult | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [resetTarget, setResetTarget] = useState<CourseStudent | null>(null);
+  const [resetNotice, setResetNotice] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -291,6 +293,20 @@ function CourseRosterPanel({
     }
   }
 
+  async function handleResetPassword(student: CourseStudent) {
+    setError(null);
+    setResetNotice(null);
+    try {
+      await resetStudentPassword(student.studentNumber);
+      await load();
+      setResetNotice(
+        `${student.studentNumber} ${student.displayName} のパスワードを再発行しました。新しい初期パスワードを本人に伝えてください。`,
+      );
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'パスワードの再発行に失敗しました。');
+    }
+  }
+
   async function handleDeleteCourse() {
     try {
       await deleteCourse(courseId);
@@ -303,6 +319,7 @@ function CourseRosterPanel({
   return (
     <div className="border-t border-mp-border bg-mp-bg px-4 py-3">
       {error && <p className="mb-2 text-sm text-mp-red">{error}</p>}
+      {resetNotice && <p className="mb-2 text-sm text-mp-green">{resetNotice}</p>}
       {detail === null ? (
         <p className="text-sm text-mp-muted">読み込み中...</p>
       ) : (
@@ -339,12 +356,20 @@ function CourseRosterPanel({
                         </span>
                       )}
                     </span>
-                    <button
-                      onClick={() => handleRemove(s.userId, `${s.studentNumber} ${s.displayName}`)}
-                      className="rounded border border-mp-red/50 px-2 py-0.5 text-xs text-mp-red hover:bg-mp-red hover:text-mp-btn-fg"
-                    >
-                      削除
-                    </button>
+                    <span className="flex shrink-0 gap-1">
+                      <button
+                        onClick={() => setResetTarget(s)}
+                        className="rounded border border-mp-border bg-mp-surface px-2 py-0.5 text-xs hover:bg-mp-surface-hover"
+                      >
+                        パスワード再発行
+                      </button>
+                      <button
+                        onClick={() => handleRemove(s.userId, `${s.studentNumber} ${s.displayName}`)}
+                        className="rounded border border-mp-red/50 px-2 py-0.5 text-xs text-mp-red hover:bg-mp-red hover:text-mp-btn-fg"
+                      >
+                        削除
+                      </button>
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -464,6 +489,19 @@ function CourseRosterPanel({
           void handleDeleteCourse();
         }}
         onCancel={() => setDeleteConfirmOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={resetTarget !== null}
+        title="パスワードを再発行"
+        message={`${resetTarget?.studentNumber ?? ''} ${resetTarget?.displayName ?? ''} に新しい初期パスワードを発行します。今のパスワードは使えなくなり、ログイン中の端末はすべてログアウトされます（受験中の場合は再ログインが必要です）。よろしいですか？`}
+        confirmLabel="再発行する"
+        onConfirm={() => {
+          const target = resetTarget;
+          setResetTarget(null);
+          if (target) void handleResetPassword(target);
+        }}
+        onCancel={() => setResetTarget(null)}
       />
     </div>
   );

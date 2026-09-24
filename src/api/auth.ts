@@ -12,6 +12,11 @@ export function signUp(studentNumber: string, password: string) {
   });
 }
 
+// false once ALLOW_SIGNUP=false on the server and the bootstrap teacher exists.
+export function getSignupStatus() {
+  return apiFetch<{ signupOpen: boolean }>('/api/auth/signup-status');
+}
+
 export function logIn(studentNumber: string, password: string) {
   return apiFetch<UserResponse>('/api/auth/login', {
     method: 'POST',

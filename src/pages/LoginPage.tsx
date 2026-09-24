@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { logIn } from '../api/auth';
+import { getSignupStatus, logIn } from '../api/auth';
 import { ApiError } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { PasswordField } from '../components/PasswordField';
@@ -12,6 +12,15 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
   const { refresh } = useAuth();
+  // Hide the signup link when the server has closed self-signup. Assume open
+  // until told otherwise, so an unreachable server doesn't hide it.
+  const [signupOpen, setSignupOpen] = useState(true);
+
+  useEffect(() => {
+    getSignupStatus()
+      .then(({ signupOpen }) => setSignupOpen(signupOpen))
+      .catch(() => {});
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -72,12 +81,18 @@ export function LoginPage() {
           {submitting ? 'ログイン中...' : 'ログイン'}
         </button>
 
-        <p className="mt-4 text-center text-sm text-mp-muted">
-          アカウントをお持ちでない方は{' '}
-          <Link to="/signup" className="font-semibold text-mp-cyan hover:underline">
-            新規登録
-          </Link>
-        </p>
+        {signupOpen ? (
+          <p className="mt-4 text-center text-sm text-mp-muted">
+            アカウントをお持ちでない方は{' '}
+            <Link to="/signup" className="font-semibold text-mp-cyan hover:underline">
+              新規登録
+            </Link>
+          </p>
+        ) : (
+          <p className="mt-4 text-center text-xs text-mp-muted">
+            アカウントやパスワードが分からない場合は、担当の教員に問い合わせてください。
+          </p>
+        )}
       </form>
     </div>
   );

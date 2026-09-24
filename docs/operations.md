@@ -56,6 +56,8 @@ npm run build:full                              # dist/ を生成し server/ も
 #    JUDGE_URL=http://localhost:4001             # Java/C を使わないなら空
 #    JUDGE_CONCURRENCY=3
 #    JUDGE_REQUEST_TIMEOUT_MS=60000
+#    ALLOW_SIGNUP=false                          # 名簿から一括作成で運用するなら（下記「ログイン・アカウントの保護」）
+#    TRUST_PROXY=1                               # リバースプロキシ経由なら
 
 # 4. DB マイグレーションを適用（スキーマ変更なしの適用のみ）
 npm --prefix server run prisma:deploy
@@ -82,6 +84,7 @@ cp server/.env.prod.docker.example server/.env.prod.docker
 # server/.env.prod.docker を編集：
 #   DATABASE_URL=postgresql://USER:PASS@実際に到達できるホスト:5432/DBNAME
 #   CORS_ORIGIN=https://exam.example.ac.jp
+#   ALLOW_SIGNUP=false / TRUST_PROXY=1 は example で既定済み（下記「ログイン・アカウントの保護」）
 #   （JUDGE_URL は docker-compose.prod.yml 側が http://judge:8080 に強制するので書かなくてよい）
 
 # 3. DB マイグレーションを適用（server/.env.prod.docker と同じ DATABASE_URL に対して、ホストから実行）
@@ -173,6 +176,15 @@ C（clang ツールチェイン、初回 ~106MB）と Python（Pyodide、初回 
 - 生徒が初回ログインで `/change-password` からパスワードを変更すると、`initialPassword` は `NULL` になり以後表示されません（`mustChangePassword` も解除）。
 - **平文保存はユーザー承認済みの割り切り**（2026-09-11）です。自ホスト＝institution 管理下の DB で、プロビジョニングから初回変更までの短い期間だけ存在し、講師専用ルートからしか返しません。許容できない場合は `POST /bulk` のレスポンスでのみ初期パスワードを返す方式（列を持たない）＋「パスワードリセット」操作に切り替えてください。
 - 配布スリップは印刷後に適切に管理・破棄してください。
+- **パスワードを忘れた生徒**は、講師がクラスの受講者一覧の「パスワード再発行」で復旧できます（`POST /api/students/reset-password`）。新しい初期パスワードが発行されて 🔑 に表示され（再印刷も可）、`mustChangePassword` が立ち、その生徒の**全セッションが失効**します（ログイン中の端末は再ログインが必要）。ログイン制限（下記）も解除されます。教員アカウントは対象外です。
+
+## ログイン・アカウントの保護
+
+- **ログイン試行回数の制限**：同じ学籍番号・同じIPから**10回**ログインに失敗すると、その組み合わせは**15分間** `429` になります（正しいパスワードでも不可）。別に、1つのIPから全アカウント合計で**100回**失敗した場合もそのIPを15分止めます。教室が1つのNATアドレスを共有していても、普通の打ち間違いでは届かない値にしてあります。ログインに成功すると、その学籍番号の失敗回数はリセットされます。値は `LOGIN_MAX_FAILURES` / `LOGIN_MAX_FAILURES_PER_IP` / `LOGIN_LOCKOUT_MINUTES` で変更できます。
+  - カウンタは**サーバープロセスのメモリ上**にあり、再起動で消えます（単一インスタンス運用が前提 — judge キューと同じ）。
+  - 生徒がロックされた場合は、15分待つか、講師が「パスワード再発行」をするとすぐに解除されます。
+  - **リバースプロキシ（nginx 等）の後ろでは `TRUST_PROXY=1`**（プロキシの段数）を設定してください。未設定だと全リクエストがプロキシのIPから来たように見え、IP単位の上限が全員共通になります。逆に、プロキシを通さず直接公開している場合は設定しないでください（クライアントが `X-Forwarded-For` を偽装できてしまいます）。
+- **自己サインアップを閉じる**：`ALLOW_SIGNUP=false` にすると `/signup` での新規登録を受け付けません（ログイン画面の「新規登録」リンクも消えます）。生徒アカウントを名簿から一括作成する運用ではこれを推奨します — 開いたままだと名簿外の人もアカウントを作れ、クラス未指定の試験が見えてしまいます。DBにユーザーが1人もいない間だけは、`false` でも最初の1人（自動で講師になる管理者）は登録できます。既定は `true`（開いている）で、`server/.env.prod.docker.example` では `false` にしてあります。
 
 ## データベース
 
