@@ -3,12 +3,17 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "npm --prefix server test",
+    "test": "vitest run && npm --prefix server test",
+    "test:frontend": "vitest run",
     "test:integration": "npm --prefix server run test:integration",
+    "test:judge": "npm --prefix server run test:judge",
     "preview": "vite preview",
     "build:full": "npm run build && npm --prefix server run build",
     "start": "npm --prefix server run start",
@@ -33,6 +38,7 @@
     "oxlint": "^1.71.0",
     "tailwindcss": "^4.3.2",
     "typescript": "~6.0.2",
-    "vite": "^8.1.1"
+    "vite": "^8.1.1",
+    "vitest": "^5.0.1"
   }
 }

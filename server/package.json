@@ -3,6 +3,9 @@
   "private": true,
   "type": "commonjs",
   "version": "0.0.0",
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
@@ -10,6 +13,7 @@
     "test": "vitest run --project unit",
     "test:watch": "vitest --project unit",
     "test:integration": "vitest run --project integration",
+    "test:judge": "vitest run --project judge",
     "test:all": "vitest run",
     "typecheck:test": "tsc -p tsconfig.test.json",
     "prisma:generate": "prisma generate",

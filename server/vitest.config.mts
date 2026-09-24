@@ -1,3 +1,5 @@
+import os from 'node:os';
+import path from 'node:path';
 import { defineConfig } from 'vitest/config';
 
 // Separate throwaway database for the integration suite — never the dev DB.
@@ -9,6 +11,13 @@ import { defineConfig } from 'vitest/config';
 // creates it if missing, and applies every migration before the suite starts.
 process.env.TEST_DATABASE_URL ??= 'postgresql://wasm_exam:wasm_exam@localhost:5433/wasm_exam_test';
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
+// The `judge` project (real Java/C execution through the judge container)
+// gets its own database so it can run alongside `integration`.
+process.env.TEST_JUDGE_DATABASE_URL ??= TEST_DATABASE_URL.replace(/\/([^/?]+)_test(\?|$)/, '/$1_judge_test$2');
+process.env.TEST_JUDGE_URL ??= 'http://localhost:4001';
+// Image uploads written by the tests go to a temp dir, not server/uploads.
+const TEST_UPLOADS_DIR = path.join(os.tmpdir(), 'wasm-exam-test-uploads');
+
 export default defineConfig({
   test: {
     projects: [
@@ -16,7 +25,7 @@ export default defineConfig({
         test: {
           name: 'unit',
           include: ['test/**/*.test.ts'],
-          exclude: ['test/integration/**'],
+          exclude: ['test/integration/**', 'test/judge/**'],
         },
       },
       {
@@ -33,6 +42,24 @@ export default defineConfig({
             // the judge out of the loop (empty ⇒ "not configured").
             JUDGE_URL: '',
             NODE_ENV: 'test',
+            UPLOADS_DIR: TEST_UPLOADS_DIR,
+          },
+        },
+      },
+      {
+        test: {
+          name: 'judge',
+          include: ['test/judge/**/*.test.ts'],
+          globalSetup: ['test/judge/globalSetup.ts'],
+          fileParallelism: false,
+          // javac/gcc + JVM start-up per submission; a TLE case waits out
+          // its time limit.
+          testTimeout: 60_000,
+          env: {
+            DATABASE_URL: process.env.TEST_JUDGE_DATABASE_URL,
+            JUDGE_URL: process.env.TEST_JUDGE_URL,
+            NODE_ENV: 'test',
+            UPLOADS_DIR: TEST_UPLOADS_DIR,
           },
         },
       },
