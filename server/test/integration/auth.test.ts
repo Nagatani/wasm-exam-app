@@ -111,7 +111,11 @@ describe('role gating', () => {
   });
 });
 
-describe('login rate limiting', () => {
+// Each failed login runs a real bcrypt compare (cost 12, ~250ms on a CI
+// runner), and these tests make ~20 of them — well past vitest's 5s default.
+const MANY_LOGINS_TIMEOUT = { timeout: 30_000 };
+
+describe('login rate limiting', MANY_LOGINS_TIMEOUT, () => {
   it('locks an account after 10 failures from the same IP, even with the right password', async () => {
     await signupTeacher();
     const c = new Client();
@@ -168,7 +172,7 @@ describe('ALLOW_SIGNUP=false', () => {
   });
 });
 
-describe('teacher password reset', () => {
+describe('teacher password reset', MANY_LOGINS_TIMEOUT, () => {
   it('re-issues an initial password, forces a change, and signs the student out everywhere', async () => {
     const { client: teacher } = await signupTeacher();
     const { client: student, userId } = await signup('s001');
