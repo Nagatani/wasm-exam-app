@@ -28,6 +28,15 @@ export function createApp(): Express {
     ? path.resolve(process.env.CLIENT_DIST_PATH)
     : path.resolve(__dirname, '../../dist');
 
+  // Behind a reverse proxy, TRUST_PROXY tells Express to take the client IP
+  // from X-Forwarded-For (e.g. `1` = one proxy hop, or the proxy's address).
+  // The login rate limit (lib/loginRateLimit.ts) keys on req.ip, so without
+  // this every request would appear to come from the proxy.
+  const TRUST_PROXY = process.env.TRUST_PROXY?.trim();
+  if (TRUST_PROXY) {
+    app.set('trust proxy', /^\d+$/.test(TRUST_PROXY) ? Number(TRUST_PROXY) : TRUST_PROXY === 'true' ? true : TRUST_PROXY);
+  }
+
   app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
   app.use(express.json());
   app.use(cookieParser());

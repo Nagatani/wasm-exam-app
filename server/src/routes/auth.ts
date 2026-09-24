@@ -10,6 +10,7 @@ import {
 } from '../lib/session';
 import { toPublicUser } from '../lib/publicUser';
 import { requireAuth } from '../middleware/auth';
+import { loginBlockedForMs, recordLoginFailure, recordLoginSuccess } from '../lib/loginRateLimit';
 
 export const authRouter = Router();
 
@@ -30,7 +31,31 @@ function cookieOptions() {
   };
 }
 
+// Self-signup can be closed with ALLOW_SIGNUP=false, for deployments that
+// issue every student account from the roster (POST /api/students/bulk) and
+// don't want anyone else creating one. The very first account is always
+// allowed regardless, so a fresh deployment can still bootstrap its first
+// teacher (see the role comment in the signup handler below).
+function signupAllowedByConfig(): boolean {
+  return (process.env.ALLOW_SIGNUP ?? 'true').trim().toLowerCase() !== 'false';
+}
+
+async function isSignupOpen(): Promise<boolean> {
+  return signupAllowedByConfig() || (await prisma.user.count()) === 0;
+}
+
+// Lets the login/signup pages hide or explain the signup form.
+authRouter.get('/signup-status', async (_req, res) => {
+  res.json({ signupOpen: await isSignupOpen() });
+});
+
 authRouter.post('/signup', async (req, res) => {
+  if (!(await isSignupOpen())) {
+    res.status(403).json({
+      error: '新規登録は現在受け付けていません。アカウントの発行は担当の教員に依頼してください。',
+    });
+    return;
+  }
   const parsed = credentialsSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'invalid_request' });
@@ -79,12 +104,26 @@ authRouter.post('/login', async (req, res) => {
     return;
   }
   const { studentNumber, password } = parsed.data;
+  const ip = req.ip ?? 'unknown';
+
+  // Checked before bcrypt so a locked-out caller can't keep probing.
+  const waitMs = loginBlockedForMs(studentNumber, ip);
+  if (waitMs > 0) {
+    const minutes = Math.max(1, Math.ceil(waitMs / 60_000));
+    res.setHeader('Retry-After', String(Math.ceil(waitMs / 1000)));
+    res.status(429).json({
+      error: `ログインの失敗が続いたため、一時的にログインを制限しています。${minutes}分ほど待ってから再度お試しください。`,
+    });
+    return;
+  }
 
   const user = await prisma.user.findUnique({ where: { studentNumber } });
   if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+    recordLoginFailure(studentNumber, ip);
     res.status(401).json({ error: '学籍番号またはパスワードが正しくありません。' });
     return;
   }
+  recordLoginSuccess(studentNumber, ip);
 
   const token = await createSession(user.id);
   res.cookie(SESSION_COOKIE_NAME, token, cookieOptions());

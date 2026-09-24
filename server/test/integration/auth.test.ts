@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Client, PASSWORD, prisma, resetDb, signup, signupTeacher, startServer, stopServer } from './helpers';
 
 beforeAll(startServer);
@@ -108,5 +108,106 @@ describe('role gating', () => {
     expect(res.status).toBe(200);
     expect(res.body.user.role).toBe('TEACHER');
     expect((await student.get('/api/exams')).status).toBe(200);
+  });
+});
+
+describe('login rate limiting', () => {
+  it('locks an account after 10 failures from the same IP, even with the right password', async () => {
+    await signupTeacher();
+    const c = new Client();
+    for (let i = 0; i < 10; i += 1) {
+      expect((await c.post('/api/auth/login', { studentNumber: 'teacher01', password: 'wrongpass1' })).status).toBe(401);
+    }
+    const locked = await c.post('/api/auth/login', { studentNumber: 'teacher01', password: PASSWORD });
+    expect(locked.status).toBe(429);
+    expect(Number(locked.headers.get('retry-after'))).toBeGreaterThan(0);
+    // A different account from the same IP isn't affected by that lockout.
+    await signup('s001');
+    expect((await new Client().post('/api/auth/login', { studentNumber: 's001', password: PASSWORD })).status).toBe(200);
+  });
+
+  it('a successful login resets the per-account failure count', async () => {
+    await signupTeacher();
+    const c = new Client();
+    for (let i = 0; i < 9; i += 1) {
+      await c.post('/api/auth/login', { studentNumber: 'teacher01', password: 'wrongpass1' });
+    }
+    expect((await c.post('/api/auth/login', { studentNumber: 'teacher01', password: PASSWORD })).status).toBe(200);
+    for (let i = 0; i < 9; i += 1) {
+      expect((await c.post('/api/auth/login', { studentNumber: 'teacher01', password: 'wrongpass1' })).status).toBe(401);
+    }
+    expect((await c.post('/api/auth/login', { studentNumber: 'teacher01', password: PASSWORD })).status).toBe(200);
+  });
+});
+
+describe('ALLOW_SIGNUP=false', () => {
+  const original = process.env.ALLOW_SIGNUP;
+  afterEach(() => {
+    if (original === undefined) delete process.env.ALLOW_SIGNUP;
+    else process.env.ALLOW_SIGNUP = original;
+  });
+
+  it('still lets the very first account (the bootstrap teacher) sign up, then closes signup', async () => {
+    process.env.ALLOW_SIGNUP = 'false';
+    expect((await new Client().get('/api/auth/signup-status')).body).toEqual({ signupOpen: true });
+    const first = await new Client().post('/api/auth/signup', { studentNumber: 'admin01', password: PASSWORD });
+    expect(first.status).toBe(201);
+    expect(first.body.user.role).toBe('TEACHER');
+
+    expect((await new Client().get('/api/auth/signup-status')).body).toEqual({ signupOpen: false });
+    const second = await new Client().post('/api/auth/signup', { studentNumber: 's001', password: PASSWORD });
+    expect(second.status).toBe(403);
+    expect(await prisma.user.count()).toBe(1);
+  });
+
+  it('signup stays open by default', async () => {
+    delete process.env.ALLOW_SIGNUP;
+    await signupTeacher();
+    expect((await new Client().get('/api/auth/signup-status')).body).toEqual({ signupOpen: true });
+    expect((await new Client().post('/api/auth/signup', { studentNumber: 's001', password: PASSWORD })).status).toBe(201);
+  });
+});
+
+describe('teacher password reset', () => {
+  it('re-issues an initial password, forces a change, and signs the student out everywhere', async () => {
+    const { client: teacher } = await signupTeacher();
+    const { client: student, userId } = await signup('s001');
+    expect((await student.get('/api/auth/me')).status).toBe(200);
+
+    const res = await teacher.post('/api/students/reset-password', { studentNumber: 's001' });
+    expect(res.status).toBe(200);
+    const newPassword: string = res.body.initialPassword;
+    expect(newPassword).toMatch(/^[A-Za-z0-9]{12}$/);
+
+    // Old session is revoked; old password no longer works; new one does.
+    expect((await student.get('/api/auth/me')).status).toBe(401);
+    expect((await new Client().post('/api/auth/login', { studentNumber: 's001', password: PASSWORD })).status).toBe(401);
+    const relogin = new Client();
+    expect((await relogin.post('/api/auth/login', { studentNumber: 's001', password: newPassword })).status).toBe(200);
+    expect((await relogin.get('/api/auth/me')).body.user.mustChangePassword).toBe(true);
+
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    expect(user.initialPassword).toBe(newPassword);
+  });
+
+  it('lifts a login lockout on the account', async () => {
+    const { client: teacher } = await signupTeacher();
+    await signup('s001');
+    const c = new Client();
+    for (let i = 0; i < 10; i += 1) {
+      await c.post('/api/auth/login', { studentNumber: 's001', password: 'wrongpass1' });
+    }
+    expect((await c.post('/api/auth/login', { studentNumber: 's001', password: PASSWORD })).status).toBe(429);
+    const { body } = await teacher.post('/api/students/reset-password', { studentNumber: 's001' });
+    expect((await c.post('/api/auth/login', { studentNumber: 's001', password: body.initialPassword })).status).toBe(200);
+  });
+
+  it('is teacher-only, refuses teacher accounts, and 404s an unknown student number', async () => {
+    const { client: teacher } = await signupTeacher();
+    const { client: student } = await signup('s001');
+    await signup('s002');
+    expect((await student.post('/api/students/reset-password', { studentNumber: 's002' })).status).toBe(403);
+    expect((await teacher.post('/api/students/reset-password', { studentNumber: 'teacher01' })).status).toBe(400);
+    expect((await teacher.post('/api/students/reset-password', { studentNumber: 'nobody' })).status).toBe(404);
   });
 });

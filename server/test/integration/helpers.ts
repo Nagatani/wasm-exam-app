@@ -2,6 +2,7 @@ import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { createApp } from '../../src/app';
 import { prisma } from '../../src/lib/prisma';
+import { resetLoginRateLimit } from '../../src/lib/loginRateLimit';
 
 export { prisma };
 
@@ -37,6 +38,8 @@ export async function resetDb(): Promise<void> {
   if (!/_test(\?|$)/.test(url)) {
     throw new Error(`resetDb refused: DATABASE_URL does not point at a *_test database (${url}).`);
   }
+  // In-memory login lockouts live in the same process as the app under test.
+  resetLoginRateLimit();
   const tables = await prisma.$queryRaw<{ tablename: string }[]>`
     SELECT tablename FROM pg_tables
     WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'`;

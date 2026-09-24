@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { signUp } from '../api/auth';
+import { getSignupStatus, signUp } from '../api/auth';
 import { ApiError } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { PasswordField } from '../components/PasswordField';
@@ -13,6 +13,13 @@ export function SignupPage() {
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
   const { refresh } = useAuth();
+  const [signupOpen, setSignupOpen] = useState(true);
+
+  useEffect(() => {
+    getSignupStatus()
+      .then(({ signupOpen }) => setSignupOpen(signupOpen))
+      .catch(() => {});
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -48,6 +55,12 @@ export function SignupPage() {
           </div>
           <h1 className="text-xl font-bold text-mp-cyan">新規登録</h1>
         </div>
+
+        {!signupOpen && (
+          <p className="mb-4 rounded-lg border border-mp-yellow/50 bg-mp-yellow/10 p-3 text-sm text-mp-fg">
+            新規登録は現在受け付けていません。アカウントの発行は担当の教員に依頼してください。
+          </p>
+        )}
 
         <label className="mb-1 block text-sm text-mp-muted" htmlFor="studentId">
           学籍番号
@@ -85,7 +98,7 @@ export function SignupPage() {
 
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || !signupOpen}
           className="w-full rounded-lg bg-mp-cyan py-2.5 font-bold text-mp-btn-fg transition hover:opacity-90 active:scale-[0.99] disabled:opacity-50"
         >
           {submitting ? '登録中...' : '登録する'}

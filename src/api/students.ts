@@ -13,3 +13,13 @@ export function bulkCreateStudents(input: {
     body: JSON.stringify(input),
   });
 }
+
+// Re-issue a forgotten password: the account gets a new initial password
+// (shown in the course roster until changed) + mustChangePassword, and every
+// existing session of that student is signed out.
+export function resetStudentPassword(studentNumber: string) {
+  return apiFetch<{ studentNumber: string; displayName: string; initialPassword: string }>(
+    '/api/students/reset-password',
+    { method: 'POST', body: JSON.stringify({ studentNumber }) },
+  );
+}

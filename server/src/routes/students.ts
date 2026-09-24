@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { generateInitialPassword } from '../lib/provisioning';
+import { clearLoginFailuresFor } from '../lib/loginRateLimit';
 
 export const studentsRouter = Router();
 
@@ -104,4 +105,51 @@ studentsRouter.post('/bulk', async (req, res) => {
   }
 
   res.status(201).json({ created, skipped, enrolled });
+});
+
+const resetPasswordSchema = z.object({
+  studentNumber: z.string().trim().min(1),
+});
+
+// Re-issue a forgotten password: puts the account back into the same state as
+// a freshly bulk-provisioned one — a new random initial password (stored in
+// plaintext for the printed slip, same user-signed-off tradeoff as /bulk),
+// mustChangePassword — and revokes every existing session so anyone still
+// logged in with the old credentials is signed out. Also lifts any login
+// lockout on the account. STUDENT accounts only.
+studentsRouter.post('/reset-password', async (req, res) => {
+  const parsed = resetPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'invalid_request' });
+    return;
+  }
+  const target = await prisma.user.findUnique({ where: { studentNumber: parsed.data.studentNumber } });
+  if (!target) {
+    res.status(404).json({ error: 'その学籍番号のアカウントは見つかりません。' });
+    return;
+  }
+  if (target.role !== 'STUDENT') {
+    res.status(400).json({ error: '教員アカウントのパスワードはこの操作では再発行できません。' });
+    return;
+  }
+
+  const initialPassword = generateInitialPassword();
+  const passwordHash = await bcrypt.hash(initialPassword, 12);
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: target.id },
+      data: { passwordHash, mustChangePassword: true, initialPassword },
+    }),
+    prisma.session.updateMany({
+      where: { userId: target.id, revoked: false },
+      data: { revoked: true },
+    }),
+  ]);
+  clearLoginFailuresFor(target.studentNumber);
+
+  res.json({
+    studentNumber: target.studentNumber,
+    displayName: target.displayName,
+    initialPassword,
+  });
 });
