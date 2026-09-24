@@ -12,6 +12,10 @@ export { prisma };
 let server: Server | null = null;
 let baseUrl = '';
 
+export function getBaseUrl(): string {
+  return baseUrl;
+}
+
 export async function startServer(): Promise<void> {
   const app = createApp();
   await new Promise<void>((resolve) => {
@@ -56,13 +60,15 @@ export class Client {
   private cookie = '';
 
   async request<T = any>(method: string, path: string, body?: unknown): Promise<ApiResponse<T>> {
+    const isForm = body instanceof FormData;
     const res = await fetch(baseUrl + path, {
       method,
       headers: {
-        ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+        // FormData sets its own multipart content-type (with boundary).
+        ...(body !== undefined && !isForm ? { 'content-type': 'application/json' } : {}),
         ...(this.cookie ? { cookie: this.cookie } : {}),
       },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
     });
     for (const c of res.headers.getSetCookie()) {
       const [pair] = c.split(';');
@@ -95,6 +101,9 @@ export class Client {
   }
   delete<T = any>(path: string) {
     return this.request<T>('DELETE', path);
+  }
+  upload<T = any>(path: string, form: FormData) {
+    return this.request<T>('POST', path, form);
   }
 }
 

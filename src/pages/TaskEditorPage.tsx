@@ -38,6 +38,7 @@ import { HelpPopover } from '../components/HelpPopover';
 import { PageSkeleton } from '../components/Skeleton';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { changedOrders, moveItem } from '../lib/reorder';
+import { parseBulkCases } from '../lib/bulkTestCases';
 
 // Lazy: AiAssistPanel pulls in @mlc-ai/web-llm (several MB) via ../ai/
 // aiAssist — only worth fetching once we already know AI作問サポート is
@@ -45,34 +46,6 @@ import { changedOrders, moveItem } from '../lib/reorder';
 // aiAssistSettings.ts, which has no such dependency), not just from opening
 // this page.
 const AiAssistPanel = lazy(() => import('../components/AiAssistPanel'));
-
-// Bulk import format: cases separated by a line that is exactly `===`; within
-// a case, input and expected are separated by a line that is exactly `---`; a
-// first line of exactly `@sample` marks the case as a sample.
-function parseBulkCases(
-  text: string,
-): { input: string; expectedOutput: string; isSample: boolean }[] {
-  return text
-    .split(/\r?\n===\r?\n/)
-    .map((block) => block.replace(/\s+$/, ''))
-    .filter((block) => block.trim() !== '')
-    .map((block) => {
-      let body = block;
-      let isSample = false;
-      const nl = body.indexOf('\n');
-      const firstLine = (nl === -1 ? body : body.slice(0, nl)).trim();
-      if (firstLine === '@sample') {
-        isSample = true;
-        body = nl === -1 ? '' : body.slice(nl + 1);
-      }
-      const parts = body.split(/\r?\n---\r?\n/);
-      return {
-        input: parts[0] ?? '',
-        expectedOutput: parts.slice(1).join('\n---\n'),
-        isSample,
-      };
-    });
-}
 
 type SolutionCheckStatus = 'match' | 'mismatch' | 'error' | 'timeout' | 'missing';
 

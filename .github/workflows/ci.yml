@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Vite 8 / oxlint need 20.19+ or 22.12+ (see CLAUDE.md "Node version note").
+  NODE_VERSION: '22'
+  # Matches docker-compose.yml's dev `db` credentials; the test suites create
+  # their own *_test databases on it (server/vitest.config.mts).
+  TEST_DATABASE_URL: postgresql://wasm_exam:wasm_exam@localhost:5433/wasm_exam_test
+
+jobs:
+  frontend:
+    name: Frontend (lint / test / build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:frontend
+      # tsc -b (also typechecks the *.test.ts files) + vite build
+      - run: npm run build
+
+  server:
+    name: Server (build / unit / integration)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: wasm_exam
+          POSTGRES_PASSWORD: wasm_exam
+          POSTGRES_DB: wasm_exam
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U wasm_exam"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run build
+      - run: npm run typecheck:test
+      - run: npm test
+      - run: npm run test:integration
+
+  judge:
+    name: Judge (Java / C through the sandboxed container)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: wasm_exam
+          POSTGRES_PASSWORD: wasm_exam
+          POSTGRES_DB: wasm_exam
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U wasm_exam"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      # Same service definition (cap_drop / read_only / tmpfs exec / limits)
+      # as local development, so the sandbox config itself is exercised.
+      - name: Build and start the judge container
+        run: docker compose up -d --build judge
+      - name: Wait for the judge to become healthy
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:4001/health; then exit 0; fi
+            sleep 2
+          done
+          docker compose logs judge
+          exit 1
+      - run: npm ci
+        working-directory: server
+      - run: npx prisma generate
+        working-directory: server
+      - run: npm run test:judge
+        working-directory: server
+      - name: Judge logs on failure
+        if: failure()
+        run: docker compose logs judge
