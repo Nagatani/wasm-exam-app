@@ -269,9 +269,9 @@ AIヒント: 教師がタスクごとにON/OFF・最大段階を設定→生徒�
 
 | 優先 | 項目 | 現状（根拠） | 打ち手の案 |
 |---|---|---|---|
-| 高 | 自動テストが1本もない | リポジトリにテストファイル・`test` スクリプトがない。これまでの検証はすべて手動（curl・実ブラウザ）で、回帰は検出できない | まず副作用のない採点ロジックから: `judge.ts` の `compareOutput`（全比較モード）・`computeWaHint`・`computeScore`（部分点）・`computeOverall`（TLE/MLE の集約）、`attempts.ts` の `attemptDeadline`（延長・`closesAt` との min）。`vitest` 程度で十分 |
-| 高 | サーバー／クライアントの手動同期箇所がテストで守られていない | `compareOutput` はサーバー（`server/src/lib/judge.ts`）とクライアント（`src/lib/compareOutput.ts`）の二重実装、`PerTestCaseResult` 型は3か所で手書き定義（`CLAUDE.md` 参照）。片方だけ直すと「検証パネルでは一致したのに本採点で WA」が起こりうる | 同じテストケース表を両実装に流す共通テストを置く（共有パッケージ化より軽い） |
-| 中 | CI・Node バージョン強制がない | `.github/workflows` なし、`package.json` に `engines` なし。現在の開発機（Node 22.23.2）では build/lint とも成功を確認済み（3節） | `engines: { node: ">=22.12" }` を両 `package.json` に追加し、CI で `npm run build` / `lint` / `server` の `build` ／テストを実行 |
+| 一部✅ | ~~自動テストが1本もない~~ | ✅（2026-09-25）`server/` に `vitest` を導入し、副作用のない採点ロジックのテストを追加（`server/test/`、94件）: `compareOutput` 全比較モード、`judgeSubmission`（CE・欠落・RE/TLE/MLE の集約・部分点の丸め・非開示 WA ヒントとその不漏洩）、`attemptDeadline`（延長・`closesAt` との min）、`judgeInputFromContainer`、言語ルーティング。`npm test`（ルート）で実行 | 残: DB を伴うルート（受験開始・最終提出・自動確定・差し戻し・名簿によるアクセス制御）の結合テスト（テスト用 DB が必要）、フロントエンド側（`parseCompileErrors`・`reorder` 等）|
+| 一部✅ | ~~サーバー／クライアントの手動同期箇所がテストで守られていない~~ | ✅（2026-09-25）`compareOutput` は共通の表（`server/test/fixtures/compareOutputCases.ts`）を両実装に流すテストで一致を保証。クライアント側だけを意図的に壊して失敗することも確認済み | 残: `PerTestCaseResult` 型の3重定義は型のみで実行時テストの対象外（`typecheck:test` でも検出できない） |
+| 中 | CI・Node バージョン強制がない | `.github/workflows` なし、`package.json` に `engines` なし。現在の開発機（Node 22.23.2）では build/lint とも成功を確認済み（3節） | `engines: { node: ">=22.12" }` を両 `package.json` に追加し、CI で `npm run build` / `lint` / `server` の `build` / `npm test` / `npm --prefix server run typecheck:test` を実行 |
 | 低 | メインバンドルが約780KB | Vite が 500KB 超の警告を出す（AI 関連は分離済みで、残りは Monaco 等）。教室の一斉受験時の初回ロードに効く | ルート単位の `React.lazy`（教師用ページを生徒のバンドルから外す等） |
 | 低 | lint 警告2件 | `AuthContext.tsx` / `ThemeContext.tsx` がコンポーネント以外も export しており `react(only-export-components)` 警告（Fast Refresh のみの問題で動作影響なし） | フック・定数を別ファイルに分ける |
 | 低 | 使い終わった git worktree が残っている | `.claude/worktrees/runtime-gate`（ブランチ `feature/hide-score-during-retake`、main にマージ済み） | 不要なら `git worktree remove` とブランチ削除（git 操作はユーザーが実施） |
