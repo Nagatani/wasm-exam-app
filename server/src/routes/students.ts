@@ -153,3 +153,31 @@ studentsRouter.post('/reset-password', async (req, res) => {
     initialPassword,
   });
 });
+
+// Force-logout: revoke every live session of one STUDENT without touching the
+// password (unlike /reset-password) — e.g. a student left a shared lab PC
+// logged in, or must be taken off an exam device. They can log straight back
+// in with their existing password.
+studentsRouter.post('/force-logout', async (req, res) => {
+  const parsed = resetPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'invalid_request' });
+    return;
+  }
+  const target = await prisma.user.findUnique({ where: { studentNumber: parsed.data.studentNumber } });
+  if (!target) {
+    res.status(404).json({ error: 'その学籍番号のアカウントは見つかりません。' });
+    return;
+  }
+  if (target.role !== 'STUDENT') {
+    res.status(400).json({ error: '教員アカウントはこの操作ではログアウトさせられません。' });
+    return;
+  }
+
+  const { count } = await prisma.session.updateMany({
+    where: { userId: target.id, revoked: false, expiresAt: { gt: new Date() } },
+    data: { revoked: true },
+  });
+
+  res.json({ studentNumber: target.studentNumber, displayName: target.displayName, revoked: count });
+});

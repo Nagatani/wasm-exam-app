@@ -215,3 +215,33 @@ describe('teacher password reset', MANY_LOGINS_TIMEOUT, () => {
     expect((await teacher.post('/api/students/reset-password', { studentNumber: 'nobody' })).status).toBe(404);
   });
 });
+
+describe('teacher force-logout', () => {
+  it('signs the student out of every session but keeps the password', async () => {
+    const { client: teacher } = await signupTeacher();
+    const { client: a } = await signup('s001');
+    const b = new Client();
+    expect((await b.post('/api/auth/login', { studentNumber: 's001', password: PASSWORD })).status).toBe(200);
+
+    const res = await teacher.post('/api/students/force-logout', { studentNumber: 's001' });
+    expect(res.status).toBe(200);
+    expect(res.body.revoked).toBe(2);
+    expect((await a.get('/api/auth/me')).status).toBe(401);
+    expect((await b.get('/api/auth/me')).status).toBe(401);
+
+    // Same password still works; the teacher's own session is untouched.
+    const c = new Client();
+    expect((await c.post('/api/auth/login', { studentNumber: 's001', password: PASSWORD })).status).toBe(200);
+    expect((await c.get('/api/auth/me')).body.user.mustChangePassword).toBe(false);
+    expect((await teacher.get('/api/auth/me')).status).toBe(200);
+  });
+
+  it('is teacher-only, refuses teacher accounts, and 404s an unknown student number', async () => {
+    const { client: teacher } = await signupTeacher();
+    const { client: student } = await signup('s001');
+    await signup('s002');
+    expect((await student.post('/api/students/force-logout', { studentNumber: 's002' })).status).toBe(403);
+    expect((await teacher.post('/api/students/force-logout', { studentNumber: 'teacher01' })).status).toBe(400);
+    expect((await teacher.post('/api/students/force-logout', { studentNumber: 'nobody' })).status).toBe(404);
+  });
+});

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { BackHeader } from '../components/BackHeader';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { getServiceHealth, promoteToTeacher, type ServiceHealth } from '../api/admin';
-import { resetStudentPassword } from '../api/students';
+import { forceLogoutStudent, resetStudentPassword } from '../api/students';
 import { ApiError } from '../api/client';
 
 type Message = { ok: boolean; text: string } | null;
@@ -152,6 +152,57 @@ function PromoteTeacher() {
   );
 }
 
+function ForceLogout() {
+  const [pending, setPending] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<Message>(null);
+
+  async function confirm() {
+    if (!pending) return;
+    const studentNumber = pending;
+    setPending(null);
+    setSubmitting(true);
+    setMessage(null);
+    try {
+      const { displayName, revoked } = await forceLogoutStudent(studentNumber);
+      setMessage({
+        ok: true,
+        text:
+          revoked > 0
+            ? `${studentNumber} ${displayName} をログアウトさせました（${revoked}件のログイン中の端末）。`
+            : `${studentNumber} ${displayName} はどの端末でもログインしていませんでした。`,
+      });
+    } catch (err) {
+      setMessage({
+        ok: false,
+        text: err instanceof ApiError ? err.message : 'ログアウトさせられませんでした。',
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <>
+      <StudentNumberForm
+        id="logout-sn"
+        submitLabel="ログアウトさせる"
+        submitting={submitting}
+        onSubmit={setPending}
+      />
+      <MessageLine message={message} />
+      <ConfirmDialog
+        open={pending !== null}
+        title="ログアウトさせる"
+        message={`${pending ?? ''} を、ログイン中のすべての端末からログアウトさせます。パスワードは変わらないので、本人は同じパスワードで再ログインできます（受験中の場合、未保存の編集は失われることがあります）。よろしいですか？`}
+        confirmLabel="ログアウトさせる"
+        onConfirm={confirm}
+        onCancel={() => setPending(null)}
+      />
+    </>
+  );
+}
+
 function ResetPassword() {
   const [pending, setPending] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -234,6 +285,13 @@ export function AdminPage() {
           description="クラスに所属していない生徒も含め、学籍番号を指定して初期パスワードを再発行します（教員アカウントは対象外）。ログイン失敗によるロックも解除されます。"
         >
           <ResetPassword />
+        </Section>
+
+        <Section
+          title="強制ログアウト"
+          description="パスワードは変えずに、生徒をログイン中のすべての端末からログアウトさせます（共用PCでのログアウト忘れなど）。教員アカウントは対象外です。"
+        >
+          <ForceLogout />
         </Section>
 
         <Section

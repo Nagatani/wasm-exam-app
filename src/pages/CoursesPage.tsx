@@ -13,7 +13,7 @@ import {
   listCourses,
   unenrollStudent,
 } from '../api/courses';
-import { bulkCreateStudents, resetStudentPassword } from '../api/students';
+import { bulkCreateStudents, forceLogoutStudent, resetStudentPassword } from '../api/students';
 import type {
   BulkCreateResult,
   CourseDetail,
@@ -209,6 +209,7 @@ function CourseRosterPanel({
   const [lastCreated, setLastCreated] = useState<BulkCreateResult | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [resetTarget, setResetTarget] = useState<CourseStudent | null>(null);
+  const [logoutTarget, setLogoutTarget] = useState<CourseStudent | null>(null);
   const [resetNotice, setResetNotice] = useState<string | null>(null);
 
   async function load() {
@@ -293,6 +294,21 @@ function CourseRosterPanel({
     }
   }
 
+  async function handleForceLogout(student: CourseStudent) {
+    setError(null);
+    setResetNotice(null);
+    try {
+      const { revoked } = await forceLogoutStudent(student.studentNumber);
+      setResetNotice(
+        revoked > 0
+          ? `${student.studentNumber} ${student.displayName} をログアウトさせました（${revoked}件のログイン中の端末）。`
+          : `${student.studentNumber} ${student.displayName} はどの端末でもログインしていませんでした。`,
+      );
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'ログアウトさせられませんでした。');
+    }
+  }
+
   async function handleResetPassword(student: CourseStudent) {
     setError(null);
     setResetNotice(null);
@@ -357,6 +373,12 @@ function CourseRosterPanel({
                       )}
                     </span>
                     <span className="flex shrink-0 gap-1">
+                      <button
+                        onClick={() => setLogoutTarget(s)}
+                        className="rounded border border-mp-border bg-mp-surface px-2 py-0.5 text-xs hover:bg-mp-surface-hover"
+                      >
+                        ログアウトさせる
+                      </button>
                       <button
                         onClick={() => setResetTarget(s)}
                         className="rounded border border-mp-border bg-mp-surface px-2 py-0.5 text-xs hover:bg-mp-surface-hover"
@@ -502,6 +524,19 @@ function CourseRosterPanel({
           if (target) void handleResetPassword(target);
         }}
         onCancel={() => setResetTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={logoutTarget !== null}
+        title="ログアウトさせる"
+        message={`${logoutTarget?.studentNumber ?? ''} ${logoutTarget?.displayName ?? ''} を、ログイン中のすべての端末からログアウトさせます。パスワードは変わらないので、本人は同じパスワードで再ログインできます（受験中の場合、未保存の編集は失われることがあります）。よろしいですか？`}
+        confirmLabel="ログアウトさせる"
+        onConfirm={() => {
+          const target = logoutTarget;
+          setLogoutTarget(null);
+          if (target) void handleForceLogout(target);
+        }}
+        onCancel={() => setLogoutTarget(null)}
       />
     </div>
   );
