@@ -139,6 +139,9 @@ jobs:
           --health-retries 10
     env:
       E2E_DATABASE_URL: postgresql://wasm_exam:wasm_exam@localhost:5433/wasm_exam_e2e_test
+      # Also run the C spec (downloads the ~106MB clang toolchain from the
+      # Wasmer registry; fast on GitHub's runners).
+      E2E_WITH_C: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
