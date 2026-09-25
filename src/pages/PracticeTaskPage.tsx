@@ -25,6 +25,10 @@ import { SampleDiff } from '../components/SampleDiff';
 import type { EditorMarker } from '../components/CodeEditor';
 import { parseCompileErrors } from '../lib/compileErrors';
 import { confirmLeaveIfDirty, useUnsavedGuard } from '../hooks/useUnsavedGuard';
+import { useCodeBackup } from '../hooks/useCodeBackup';
+import { RestoreBackupBanner } from '../components/RestoreBackupBanner';
+import { practiceBackupKey } from '../lib/localBackup';
+import { useAuth } from '../contexts/AuthContext';
 import { ApiError } from '../api/client';
 import type { JudgeOutcome, JudgeVerdict } from '../types/student';
 import type { PracticeSubmissionSummary, PracticeTask, PracticeTaskSummary } from '../types/practice';
@@ -95,6 +99,7 @@ function formatDateTime(iso: string): string {
 export function PracticeTaskPage() {
   const { examId, taskId } = useParams<{ examId: string; taskId: string }>();
   const navigate = useNavigate();
+  const { profile } = useAuth();
 
   const [task, setTask] = useState<PracticeTask | null>(null);
   const [examTasks, setExamTasks] = useState<PracticeTaskSummary[]>([]);
@@ -148,6 +153,12 @@ export function PracticeTaskPage() {
 
   const dirty = code !== initialCodeRef.current;
   useUnsavedGuard(dirty);
+
+  // Practice has no server-side draft, so this browser-local copy is the only
+  // thing that survives a reload (lib/localBackup). Dropped once the code is
+  // back to the last submitted/loaded version, and on logout.
+  const backupKey = !loading && profile && task ? practiceBackupKey(profile.id, task.id) : null;
+  const backup = useCodeBackup(backupKey, code, dirty);
 
   async function executeAgainstAllTestCases(currentTask: PracticeTask): Promise<ExecutionResult> {
     return runClientSide(
@@ -323,6 +334,18 @@ export function PracticeTaskPage() {
           </nav>
         )}
       </header>
+
+      {backup.pending && (
+        <RestoreBackupBanner
+          backup={backup.pending}
+          savedLabel="初期コード"
+          onRestore={() => {
+            const restored = backup.restore();
+            if (restored !== null) setCode(restored);
+          }}
+          onDiscard={backup.discard}
+        />
+      )}
 
       <main className="flex flex-1 flex-col gap-4 overflow-hidden p-4 md:flex-row">
         {/* 左カラム: 問題文 + サンプルテストケース */}

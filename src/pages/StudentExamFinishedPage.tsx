@@ -18,6 +18,13 @@ import { UserDrawer } from '../components/UserDrawer';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PageSkeleton } from '../components/Skeleton';
 import { statusGlyph } from '../lib/status';
+import { useAuth } from '../contexts/AuthContext';
+import {
+  clearBackups,
+  examAttemptBackupPrefix,
+  examBackupKey,
+  readBackup,
+} from '../lib/localBackup';
 
 type Mode = 'loading' | 'review' | 'result';
 
@@ -32,6 +39,7 @@ const STATUS_COLOR: Record<'AC' | 'WA' | 'CE' | 'TLE' | 'MLE', string> = {
 export function StudentExamFinishedPage() {
   const { examId } = useParams<{ examId: string }>();
   const navigate = useNavigate();
+  const { profile } = useAuth();
 
   const [mode, setMode] = useState<Mode>('loading');
   const [payload, setPayload] = useState<SubmitPayload | null>(null);
@@ -70,6 +78,8 @@ export function StudentExamFinishedPage() {
         }
         setStatusText('提出しています...');
         await submitExam(examId, clientResults);
+        // The attempt is final now — its unsaved-edit backups are moot.
+        if (profile) clearBackups(examAttemptBackupPrefix(profile.id, payload.attempt.id));
         await loadResult();
       } catch (err) {
         setError(
@@ -84,7 +94,7 @@ export function StudentExamFinishedPage() {
         setStatusText('');
       }
     },
-    [examId, payload, submitting, loadResult],
+    [examId, payload, submitting, loadResult, profile],
   );
 
   useEffect(() => {
@@ -148,6 +158,18 @@ export function StudentExamFinishedPage() {
   // ---- review (confirm + final submit) ----
   if (mode === 'review' && payload) {
     const pastDeadline = Date.now() >= new Date(payload.attempt.deadline).getTime();
+    // Tasks with edits left in this browser that were never 下書き保存'd
+    // (e.g. after a crash) — only the saved draft gets submitted.
+    const unsavedTaskIds = new Set(
+      profile
+        ? payload.tasks
+            .filter((t) => {
+              const b = readBackup(examBackupKey(profile.id, payload.attempt.id, t.id));
+              return b !== null && b.code !== (t.draftCode ?? '');
+            })
+            .map((t) => t.id)
+        : [],
+    );
     return (
       <div className="flex min-h-screen items-center justify-center bg-mp-bg p-6 text-mp-fg">
         <div className="w-full max-w-lg rounded-lg border border-mp-border bg-mp-surface p-6">
@@ -186,11 +208,22 @@ export function StudentExamFinishedPage() {
                     }`}
                   >
                     {t.hasDraft ? '保存済み' : '未保存'}
+                    {unsavedTaskIds.has(t.id) && (
+                      <span className="block text-xs font-normal text-mp-orange">
+                        保存していない編集あり
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+
+          {unsavedTaskIds.size > 0 && !pastDeadline && (
+            <p className="mb-3 rounded border border-mp-orange bg-mp-orange/10 px-3 py-2 text-xs text-mp-orange">
+              「保存していない編集あり」の問題は、このブラウザに下書き保存されていない編集が残っています。提出されるのは下書き保存済みの内容だけです。反映したい場合は「受験に戻る」でその問題を開き、復元して下書き保存してください。
+            </p>
+          )}
 
           <p className="mb-4 text-xs text-mp-muted">
             「最終提出する」を押すと、下書きが採点され成績が確定します。提出後の修正・再提出はできません。下書きのない問題は未提出（0点）扱いになります。

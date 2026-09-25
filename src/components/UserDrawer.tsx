@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { logOut } from '../api/auth';
 import { useAuth } from '../contexts/AuthContext';
 import { ThemeToggle } from './ThemeToggle';
+import { clearBackups } from '../lib/localBackup';
 
 const ROLE_LABEL: Record<'STUDENT' | 'TEACHER', string> = {
   STUDENT: '学生',
@@ -87,6 +88,8 @@ export function UserDrawer({
     setOpen(false);
     if (beforeNavigate && !(await beforeNavigate())) return;
     await logOut();
+    // Don't leave unsaved answers behind for the next person on a shared PC.
+    clearBackups();
     await refresh();
   }
 

@@ -18,6 +18,10 @@ import { SampleDiff } from '../components/SampleDiff';
 import type { EditorMarker } from '../components/CodeEditor';
 import { parseCompileErrors } from '../lib/compileErrors';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
+import { useCodeBackup } from '../hooks/useCodeBackup';
+import { RestoreBackupBanner } from '../components/RestoreBackupBanner';
+import { clearBackup, examBackupKey } from '../lib/localBackup';
+import { useAuth } from '../contexts/AuthContext';
 import { ApiError } from '../api/client';
 import type { JudgeOutcome, JudgeVerdict } from '../types/student';
 import type { StudentTask, StudentTaskSummary } from '../types/student';
@@ -74,10 +78,12 @@ function formatRemaining(ms: number): string {
 export function StudentTaskPage() {
   const { examId, taskId } = useParams<{ examId: string; taskId: string }>();
   const navigate = useNavigate();
+  const { profile } = useAuth();
 
   const [task, setTask] = useState<StudentTask | null>(null);
   const [examTasks, setExamTasks] = useState<StudentTaskSummary[]>([]);
   const [deadline, setDeadline] = useState<number | null>(null);
+  const [attemptId, setAttemptId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(true);
@@ -135,6 +141,7 @@ export function StudentTaskPage() {
         setExamTasks(state.exam.tasks);
         setDraftedTaskIds(state.attempt.draftedTaskIds);
         setDeadline(new Date(state.attempt.deadline).getTime());
+        setAttemptId(state.attempt.id);
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : '問題の取得に失敗しました。'))
       .finally(() => setLoading(false));
@@ -160,6 +167,13 @@ export function StudentTaskPage() {
   }, [task]);
 
   useUnsavedGuard(code !== savedCodeRef.current);
+
+  // Browser-local copy of edits made since the last 下書き保存, offered back
+  // after a crash/reload (lib/localBackup). Cleared once the draft is saved,
+  // on final submit, and on logout.
+  const backupKey =
+    !loading && profile && attemptId && task ? examBackupKey(profile.id, attemptId, task.id) : null;
+  const backup = useCodeBackup(backupKey, code, code !== savedCodeRef.current);
 
   const timeUp = deadline !== null && now >= deadline;
 
@@ -230,6 +244,7 @@ export function StudentTaskPage() {
     if (!task) return;
     await saveTaskDraft(task.id, code, currentMetrics());
     savedCodeRef.current = code;
+    if (backupKey) clearBackup(backupKey);
     setDraftedTaskIds((prev) => (prev.includes(task.id) ? prev : [...prev, task.id]));
   }
 
@@ -394,6 +409,18 @@ export function StudentTaskPage() {
           </nav>
         )}
       </header>
+
+      {backup.pending && (
+        <RestoreBackupBanner
+          backup={backup.pending}
+          savedLabel="最後に下書き保存した内容"
+          onRestore={() => {
+            const restored = backup.restore();
+            if (restored !== null) setCode(restored);
+          }}
+          onDiscard={backup.discard}
+        />
+      )}
 
       {timeUp && (
         <div className="border-b border-mp-border bg-mp-red px-4 py-2 text-center text-sm font-bold text-mp-btn-fg">
