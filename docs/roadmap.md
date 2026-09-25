@@ -309,7 +309,6 @@ AIヒント: 教師がタスクごとにON/OFF・最大段階を設定→生徒�
 
 | 優先 | 項目 | 補足 | 出典 |
 |---|---|---|---|
-| 低 | 演習モードの提出統計・正答率ダッシュボード | `PracticeSubmission` は蓄積されているが教師向けの集計画面がない | 8 |
 | 低 | 試験ごとの担当教員による編集権限の分離 | 現在は「教師なら誰でも全試験を編集可」（意図的）。問題バンクの公開/非公開も発見範囲の制御のみ | 2-1, CLAUDE.md |
 
 ### 9-6. AI 機能
@@ -335,6 +334,7 @@ AIヒント: 教師がタスクごとにON/OFF・最大段階を設定→生徒�
 - ✅ 自動テスト4層（サーバー単体・DB 結合・judge 経由・フロントエンド単体。テスト用 DB は名前が `_test` で終わらなければ接続拒否）と、`compareOutput` のサーバー／クライアント実装を同じ表で検証するテスト
 - ✅ CI（`.github/workflows/ci.yml`、frontend / server / judge の3ジョブ）と `engines: { node: ">=22.12" }`
 - ✅ ドキュメント: `CLAUDE.md` の Node 22.11 注記を「過去の事情」扱いに更新
+- ✅（2026-09-26）演習モードの提出統計 — 「演習の状況」画面（`/teacher/exams/:examId/practice-stats`）。問題別の正解者数/取り組んだ人数、生徒×問題の正解状況と提出回数、セルから提出履歴（コード）を表示。結合テストと E2E で確認
 - ✅（2026-09-26）メインバンドルの縮小 — `App.tsx` でログイン・サインアップ・パスワード変更・振り分け以外の画面を `React.lazy` でルート単位に分割。エントリーチャンクが 794KB（gzip 216KB）→ 254KB（gzip 80KB）。教師用画面のコードは生徒のダウンロードに含まれなくなった。E2E で画面遷移を確認
 - ✅（2026-09-26）lint 警告2件の解消 — `AuthContext` / `ThemeContext` をプロバイダー（`.tsx`）・コンテキスト本体（`authContextValue.ts` / `themeContextValue.ts`）・フック（`useAuth.ts` / `useTheme.ts`）に分割。`npm run lint` の警告は0件
 - ✅（2026-09-26）基本のセキュリティヘッダー — 全レスポンスに `X-Content-Type-Options: nosniff` と `Referrer-Policy: strict-origin-when-cross-origin`（結合テストで確認。CSP は未対応のまま 9-1）

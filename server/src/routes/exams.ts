@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
+import { getPracticeStats } from '../lib/practiceStats';
 import { getExamResults } from '../lib/examResults';
 import { toCsv, UTF8_BOM } from '../lib/csv';
 import { languageSchema } from '../lib/language';
@@ -404,6 +405,36 @@ examsRouter.get('/:examId/results/csv', async (req, res) => {
     `attachment; filename="${asciiFilename}"; filename*=UTF-8''${utf8Filename}`,
   );
   res.send(csv);
+});
+
+// 演習の状況: activity overview of a PRACTICE-mode exam (lib/practiceStats).
+examsRouter.get('/:examId/practice-stats', async (req, res) => {
+  const result = await getPracticeStats(req.params.examId);
+  if (!result.ok) {
+    res
+      .status(result.reason === 'not_found' ? 404 : 400)
+      .json({ error: result.reason === 'not_found' ? '試験が見つかりません。' : '演習モードの試験ではありません。' });
+    return;
+  }
+  res.json(result.stats);
+});
+
+// One student's full practice submission history for one task of this
+// practice exam (newest first), with code — the teacher-side counterpart of
+// the student's own 提出履歴.
+examsRouter.get('/:examId/practice-stats/students/:studentId/tasks/:taskId', async (req, res) => {
+  const { examId, studentId, taskId } = req.params;
+  const task = await prisma.task.findUnique({ where: { id: taskId }, include: { exam: true } });
+  if (!task || task.examId !== examId || task.exam.mode !== 'PRACTICE') {
+    res.status(404).json({ error: '問題が見つかりません。' });
+    return;
+  }
+  const submissions = await prisma.practiceSubmission.findMany({
+    where: { taskId, studentId },
+    orderBy: { submittedAt: 'desc' },
+    select: { id: true, language: true, code: true, overallStatus: true, score: true, submittedAt: true },
+  });
+  res.json({ task: { id: task.id, title: task.title, points: task.points }, submissions });
 });
 
 // Per-student extra attempts ("もう1回受けさせる"), added to the exam's

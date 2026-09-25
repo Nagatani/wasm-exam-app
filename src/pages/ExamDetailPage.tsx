@@ -465,6 +465,14 @@ export function ExamDetailPage() {
               成績を見る
             </Link>
           )}
+          {exam.mode === 'PRACTICE' && (
+            <Link
+              to={`/teacher/exams/${exam.id}/practice-stats`}
+              className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover"
+            >
+              演習の状況を見る
+            </Link>
+          )}
           <button
             onClick={() => setBankPickerOpen(true)}
             className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover"

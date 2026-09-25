@@ -26,6 +26,7 @@ const PracticeTaskPage = lazy(() => import('./pages/PracticeTaskPage').then((m) 
 const ExamResultsPage = lazy(() => import('./pages/ExamResultsPage').then((m) => ({ default: m.ExamResultsPage })));
 const CoursesPage = lazy(() => import('./pages/CoursesPage').then((m) => ({ default: m.CoursesPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const PracticeStatsPage = lazy(() => import('./pages/PracticeStatsPage').then((m) => ({ default: m.PracticeStatsPage })));
 const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })));
 
 function App() {
@@ -130,6 +131,14 @@ function App() {
             element={
               <ProtectedRoute role="TEACHER">
                 <ExamResultsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/teacher/exams/:examId/practice-stats"
+            element={
+              <ProtectedRoute role="TEACHER">
+                <PracticeStatsPage />
               </ProtectedRoute>
             }
           />

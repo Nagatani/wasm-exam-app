@@ -7,6 +7,8 @@ import type {
   ExamSummary,
   Language,
   SubmissionDetail,
+  PracticeStats,
+  PracticeHistory,
 } from '../types/exam';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
@@ -146,4 +148,15 @@ export async function downloadExamResultsCsv(examId: string): Promise<void> {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+// 演習の状況 (PRACTICE-mode exams only).
+export function getPracticeStats(examId: string) {
+  return apiFetch<PracticeStats>(`/api/exams/${examId}/practice-stats`);
+}
+
+export function getPracticeHistory(examId: string, studentId: string, taskId: string) {
+  return apiFetch<PracticeHistory>(
+    `/api/exams/${examId}/practice-stats/students/${studentId}/tasks/${taskId}`,
+  );
 }

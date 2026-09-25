@@ -230,3 +230,54 @@ export interface SubmissionDetail {
   attempts: SubmissionDetailAttempt[];
   tasks: SubmissionDetailTask[];
 }
+
+// GET /api/exams/:examId/practice-stats — activity overview of a PRACTICE-mode
+// exam (server/src/lib/practiceStats.ts).
+export interface PracticeTaskStats {
+  id: string;
+  title: string;
+  order: number;
+  points: number;
+  submissionCount: number;
+  submitterCount: number;
+  solvedCount: number;
+}
+
+export interface PracticeStudentTaskCell {
+  taskId: string;
+  submissionCount: number;
+  solved: boolean;
+  bestScore: number | null;
+  lastStatus: SubmissionOverallStatus | null;
+  lastSubmittedAt: string | null;
+}
+
+export interface PracticeStudentRow {
+  id: string;
+  studentNumber: string;
+  displayName: string;
+  tasks: PracticeStudentTaskCell[];
+  solvedCount: number;
+  submissionCount: number;
+  lastSubmittedAt: string | null;
+}
+
+export interface PracticeStats {
+  exam: { id: string; title: string; courseId: string | null };
+  tasks: PracticeTaskStats[];
+  students: PracticeStudentRow[];
+}
+
+export interface PracticeHistoryEntry {
+  id: string;
+  language: Language;
+  code: string;
+  overallStatus: SubmissionOverallStatus;
+  score: number;
+  submittedAt: string;
+}
+
+export interface PracticeHistory {
+  task: { id: string; title: string; points: number };
+  submissions: PracticeHistoryEntry[];
+}

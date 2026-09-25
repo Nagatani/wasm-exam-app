@@ -53,7 +53,7 @@ async function seed(request: APIRequestContext) {
   // The student account (a separate cookie jar is used for the UI login).
   await request.post('/api/auth/logout');
   await post('/api/auth/signup', { studentNumber: 's001', password: PASSWORD });
-  return { examId: exam.id as string };
+  return { examId: exam.id as string, practiceId: practice.id as string };
 }
 
 async function login(page: Page, studentNumber: string) {
@@ -64,10 +64,11 @@ async function login(page: Page, studentNumber: string) {
 }
 
 let examId = '';
+let practiceId = '';
 
 test.beforeAll(async ({ playwright, baseURL }) => {
   const request = await playwright.request.newContext({ baseURL });
-  ({ examId } = await seed(request));
+  ({ examId, practiceId } = await seed(request));
   await request.dispose();
 });
 
@@ -145,4 +146,21 @@ test('practice mode: unsaved code survives a reload and can be restored, then su
   await expect
     .poll(() => page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('wasm-exam-backup:')).length))
     .toBe(0);
+});
+
+test('the teacher sees practice activity and the student’s submission history', async ({ page }) => {
+  await login(page, 'teacher01');
+  await expect(page.getByRole('heading', { name: '教師ダッシュボード' })).toBeVisible();
+  await page.goto(`/teacher/exams/${practiceId}`);
+  await page.getByRole('link', { name: '演習の状況を見る' }).click();
+
+  await expect(page.getByRole('heading', { name: `演習の状況: ${PRACTICE_TITLE}` })).toBeVisible();
+  // s001 solved the only task with one submission (previous spec).
+  await expect(page.getByText('1 / 1 人（提出 1 回）')).toBeVisible();
+  const row = page.locator('tr', { hasText: 's001' });
+  await row.getByRole('button', { name: /✓ 1回/ }).click();
+  const history = page.getByRole('region', { name: '提出履歴' });
+  await expect(history).toContainText('s001');
+  await expect(history).toContainText('AC');
+  await expect(history.getByText('readline().split')).toBeVisible();
 });

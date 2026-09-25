@@ -189,6 +189,45 @@ describe('practice mode', () => {
     expect((await other.get(`/api/student/practice/tasks/${t.id}/submissions`)).body.submissions).toEqual([]);
   });
 
+  it('practice-stats aggregates submitters, solves and per-student history for the teacher', async () => {
+    const { teacher, student, studentId, practice, exam } = await setup();
+    const { client: other } = await signup('s002');
+    await signup('s003'); // never submits
+    const t = practice.tasks[0];
+    const submit = (c: typeof student, stdout: string | string[], code: string) =>
+      c.post(`/api/student/practice/tasks/${t.id}/submit`, {
+        code,
+        compileFailed: false,
+        outcomes: outcomes(t.testCaseIds, stdout),
+      });
+    await submit(student, 'wrong', 'a1');
+    await submit(student, ['3', '30'], 'a2'); // s001 solves on the 2nd try
+    await submit(other, 'wrong', 'b1'); // s002 tries once, fails
+
+    const stats = await teacher.get(`/api/exams/${practice.examId}/practice-stats`);
+    expect(stats.status).toBe(200);
+    expect(stats.body.tasks[0]).toMatchObject({ submissionCount: 3, submitterCount: 2, solvedCount: 1 });
+    const byNumber = Object.fromEntries(
+      stats.body.students.map((r: { studentNumber: string }) => [r.studentNumber, r]),
+    );
+    expect(byNumber.s001).toMatchObject({ solvedCount: 1, submissionCount: 2 });
+    expect(byNumber.s001.tasks[0]).toMatchObject({ solved: true, bestScore: 10, lastStatus: 'AC' });
+    expect(byNumber.s002.tasks[0]).toMatchObject({ solved: false, submissionCount: 1, lastStatus: 'WA' });
+    expect(byNumber.s003.tasks[0]).toMatchObject({ submissionCount: 0, bestScore: null, lastSubmittedAt: null });
+
+    const history = await teacher.get(
+      `/api/exams/${practice.examId}/practice-stats/students/${studentId}/tasks/${t.id}`,
+    );
+    expect(history.body.submissions.map((h: { code: string }) => h.code)).toEqual(['a2', 'a1']);
+
+    // EXAM-mode exams have no practice stats; students can't read them.
+    expect((await teacher.get(`/api/exams/${exam.examId}/practice-stats`)).status).toBe(400);
+    expect((await student.get(`/api/exams/${practice.examId}/practice-stats`)).status).toBe(403);
+    expect(
+      (await teacher.get(`/api/exams/${practice.examId}/practice-stats/students/${studentId}/tasks/${exam.tasks[0].id}`)).status,
+    ).toBe(404);
+  });
+
   it('exam-flow draft routes don’t operate on practice tasks', async () => {
     const { student, practice } = await setup();
     expect((await student.put(`/api/student/tasks/${practice.tasks[0].id}/draft`, draftBody('x'))).status).toBe(409);
