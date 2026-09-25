@@ -118,3 +118,51 @@ jobs:
       - name: Judge logs on failure
         if: failure()
         run: docker compose logs judge
+
+  e2e:
+    name: Browser E2E (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: wasm_exam
+          POSTGRES_PASSWORD: wasm_exam
+          POSTGRES_DB: wasm_exam
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U wasm_exam"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      E2E_DATABASE_URL: postgresql://wasm_exam:wasm_exam@localhost:5433/wasm_exam_e2e_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: server
+      - run: npx prisma generate
+        working-directory: server
+      - run: npx playwright install --with-deps chromium
+      # playwright.config.ts builds server + frontend, prepares the
+      # *_e2e_test database and starts the consolidated server itself.
+      - run: npm run test:e2e
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7

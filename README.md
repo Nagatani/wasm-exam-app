@@ -25,8 +25,8 @@
 - UI改善（2026-09-11〜12）完了 — 問題編集画面の保存ボタン統一（セクションごとのラベル・未保存インジケータ・横断バナー）、ネットワーク／実行環境未取得時の分かりやすいエラーメッセージ、テストケースごとの時間・メモリ制限入力欄（Java・C再採点のみ）、問題一覧・テストケース一覧のドラッグ＆ドロップ並び替え、**問題ごとの部分点設定**（`Task.allowPartialCredit`、通過テスト数比例で採点）、**問題文への画像アップロード**（`POST /api/uploads`、PNG/JPEG/GIF/WebP・5MB上限、`/uploads/*` で公開配信）、**ハンバーガーメニュー（ドロワー）**（右上の☰から開閉。ページ移動〈ダッシュボード・クラス管理・管理者メニュー〉、設定〈テーマ・AI機能・パスワード変更〉、ログアウトを集約。2026-09-26 に管理者メニュー〈サービス状態・パスワード再発行・教員昇格〉と設定を独立した画面に整理）
 - **AI作問サポート（2026-09-16）完了** — 教師専用・ブラウザ内蔵LLM（`@mlc-ai/web-llm`、モデルダウンロードはブラウザごとにオプトイン）による問題文・初期テンプレート・テストケース・解答例の下書き生成。期待される出力はLLMに書かせず、生成された解答例コードを実際に実行して求めます。詳細は [`docs/teacher-guide.md`](./docs/teacher-guide.md)。
 - **演習モード + AIヒント（2026-09-18〜19）完了** — 試験（時間制限あり）とは別に、時間制限なし・何度でも実行/提出できる学習支援用の「演習」モードを追加（既存の問題作成UIをそのまま使えます）。演習モードの問題では、教師が許可すれば生徒はAIによる**段階的ヒント**（着眼点→疑わしい箇所→修正方針、生徒のブラウザでのオプトインが別途必要）を利用できます。**ヒント3は簡単な問題では答えに近い内容になることがあると実機検証済み**のため、教師は問題ごとにヒントを何段階まで公開するか制限できます。詳細は [`docs/teacher-guide.md`](./docs/teacher-guide.md)。
-- **ログイン・アカウント保護と品質基盤（2026-09-25）完了** — ログインのレート制限、自己サインアップを閉じる設定（`ALLOW_SIGNUP=false`）、講師によるパスワード再発行（[`docs/operations.md`](./docs/operations.md)「ログイン・アカウントの保護」）。自動テスト（サーバー単体・DB結合・judge経由・フロントエンド単体）と GitHub Actions による CI
-- **残タスク・要対応事項**（JS/TS/Pythonの再採点、ブラウザE2Eテストほか）は [`docs/roadmap.md`](./docs/roadmap.md) の9節に一覧化（優先度「中」以上は 9-0 に要約）
+- **ログイン・アカウント保護と品質基盤（2026-09-25）完了** — ログインのレート制限、自己サインアップを閉じる設定（`ALLOW_SIGNUP=false`）、講師によるパスワード再発行（[`docs/operations.md`](./docs/operations.md)「ログイン・アカウントの保護」）。自動テスト（サーバー単体・DB結合・judge経由・フロントエンド単体・**ブラウザE2E**〈Playwright、2026-09-26〉）と GitHub Actions による CI
+- **残タスク・要対応事項**（本採点のサーバー実行化、JS/TS/Pythonの再採点ほか）は [`docs/roadmap.md`](./docs/roadmap.md) の9節に一覧化（優先度「中」以上は 9-0 に要約）
 - **既存環境を更新したとき**は、未適用のマイグレーションを `npm --prefix server run prisma:deploy`（開発環境では `prisma:migrate`）で適用してください。適用状況は `server/` 内で `npx prisma migrate status` で確認できます
 
 設計判断の背景は [`CLAUDE.md`](./CLAUDE.md)を参照してください。
@@ -141,6 +141,7 @@ docker exec wasm-exam-app-db-1 psql -U wasm_exam -d wasm_exam \
 | `npm test` | 単体テスト（フロントエンドの補助関数＋サーバーの採点ロジック。DB不要） |
 | `npm run test:frontend` | フロントエンドの単体テストのみ |
 | `npm run test:integration` | 結合テスト（APIを実際のDBに対して実行。開発用 `db` コンテナが必要。専用の `wasm_exam_test` DBを自動作成し、開発用DBには触れません） |
+| `npm run test:e2e` | ブラウザE2Eテスト（Playwright + Chromium。ログイン〜受験〜最終提出〜成績確認などを実ブラウザで自動操作。`db` コンテナが必要、初回は `npx playwright install chromium`。専用の `wasm_exam_e2e_test` DBを使用） |
 | `npm run test:judge` | judge 経由の結合テスト（Java・Cを実際にコンパイル・実行。`db` と `judge` コンテナが必要。専用の `wasm_exam_judge_test` DBを使用） |
 | `npm run preview` | 本番ビルドをローカルでプレビュー |
 

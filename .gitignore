@@ -10,6 +10,10 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# Playwright E2E (playwright.config.ts): frontend build + reports
+.e2e-dist
+test-results
+playwright-report
 *.local
 
 # Environment variables
