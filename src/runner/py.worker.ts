@@ -47,9 +47,9 @@ self.onmessage = async (e) => {
       py.globals.set('__src__', msg.source ?? '');
       try {
         py.runPython('compile(__src__, "<main>", "exec")');
-        self.postMessage({ op: 'prepare', ok: true, error: '' });
+        self.postMessage({ op: 'prepare', id: msg.id, ok: true, error: '' });
       } catch (err) {
-        self.postMessage({ op: 'prepare', ok: false, error: String(err && err.message ? err.message : err) });
+        self.postMessage({ op: 'prepare', id: msg.id, ok: false, error: String(err && err.message ? err.message : err) });
       } finally {
         py.globals.delete('__src__');
       }
@@ -65,10 +65,11 @@ self.onmessage = async (e) => {
     proxy.destroy();
     py.globals.delete('__src__');
     py.globals.delete('__stdin__');
-    self.postMessage({ op: 'run', ok, stdout, stderr });
+    self.postMessage({ op: 'run', id: msg.id, ok, stdout, stderr });
   } catch (err) {
     self.postMessage({
       op: msg.op || 'run',
+      id: msg.id,
       ok: false,
       stdout: '',
       stderr: String(err && err.message ? err.message : err),

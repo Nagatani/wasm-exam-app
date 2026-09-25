@@ -68,6 +68,8 @@ export function prewarmPyRunner(): void {
 
 interface WorkerReply {
   op: string;
+  // Echo of the request id (see call()).
+  id?: number;
   ok?: boolean;
   error?: string;
   stdout?: string;
@@ -83,8 +85,17 @@ interface WorkerReply {
 const RUNTIME_LOAD_FAILURE_MESSAGE =
   'Python 実行環境（Pyodide）の読み込みに失敗しました。ネットワーク環境を確認するか、しばらくしてから再度お試しください。';
 
+// Every request carries an id the worker echoes back, and each call only
+// accepts the reply with its own id. Without this, two calls in flight on the
+// same worker (e.g. the page-open prewarm still loading Pyodide when the
+// student presses 実行) each took whichever reply came first — the prewarm's
+// `prepare` reply was then consumed as the run result: empty stdout → a false
+// WA (found by the E2E suite on a CI runner with a cold Pyodide cache).
+let nextRequestId = 0;
+
 function call(message: Record<string, unknown>, timeoutMs: number): Promise<WorkerReply> {
   const w = getWorker();
+  const id = ++nextRequestId;
   return new Promise<WorkerReply>((resolve) => {
     const timer = setTimeout(() => {
       resetWorker();
@@ -92,6 +103,7 @@ function call(message: Record<string, unknown>, timeoutMs: number): Promise<Work
     }, timeoutMs);
 
     const onMessage = (e: MessageEvent) => {
+      if ((e.data as WorkerReply).id !== id) return; // another call's reply
       w.removeEventListener('message', onMessage);
       w.removeEventListener('error', onError);
       clearTimeout(timer);
@@ -122,7 +134,7 @@ function call(message: Record<string, unknown>, timeoutMs: number): Promise<Work
 
     w.addEventListener('message', onMessage);
     w.addEventListener('error', onError);
-    w.postMessage({ ...message, baseUrl: PYODIDE_BASE_URL });
+    w.postMessage({ ...message, id, baseUrl: PYODIDE_BASE_URL });
   });
 }
 

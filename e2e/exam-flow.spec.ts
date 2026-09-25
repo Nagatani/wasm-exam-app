@@ -208,6 +208,13 @@ test('the teacher sees practice activity and the student’s submission history'
 
 test('a Python task runs in the browser through Pyodide', async ({ page }) => {
   test.setTimeout(180_000); // first Pyodide download
+  // Simulate a slow network so the page-open prewarm is still loading Pyodide
+  // when 実行 is pressed — the race that used to hand the prewarm's reply to
+  // the run (false WA with empty output; see pyRunner.ts call()).
+  await page.route('**/pyodide/**', async (route) => {
+    await new Promise((r) => setTimeout(r, 1500));
+    await route.continue();
+  });
   await login(page, 's001');
   await page.getByRole('link', { name: PRACTICE_TITLE }).click();
   await page.getByRole('link', { name: /和を求める（Python）/ }).click();
