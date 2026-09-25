@@ -131,6 +131,9 @@ test('practice mode: unsaved code survives a reload and can be restored, then su
   page.on('dialog', (d) => d.accept()); // beforeunload "leave site?" prompt
   await page.reload();
   await expect(page.getByText('保存されていない編集内容が残っています')).toBeVisible();
+  // Monaco loads asynchronously (from a CDN) — on a slow runner the banner
+  // can appear before the editor exists.
+  await page.waitForFunction(() => (window as any).monaco?.editor.getModels().length > 0);
   await page.getByRole('button', { name: '復元する' }).click();
   await expect
     .poll(() => page.evaluate(() => (window as any).monaco.editor.getModels()[0].getValue()))
