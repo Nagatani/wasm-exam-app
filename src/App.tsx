@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -5,26 +6,34 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
 import { SignupPage } from './pages/SignupPage';
 import { RoleHome } from './pages/RoleHome';
-import { StudentDashboard } from './pages/StudentDashboard';
-import { TeacherDashboard } from './pages/TeacherDashboard';
-import { ExamDetailPage } from './pages/ExamDetailPage';
-import { TaskEditorPage } from './pages/TaskEditorPage';
-import { SandboxPage } from './pages/SandboxPage';
-import { StudentTaskPage } from './pages/StudentTaskPage';
-import { StudentExamFinishedPage } from './pages/StudentExamFinishedPage';
-import { PracticeSetPage } from './pages/PracticeSetPage';
-import { PracticeTaskPage } from './pages/PracticeTaskPage';
-import { ExamResultsPage } from './pages/ExamResultsPage';
-import { CoursesPage } from './pages/CoursesPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { AdminPage } from './pages/AdminPage';
+import { PageSkeleton } from './components/Skeleton';
+
+// Route-level code splitting: only the login/signup/password pages and the
+// role dispatcher ship in the entry chunk; every other page (and what it
+// pulls in — Markdown rendering, the runners, the teacher editors) is fetched
+// when first visited. Keeps the first load light for a whole class logging in
+// at once, and keeps teacher-only code out of students' downloads.
+const StudentDashboard = lazy(() => import('./pages/StudentDashboard').then((m) => ({ default: m.StudentDashboard })));
+const TeacherDashboard = lazy(() => import('./pages/TeacherDashboard').then((m) => ({ default: m.TeacherDashboard })));
+const ExamDetailPage = lazy(() => import('./pages/ExamDetailPage').then((m) => ({ default: m.ExamDetailPage })));
+const TaskEditorPage = lazy(() => import('./pages/TaskEditorPage').then((m) => ({ default: m.TaskEditorPage })));
+const SandboxPage = lazy(() => import('./pages/SandboxPage').then((m) => ({ default: m.SandboxPage })));
+const StudentTaskPage = lazy(() => import('./pages/StudentTaskPage').then((m) => ({ default: m.StudentTaskPage })));
+const StudentExamFinishedPage = lazy(() => import('./pages/StudentExamFinishedPage').then((m) => ({ default: m.StudentExamFinishedPage })));
+const PracticeSetPage = lazy(() => import('./pages/PracticeSetPage').then((m) => ({ default: m.PracticeSetPage })));
+const PracticeTaskPage = lazy(() => import('./pages/PracticeTaskPage').then((m) => ({ default: m.PracticeTaskPage })));
+const ExamResultsPage = lazy(() => import('./pages/ExamResultsPage').then((m) => ({ default: m.ExamResultsPage })));
+const CoursesPage = lazy(() => import('./pages/CoursesPage').then((m) => ({ default: m.CoursesPage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })));
 
 function App() {
   return (
     <ThemeProvider>
       <BrowserRouter>
         <AuthProvider>
+          <Suspense fallback={<PageSkeleton />}>
           <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
@@ -149,6 +158,7 @@ function App() {
             }
           />
           </Routes>
+          </Suspense>
         </AuthProvider>
       </BrowserRouter>
     </ThemeProvider>
