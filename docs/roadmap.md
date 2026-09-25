@@ -100,7 +100,7 @@
 |---|---|---|---|
 | ✅ | 提出モデルの刷新（設問＝下書き / 試験全体で最終提出 / 受験回数設定 / 最新評価を採用）＝ 5節 | 両方 | 大 |
 | ✅ | エディタ内容の autosave（下書き保存でサーバー永続化。`localStorage` 緩衝も 2026-09-26 に実装） | 生徒 | 中 |
-| ✅ | C の実行時間制限（10秒。当初は RE 扱い→現在は JS/Python と同様に `TLE`。runaway は再読み込みまでワーカー1枠を占有） | 生徒 | 中 |
+| ✅ | C の実行時間制限（10秒。当初は RE 扱い→現在は JS/Python と同様に `TLE`。runaway は 2026-09-26 から専用 Worker ごと停止） | 生徒 | 中 |
 | ✅ | 解答例で全テストケースを実行＋期待出力を実出力で置換（問題編集画面「解答例でテストケースを検証」） | 教師 | 小〜中 |
 | ✅ | `TLE`/`MLE` を実際に emit・バッジ表示 | 生徒 | 小 |
 | ✅ | サンプルの expected/actual diff 表示（`SampleDiff`：行単位・末尾空白可視化・行数差の注記） | 生徒 | 小 |
@@ -289,7 +289,6 @@ AIヒント: 教師がタスクごとにON/OFF・最大段階を設定→生徒�
 |---|---|---|---|
 | 中 | 本採点をサーバー実行に寄せるか（公平性） | 端末性能でタイムアウト判定に差が出る。judge の C 経路は再採点専用のまま。2026-09-11 に意図的に見送り | 1-4, 3 |
 | 中 | JS/TS/Python の再採点 | judge の JS/TS/Python 実行経路の追加が前提。テストケースを直したとき、これらの言語だけ既存提出に反映できない | 2-3, 3 |
-| 低 | C の runaway 実行がワーカーを占有し続ける | `@wasmer/sdk` に kill API がなく、10秒で打ち切っても再読み込みまで1枠占有。専用 Worker 化すれば `terminate` できる | 1-1 |
 | 低 | クライアント側の MLE 検出 | Java の judge のみ `MLE` を返す。ブラウザ実行言語はメモリ上限なし | 1-1 |
 | 低 | `server` の複数インスタンス化 | `executionQueue.ts`・`loginRateLimit.ts` がプロセス内の状態。多重化するなら Redis 等へ置き換え（現状は単一インスタンス運用を推奨と明記済み） | 3 |
 
@@ -327,6 +326,7 @@ AIヒント: 教師がタスクごとにON/OFF・最大段階を設定→生徒�
 - ✅ 自動テスト4層（サーバー単体・DB 結合・judge 経由・フロントエンド単体。テスト用 DB は名前が `_test` で終わらなければ接続拒否）と、`compareOutput` のサーバー／クライアント実装を同じ表で検証するテスト
 - ✅ CI（`.github/workflows/ci.yml`、frontend / server / judge の3ジョブ）と `engines: { node: ">=22.12" }`
 - ✅ ドキュメント: `CLAUDE.md` の Node 22.11 注記を「過去の事情」扱いに更新
+- ✅（2026-09-26）C の runaway 実行の停止 — コンパイル済みプログラムを専用のモジュール Worker（独自の `@wasmer/sdk`）で実行し、10秒のタイムアウトで Worker ごと `terminate()`。無限ループ→TLE→Worker 消滅→次の実行は成功、を E2E（`E2E_WITH_C=1`）で確認
 - ✅（2026-09-26）C の E2E を CI でも実行 — CI の `e2e` ジョブで `E2E_WITH_C=1`。clang（約106MB）の取得込みで約7秒
 - ✅（2026-09-26）Content-Security-Policy — 取得先の許可リスト（jsDelivr・Wasmer・Hugging Face/GitHub raw）で CSP を設定。既定は Report-Only（ブロックせず違反をサーバーログへ）、`CSP_MODE=enforce` で適用。E2E は enforce で実行し違反があれば失敗（許可リストを意図的に狭めると失敗することを確認）、C は `E2E_WITH_C=1` の E2E で確認。AI機能（WebLLM）は enforce で未検証
 - ✅（2026-09-26）使い終わった worktree（`.claude/worktrees/runtime-gate`）と main にマージ済みの `feature/*` ブランチ（ローカル9本・リモートの `feature/task-bank`）を削除

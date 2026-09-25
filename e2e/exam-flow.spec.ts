@@ -253,3 +253,28 @@ test('C: clang compiles and runs in the browser (opt-in: E2E_WITH_C=1)', async (
   await expect(page.getByText('実行成功')).toBeVisible({ timeout: 540_000 });
   await expect(page.locator('pre', { hasText: '15' })).toBeVisible();
 });
+
+test('C: a runaway program times out and the next run still works (opt-in: E2E_WITH_C=1)', async ({ page }) => {
+  test.skip(!process.env.E2E_WITH_C, 'set E2E_WITH_C=1 to download clang (~106MB)');
+  test.setTimeout(600_000);
+  await login(page, 'teacher01');
+  await expect(page.getByRole('heading', { name: '教師ダッシュボード' })).toBeVisible();
+  await page.goto('/teacher/sandbox');
+  const run = page.getByRole('button', { name: '▶ コンパイル＆実行' });
+
+  await setEditorCode(page, 'int main(void) { for (;;) {} return 0; }\n');
+  await run.click();
+  // 10s limit: the dedicated run worker is terminated (runCompiledC).
+  await expect(page.getByText('実行時間が制限（10秒）を超えました。')).toBeVisible({ timeout: 540_000 });
+  const cRunWorkers = () => page.workers().filter((w) => w.url().includes('cRun.worker')).length;
+  await expect.poll(cRunWorkers).toBe(0);
+
+  await setEditorCode(
+    page,
+    '#include <stdio.h>\nint main(void) { int a, b; scanf("%d %d", &a, &b); printf("%d\\n", a * b); return 0; }\n',
+  );
+  await run.click();
+  await expect(page.getByText('実行成功')).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('pre', { hasText: '50' })).toBeVisible();
+  await expect.poll(cRunWorkers).toBe(1);
+});

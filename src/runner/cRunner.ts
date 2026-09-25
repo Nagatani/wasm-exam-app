@@ -129,43 +129,72 @@ export async function compileC(sourceCode: string): Promise<CompileResult> {
   return { ok: true, wasmBinary, stderr: compileOutput.stderr, exitCode: compileOutput.code };
 }
 
-// Runs the program with a wall-clock timeout. `@wasmer/sdk`'s `Instance` has
-// no kill/abort API, so on timeout we detach the handle (`free()`) and return
-// a `timedOut` result: the runaway program may keep occupying one worker from
-// the SDK's *bounded* pool until the page is reloaded, but the tab no longer
-// hangs and the judge gets a deterministic outcome. Memory limits (MLE) are
-// still Phase 6.
+// Runs the program with a wall-clock timeout in a dedicated worker
+// (cRun.worker.ts). `@wasmer/sdk`'s `Instance` has no kill/abort API, so a
+// runaway program used to keep a thread of the SDK's pool busy — burning a
+// CPU core — until the page was reloaded. Now the whole worker (and its SDK
+// thread pool) is terminate()d on timeout and a fresh one is created for the
+// next run; the worker is otherwise reused across test cases, so the SDK is
+// only initialised again after a timeout. Memory limits (MLE) are still
+// Phase 6.
+let runWorker: Worker | null = null;
+let nextRunId = 0;
+
+function getRunWorker(): Worker {
+  runWorker ??= new Worker(new URL('./cRun.worker.ts', import.meta.url), { type: 'module' });
+  return runWorker;
+}
+
+function killRunWorker(): void {
+  runWorker?.terminate();
+  runWorker = null;
+}
+
+interface RunReply {
+  id: number;
+  ok?: boolean;
+  stdout?: string;
+  stderr?: string;
+  exitCode?: number | null;
+  error?: string;
+}
+
 export async function runCompiledC(
   wasmBinary: Uint8Array,
   stdin: string,
   timeoutMs: number = C_TIME_LIMIT_MS,
 ): Promise<RunResult> {
-  const program = await Wasmer.fromFile(wasmBinary);
-  if (!program.entrypoint) {
-    throw new Error('コンパイル結果にエントリーポイントが見つかりません。');
-  }
+  const worker = getRunWorker();
+  const id = ++nextRunId;
 
-  const runInstance = await program.entrypoint.run({ stdin });
-
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<'timeout'>((resolve) => {
-    timer = setTimeout(() => resolve('timeout'), timeoutMs);
-  });
-  const finished = runInstance
-    .wait()
-    .then((output) => ({ output }) as const)
-    .catch((err) => ({ err }) as const);
-
-  const race = await Promise.race([finished, timeout]);
-  if (timer) clearTimeout(timer);
-
-  if (race === 'timeout') {
-    try {
-      runInstance.free();
-    } catch {
-      /* handle may already be gone */
+  const reply = await new Promise<RunReply | 'timeout'>((resolve) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      killRunWorker();
+      resolve('timeout');
+    }, timeoutMs);
+    const onMessage = (e: MessageEvent<RunReply>) => {
+      if (e.data.id !== id) return;
+      cleanup();
+      resolve(e.data);
+    };
+    const onError = (e: ErrorEvent) => {
+      cleanup();
+      killRunWorker();
+      resolve({ id, error: e.message || 'C の実行環境でエラーが発生しました。' });
+    };
+    function cleanup() {
+      clearTimeout(timer);
+      worker.removeEventListener('message', onMessage);
+      worker.removeEventListener('error', onError);
     }
-    void finished.catch(() => {}); // swallow the abandoned wait()'s eventual settle
+    worker.addEventListener('message', onMessage);
+    worker.addEventListener('error', onError);
+    // Copy, not transfer: the caller runs the same binary for every test case.
+    worker.postMessage({ id, wasmBinary, stdin });
+  });
+
+  if (reply === 'timeout') {
     return {
       ok: false,
       timedOut: true,
@@ -174,18 +203,15 @@ export async function runCompiledC(
       exitCode: null,
     };
   }
-
-  if ('err' in race) {
-    throw race.err;
+  if (reply.error !== undefined) {
+    throw new Error(reply.error);
   }
-
-  const runOutput = race.output;
   return {
-    ok: runOutput.ok,
+    ok: reply.ok ?? false,
     timedOut: false,
-    stdout: runOutput.stdout,
-    stderr: runOutput.stderr,
-    exitCode: runOutput.code,
+    stdout: reply.stdout ?? '',
+    stderr: reply.stderr ?? '',
+    exitCode: reply.exitCode ?? null,
   };
 }
 
