@@ -51,6 +51,15 @@ async function seed(request: APIRequestContext) {
     starterCode: '// ここに書く\n',
   });
   await post(`/api/tasks/${pTask.id}/test-cases`, { input: '4 5', expectedOutput: '9', isSample: true, order: 0 });
+  // A Python task in the same practice set (Pyodide, ~10MB from the CDN).
+  const { task: pyTask } = await post(`/api/exams/${practice.id}/tasks`, {
+    order: 1,
+    title: '和を求める（Python）',
+    statementMarkdown: '空白区切りの2つの整数の和を出力してください。',
+    points: 10,
+    language: 'PYTHON',
+  });
+  await post(`/api/tasks/${pyTask.id}/test-cases`, { input: '4 5', expectedOutput: '9', isSample: true, order: 0 });
   expect((await request.patch(`/api/exams/${practice.id}`, { data: { status: 'PUBLISHED' } })).ok()).toBeTruthy();
   // The student account (a separate cookie jar is used for the UI login).
   await request.post('/api/auth/logout');
@@ -63,6 +72,23 @@ async function login(page: Page, studentNumber: string) {
   await page.getByLabel('学籍番号').fill(studentNumber);
   await page.getByLabel('パスワード', { exact: true }).fill(PASSWORD);
   await page.getByRole('button', { name: 'ログイン' }).click();
+}
+
+// Put code into Monaco (typing into it is unreliable — auto-indent /
+// auto-close, see CLAUDE.md). Re-applies until it sticks: the page may still
+// be loading the task and overwrite the editor with the starter code.
+async function setEditorCode(page: Page, code: string) {
+  await page.waitForFunction(() => (window as any).monaco?.editor.getModels().length > 0);
+  await expect
+    .poll(async () => {
+      await page.evaluate((c) => {
+        const model = (window as any).monaco.editor.getModels()[0];
+        if (model.getValue() !== c) model.setValue(c);
+      }, code);
+      await page.waitForTimeout(300);
+      return page.evaluate(() => (window as any).monaco.editor.getModels()[0].getValue());
+    })
+    .toBe(code);
 }
 
 let examId = '';
@@ -81,12 +107,8 @@ test('a student takes the exam from login to final submit', async ({ page }) => 
   const row = page.locator('li', { hasText: EXAM_TITLE });
   await row.getByRole('button', { name: '受験する' }).click();
 
-  // Task page: put the answer into Monaco (typing into it directly is
-  // unreliable because of auto-indent / auto-close — see CLAUDE.md).
   await expect(page.getByText('問題 1: 2つの整数の和')).toBeVisible();
-  await page.waitForFunction(() => (window as any).monaco?.editor.getModels().length > 0);
-  const setCode = (code: string) =>
-    page.evaluate((c) => (window as any).monaco.editor.getModels()[0].setValue(c), code);
+  const setCode = (code: string) => setEditorCode(page, code);
   const run = page.getByRole('button', { name: /コンパイル＆テスト実行/ });
 
   // A syntax error is reported as CE and the app marks its line in the
@@ -142,8 +164,7 @@ test('practice mode: unsaved code survives a reload and can be restored, then su
   await page.getByRole('link', { name: PRACTICE_TITLE }).click();
   await page.getByRole('link', { name: /和を求める（演習）/ }).click();
 
-  await page.waitForFunction(() => (window as any).monaco?.editor.getModels().length > 0);
-  await page.evaluate((code) => (window as any).monaco.editor.getModels()[0].setValue(code), SOLUTION);
+  await setEditorCode(page, SOLUTION);
   // The browser-local backup is written after a short debounce.
   await expect
     .poll(() => page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('wasm-exam-backup:')).length))
@@ -183,4 +204,15 @@ test('the teacher sees practice activity and the student’s submission history'
   await expect(history).toContainText('s001');
   await expect(history).toContainText('AC');
   await expect(history.getByText('readline().split')).toBeVisible();
+});
+
+test('a Python task runs in the browser through Pyodide', async ({ page }) => {
+  test.setTimeout(180_000); // first Pyodide download
+  await login(page, 's001');
+  await page.getByRole('link', { name: PRACTICE_TITLE }).click();
+  await page.getByRole('link', { name: /和を求める（Python）/ }).click();
+  await expect(page.getByRole('heading', { name: /演習 2: 和を求める（Python）/ })).toBeVisible();
+  await setEditorCode(page, 'a, b = map(int, input().split())\nprint(a + b)\n');
+  await page.getByRole('button', { name: /実行（お試し）/ }).click();
+  await expect(page.getByText('AC（全テストケース正解）')).toBeVisible({ timeout: 150_000 });
 });

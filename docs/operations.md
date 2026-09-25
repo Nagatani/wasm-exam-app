@@ -165,7 +165,7 @@ C（clang ツールチェイン、初回 ~106MB）と Python（Pyodide、初回 
 
 - **生徒ダッシュボードの「実行環境の準備状況」**：ページを開くと自動で両ランタイムの取得を開始し、`C` / `Python` の状態（未取得 / 準備中 / 準備完了 / 取得失敗）を表示します。「今すぐ準備する」で手動再開も可能。受験前にこれを「準備完了」にしておくよう生徒に案内してください。取得済みの状態はそのブラウザセッション中は保持されます（`getRuntimeReadiness()` / `prewarmAllClientRunners()` in `src/runner/clientRunner.ts`）。
 - **演習室 PC の事前ウォーム**：授業前に各 PC で生徒ダッシュボードを一度開いておく（または上記ボタンを押す）とブラウザキャッシュに載り、本番の一斉アクセスを避けられます。
-- **Pyodide の配信元**：`src/runner/py.worker.ts` の `PYODIDE_BASE_URL`（既定 jsDelivr CDN、v0.28.0）。学内から jsDelivr に到達できない／CDN 依存を避けたい場合は、Pyodide の配布物を自ホストして同定数をそのパスに差し替え、`npm run build:full` し直してください。自ホスト配信層も上記 COOP/COEP と両立する CORP/CORS ヘッダーが必要です（同一オリジンに置くのが最も簡単）。
+- **Pyodide の配信元**：既定は jsDelivr CDN（v0.28.0、`src/runner/pyRunner.ts` の `DEFAULT_PYODIDE_BASE_URL`）。学内から jsDelivr に到達できない／CDN 依存を避けたい場合は、Pyodide v0.28.0 の配布物（`full/` 一式）を自ホストし、フロントエンドのビルド時に **`VITE_PYODIDE_BASE_URL`**（例: `/pyodide/v0.28.0/full/`、`.env.production` に記入）を指定して `npm run build:full` し直してください（コードの書き換えは不要です）。自ホスト配信層も上記 COOP/COEP と両立する CORP/CORS ヘッダーが必要です（同一オリジンに置くのが最も簡単）。
 - **clang の配信元**：`src/runner/cRunner.ts` が Wasmer レジストリ（`Wasmer.fromRegistry('clang/clang')`）から取得します。Pyodide のような単純な URL 差し替えはできません。学内で clang を使う場合は、上記の「演習室 PC の事前ウォーム」で各ブラウザにキャッシュさせておく運用を推奨します。
 
 ### AI機能（AI作問サポート・AIヒント）のモデル配信

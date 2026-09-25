@@ -2,19 +2,17 @@
 // Pyodide (CPython -> WASM) running in a Web Worker. One worker is reused
 // across the test cases of a run (Pyodide loads once, ~10MB from the CDN on
 // first use); pyRunner.ts terminate()s and recreates it on timeout so an
-// infinite loop can't wedge things. Pyodide is loaded from the jsDelivr CDN —
-// if a deployment's cross-origin-isolation headers block that, self-host the
-// pyodide dist and point PYODIDE_BASE_URL at it.
-
-const PYODIDE_VERSION = 'v0.28.0';
-const PYODIDE_BASE_URL = `https://cdn.jsdelivr.net/pyodide/${PYODIDE_VERSION}/full/`;
+// infinite loop can't wedge things. Where Pyodide is loaded from (jsDelivr by
+// default, or a self-hosted copy via VITE_PYODIDE_BASE_URL) is decided by
+// pyRunner.ts and arrives as `baseUrl` on every message — this is a classic
+// worker, so it can't read import.meta.env itself.
 
 let pyodidePromise = null;
-function getPyodide() {
+function getPyodide(baseUrl) {
   if (!pyodidePromise) {
-    importScripts(`${PYODIDE_BASE_URL}pyodide.js`);
+    importScripts(`${baseUrl}pyodide.js`);
     // eslint-disable-next-line no-undef
-    pyodidePromise = loadPyodide({ indexURL: PYODIDE_BASE_URL });
+    pyodidePromise = loadPyodide({ indexURL: baseUrl });
   }
   return pyodidePromise;
 }
@@ -43,7 +41,7 @@ __result__ = [__ok__, __out__.getvalue(), __err__.getvalue()]
 self.onmessage = async (e) => {
   const msg = e.data || {};
   try {
-    const py = await getPyodide();
+    const py = await getPyodide(msg.baseUrl);
 
     if (msg.op === 'prepare') {
       py.globals.set('__src__', msg.source ?? '');

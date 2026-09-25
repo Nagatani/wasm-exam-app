@@ -15,6 +15,21 @@ export interface PyRunResult {
   timedOut: boolean;
 }
 
+// Where Pyodide is downloaded from: the jsDelivr CDN by default, or a
+// self-hosted copy of the pyodide dist via VITE_PYODIDE_BASE_URL at build time
+// (for networks that block the CDN — see docs/operations.md). Resolved here on
+// the main thread and sent with every message, because py.worker.ts is a
+// classic worker (it needs importScripts) and can't read import.meta.env.
+export const DEFAULT_PYODIDE_BASE_URL = 'https://cdn.jsdelivr.net/pyodide/v0.28.0/full/';
+
+export function resolvePyodideBaseUrl(configured: string | undefined): string {
+  const url = (configured ?? '').trim();
+  if (!url) return DEFAULT_PYODIDE_BASE_URL;
+  return url.endsWith('/') ? url : `${url}/`;
+}
+
+const PYODIDE_BASE_URL = resolvePyodideBaseUrl(import.meta.env.VITE_PYODIDE_BASE_URL);
+
 // First call pulls the Pyodide runtime; later calls are fast.
 const LOAD_TIMEOUT_MS = 90_000;
 const RUN_TIMEOUT_MS = 15_000;
@@ -107,7 +122,7 @@ function call(message: Record<string, unknown>, timeoutMs: number): Promise<Work
 
     w.addEventListener('message', onMessage);
     w.addEventListener('error', onError);
-    w.postMessage(message);
+    w.postMessage({ ...message, baseUrl: PYODIDE_BASE_URL });
   });
 }
 

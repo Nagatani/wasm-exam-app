@@ -282,7 +282,7 @@ AIヒント: 教師がタスクごとにON/OFF・最大段階を設定→生徒�
 
 | 優先 | 項目 | 現状（根拠） | 打ち手の案 |
 |---|---|---|---|
-| 低 | ブラウザ内ランナーの C / Python は E2E 未対象 | E2E（2026-09-26）は JavaScript の問題のみ。C（clang 約106MB）・Python（Pyodide）は初回ダウンロードが重く、CI で毎回取得するのは現実的でない | ランタイムをキャッシュできる環境で、C/Python の問題を1本ずつ追加 |
+| 低 | ブラウザ内ランナーの C は E2E 未対象 | Python は 2026-09-26 に E2E 追加（Pyodide 約10MB）。C は clang 約106MB の初回ダウンロードが重く、CI で毎回取得するのは現実的でない | ランタイムをキャッシュできる環境で C の問題を1本追加 |
 | 低 | `main` のブランチ保護が未設定 | CI（`.github/workflows/ci.yml`）は動くが、通過をマージ条件にしていない（2026-09-26、GitHub API で未設定を確認） | GitHub のリポジトリ設定で CI の3ジョブを必須チェックに（ユーザー作業） |
 | 低 | 使い終わった git worktree・ブランチが残っている | worktree `.claude/worktrees/runtime-gate`（ブランチ `feature/hide-score-during-retake`）と、main にマージ済みの `feature/*` ローカルブランチ9本 | 不要なら `git worktree remove` とブランチ削除（git 操作はユーザーが実施） |
 
@@ -300,7 +300,7 @@ AIヒント: 教師がタスクごとにON/OFF・最大段階を設定→生徒�
 
 | 優先 | 項目 | 補足 | 出典 |
 |---|---|---|---|
-| 低 | ランタイム配信の強化 | Service Worker による precache、Pyodide の既定自ホスト化、clang の学内ミラー | 1-3, 4 |
+| 低 | ランタイム配信の強化 | Pyodide の配信元は 2026-09-26 に `VITE_PYODIDE_BASE_URL` で設定可能に（9-8）。残り: Service Worker による precache、clang の学内ミラー（Wasmer レジストリからの取得で URL 差し替え不可） | 1-3, 4 |
 
 ### 9-5. 教師の運用・成績まわり
 
@@ -330,6 +330,7 @@ AIヒント: 教師がタスクごとにON/OFF・最大段階を設定→生徒�
 - ✅ 自動テスト4層（サーバー単体・DB 結合・judge 経由・フロントエンド単体。テスト用 DB は名前が `_test` で終わらなければ接続拒否）と、`compareOutput` のサーバー／クライアント実装を同じ表で検証するテスト
 - ✅ CI（`.github/workflows/ci.yml`、frontend / server / judge の3ジョブ）と `engines: { node: ">=22.12" }`
 - ✅ ドキュメント: `CLAUDE.md` の Node 22.11 注記を「過去の事情」扱いに更新
+- ✅（2026-09-26）Pyodide の配信元を設定可能に — ビルド時の `VITE_PYODIDE_BASE_URL` で自ホストの Pyodide を指定できる（コード書き換え不要）。Python の問題を実ブラウザで実行する E2E を追加。あわせて E2E のエディタ入力を「読み込み完了前に上書きされても入るまで再設定」するよう安定化
 - ✅（2026-09-26）プログラムの実行時間の記録 — テストケースごとの `timeMs`（judge とブラウザ側ランナーで計測、判定には不使用）を `results` JSON に保存（マイグレーション不要）。実行プレビューと成績画面の提出詳細に表示。単体・judge 経由・E2E で確認。judge イメージの再ビルドが必要
 - ✅（2026-09-26）`PerTestCaseResult` 型の3重定義の同期保証 — `server/test/typeParity.test.ts` がサーバー・生徒側・教師側の3つの型と、判定ステータス・比較モード・言語の列挙がサーバー（Prisma）と一致することをコンパイル時に検査。片側だけにフィールドを足すと `typecheck:test` が失敗することを確認
 - ✅（2026-09-26）JS の構文エラー位置 — V8 の SyntaxError には行・列がないため、失敗時だけ sucrase で再パースして `(行:列)` を付け、エディタにマーカーを出す（判定は従来どおり V8）。単体テストと E2E（修正を外すと失敗することを確認）
