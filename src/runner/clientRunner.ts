@@ -63,10 +63,16 @@ export async function runClientSide(
     const result = await run();
     return [result, Math.round(performance.now() - start)];
   };
-  const record = (id: string, r: { ok: boolean; timedOut: boolean; stdout: string }, timeMs: number) => {
+  const record = (
+    id: string,
+    r: { ok: boolean; timedOut: boolean; stdout: string; oom?: boolean },
+    timeMs: number,
+  ) => {
     const stage: JudgeOutcome['stage'] = r.timedOut
       ? 'tle'
-      : r.ok
+      : r.oom
+        ? 'mle'
+        : r.ok
         ? 'success'
         : 'runtime_error';
     outcomes.push({ testCaseId: id, stage, stdout: r.stdout, timeMs });

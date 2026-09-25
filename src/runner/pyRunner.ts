@@ -13,6 +13,9 @@ export interface PyRunResult {
   stdout: string;
   stderr: string;
   timedOut: boolean;
+  // The program died with MemoryError (Pyodide's wasm heap is exhausted) —
+  // reported as MLE, like Java's -Xmx OutOfMemoryError on the judge.
+  oom?: boolean;
 }
 
 // Where Pyodide is downloaded from: the jsDelivr CDN by default, or a
@@ -75,6 +78,7 @@ interface WorkerReply {
   stdout?: string;
   stderr?: string;
   timedOut?: boolean;
+  oom?: boolean;
   // Set by py.worker.ts's outer catch — an infrastructure-level failure
   // (Pyodide itself failed to load, typically a network/CDN problem) as
   // opposed to a student-code compile/runtime error. Used to show a distinct,
@@ -162,5 +166,6 @@ export async function runPyOnce(source: string, stdin: string): Promise<PyRunRes
     stdout: reply.stdout ?? '',
     stderr: reply.stderr ?? '',
     timedOut: false,
+    oom: reply.oom ?? false,
   };
 }

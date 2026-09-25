@@ -26,16 +26,21 @@ __out__, __err__ = io.StringIO(), io.StringIO()
 __saved__ = (sys.stdin, sys.stdout, sys.stderr)
 sys.stdin, sys.stdout, sys.stderr = io.StringIO(__stdin__), __out__, __err__
 __ok__ = True
+__oom__ = False
 try:
     exec(compile(__src__, "<main>", "exec"), {"__name__": "__main__"})
 except SystemExit:
     pass
+except MemoryError:
+    __ok__ = False
+    __oom__ = True
+    traceback.print_exc()
 except BaseException:
     __ok__ = False
     traceback.print_exc()
 finally:
     sys.stdin, sys.stdout, sys.stderr = __saved__
-__result__ = [__ok__, __out__.getvalue(), __err__.getvalue()]
+__result__ = [__ok__, __out__.getvalue(), __err__.getvalue(), __oom__]
 `;
 
 self.onmessage = async (e) => {
@@ -61,11 +66,11 @@ self.onmessage = async (e) => {
     py.globals.set('__stdin__', typeof msg.stdin === 'string' ? msg.stdin : '');
     py.runPython(RUN_TEMPLATE);
     const proxy = py.globals.get('__result__');
-    const [ok, stdout, stderr] = proxy.toJs();
+    const [ok, stdout, stderr, oom] = proxy.toJs();
     proxy.destroy();
     py.globals.delete('__src__');
     py.globals.delete('__stdin__');
-    self.postMessage({ op: 'run', id: msg.id, ok, stdout, stderr });
+    self.postMessage({ op: 'run', id: msg.id, ok, stdout, stderr, oom });
   } catch (err) {
     self.postMessage({
       op: msg.op || 'run',

@@ -72,6 +72,9 @@ export type RunCStage = 'compile_error' | 'runtime_error' | 'success';
 // client languages.
 export const C_TIME_LIMIT_MS = 10_000;
 
+// Linear-memory cap for compiled C programs (see compileC).
+export const C_MEMORY_LIMIT_BYTES = 256 * 1024 * 1024;
+
 export interface CompileResult {
   ok: boolean;
   wasmBinary: Uint8Array | null;
@@ -111,7 +114,11 @@ export async function compileC(sourceCode: string): Promise<CompileResult> {
   await project.writeFile('main.c', sourceCode);
 
   const compileInstance = await clang.entrypoint.run({
-    args: ['/project/main.c', '-o', '/project/main.wasm'],
+    // Cap the program's linear memory at 256MB (the judge's default
+    // memoryLimitMb), so a runaway allocation fails (malloc → NULL, or a
+    // trap) instead of growing toward 4GB in the student's browser. It can't
+    // be told apart from other crashes reliably, so it surfaces as RE, not MLE.
+    args: ['/project/main.c', '-o', '/project/main.wasm', `-Wl,--max-memory=${C_MEMORY_LIMIT_BYTES}`],
     mount: { '/project': project },
   });
   const compileOutput = await compileInstance.wait();

@@ -238,6 +238,11 @@ test('a Python task runs in the browser through Pyodide', async ({ page }) => {
   await setEditorCode(page, 'a, b = map(int, input().split())\nprint(a + b)\n');
   await page.getByRole('button', { name: /実行（お試し）/ }).click();
   await expect(page.getByText('AC（全テストケース正解）')).toBeVisible({ timeout: 150_000 });
+
+  // Exhausting Pyodide's memory is reported as MLE (not a generic runtime error).
+  await setEditorCode(page, 'x = [0] * (10 ** 9)\nprint(len(x))\n');
+  await page.getByRole('button', { name: /実行（お試し）/ }).click();
+  await expect(page.getByText('MLE（メモリ超過）')).toBeVisible({ timeout: 60_000 });
 });
 
 // Opt-in (E2E_WITH_C=1): the first C compile downloads the ~106MB clang
@@ -252,6 +257,16 @@ test('C: clang compiles and runs in the browser (opt-in: E2E_WITH_C=1)', async (
   await page.getByRole('button', { name: '▶ コンパイル＆実行' }).click();
   await expect(page.getByText('実行成功')).toBeVisible({ timeout: 540_000 });
   await expect(page.locator('pre', { hasText: '15' })).toBeVisible();
+
+  // Linear memory is capped at 256MB: a 512MB malloc fails instead of
+  // growing the tab's memory (compileC's --max-memory).
+  await setEditorCode(
+    page,
+    '#include <stdio.h>\n#include <stdlib.h>\nint main(void) { char *p = malloc(512u * 1024 * 1024); if (!p) { puts("NULL"); return 3; } p[0] = 1; puts("allocated"); return 0; }\n',
+  );
+  await page.getByRole('button', { name: '▶ コンパイル＆実行' }).click();
+  await expect(page.getByText('実行時エラー（終了コード: 3）')).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('pre', { hasText: 'NULL' })).toBeVisible();
 });
 
 test('C: a runaway program times out and the next run still works (opt-in: E2E_WITH_C=1)', async ({ page }) => {
