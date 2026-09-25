@@ -48,6 +48,13 @@ export function createApp(): Express {
   app.use((_req, res, next) => {
     res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
     res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+    // Baseline hardening that needs no allow-list design (unlike a CSP, which
+    // would have to enumerate Monaco / Pyodide / WebLLM / Wasmer sources):
+    // never MIME-sniff a response into something executable (matters for
+    // teacher-uploaded /uploads/* images), and don't leak full URLs (exam /
+    // task ids) to other origins in the Referer header.
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     next();
   });
 

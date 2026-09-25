@@ -264,3 +264,15 @@ describe('stale session cleanup', () => {
     expect((await live.get('/api/auth/me')).status).toBe(200);
   });
 });
+
+describe('security headers', () => {
+  it('every response carries nosniff, a referrer policy and the cross-origin isolation pair', async () => {
+    for (const path of ['/health', '/api/auth/me', '/api/auth/signup-status']) {
+      const res = await new Client().get(path);
+      expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+      expect(res.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
+      expect(res.headers.get('cross-origin-opener-policy')).toBe('same-origin');
+      expect(res.headers.get('cross-origin-embedder-policy')).toBe('require-corp');
+    }
+  });
+});

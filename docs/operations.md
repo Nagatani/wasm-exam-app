@@ -115,10 +115,19 @@ Cross-Origin-Embedder-Policy: require-corp
 
 これがないと **C（`@wasmer/sdk` が `SharedArrayBuffer` を使用）** と **Python（PyodideのCDN読み込み）** が動きません。ブラウザはcross-origin isolationされたページでしか必要な機能を露出しないためです。JS/TS/Javaには不要ですが、常に付けて問題ありません。
 
-- `npm start` 運用なら `server/src/index.ts` がグローバルミドルウェアで両ヘッダーを設定済みなので、**追加設定は不要**です。
+- `npm start` 運用なら `server/src/app.ts` がグローバルミドルウェアで両ヘッダーを設定済みなので、**追加設定は不要**です。
 - リバースプロキシがこれらのヘッダーを**削除・上書きしない**ように注意してください（`proxy_hide_header` や `more_clear_headers` の設定に注意）。
 - フロントをCDNや別の静的ホストから配信する構成にする場合は、その配信層で両ヘッダーを設定してください。
 - 動作確認: ブラウザのDevToolsコンソールで `self.crossOriginIsolated` が `true` であること。
+
+あわせて、次の2つも全レスポンスに付けています（2026-09-26。必須ではありませんが、プロキシで消さないでください）。
+
+```
+X-Content-Type-Options: nosniff
+Referrer-Policy: strict-origin-when-cross-origin
+```
+
+`nosniff` はアップロード画像（`/uploads/*`）などがブラウザに別の形式として解釈されるのを防ぎ、`Referrer-Policy` は試験・問題のIDを含むURLが外部サイトへ送られないようにします。`Content-Security-Policy` は、Monaco・Pyodide・WebLLM・Wasmer レジストリなど外部の取得先の許可リスト設計が必要なため、まだ設定していません。
 
 ## judgeサービス（Java・C実行）
 

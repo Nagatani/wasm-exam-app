@@ -275,7 +275,7 @@ AIヒント: 教師がタスクごとにON/OFF・最大段階を設定→生徒�
 | 優先 | 項目 | 現状（根拠） | 打ち手の案 | 出典 |
 |---|---|---|---|---|
 | 低 | ログイン制限のカウンタがメモリ上 | `loginRateLimit.ts` は再起動で消え、複数インスタンスでは共有されない（単一インスタンス前提。`executionQueue.ts` と同じ） | 複数インスタンス化するときに Redis 等へ（9-3「`server` の複数インスタンス化」と同時に） | 新規 |
-| 低 | CSP 等のセキュリティヘッダーが未設定 | COOP/COEP は設定済みだが、`Content-Security-Policy` / `X-Content-Type-Options` 等はない（`helmet` 未導入）。Monaco・Pyodide CDN・WebLLM・Wasmer レジストリの取得先があるため CSP は許可リストの設計が必要 | 最低限 `X-Content-Type-Options: nosniff` と `Referrer-Policy`。CSP は取得先を洗い出してから | 新規 |
+| 低 | CSP が未設定 | 2026-09-26 に `X-Content-Type-Options: nosniff` と `Referrer-Policy: strict-origin-when-cross-origin` は追加済み（9-8）。`Content-Security-Policy` は Monaco・Pyodide CDN・WebLLM・Wasmer レジストリの取得先があるため許可リストの設計が必要 | 取得先を洗い出して Report-Only から段階導入 | 新規 |
 | 低 | ブラウザ実行言語の採点は生徒端末の自己申告に依存 | C/JS/TS/Python は各テストケースの stdout をブラウザが送る。非公開テストの期待値は渡していないので「解かずに正解を偽装」はできないが、入力ごとに出力を直書きする等の改変は技術的には可能（判定はサーバーだが、実行結果の真正性は保証しない） | 9-3「本採点をサーバー実行に寄せるか」と同じ話。今は「メトリクスと同じ信頼レベル」と明記して運用で割り切っている | 1-4 |
 
 ### 9-2. 品質保証・開発基盤
@@ -337,6 +337,7 @@ AIヒント: 教師がタスクごとにON/OFF・最大段階を設定→生徒�
 - ✅ 自動テスト4層（サーバー単体・DB 結合・judge 経由・フロントエンド単体。テスト用 DB は名前が `_test` で終わらなければ接続拒否）と、`compareOutput` のサーバー／クライアント実装を同じ表で検証するテスト
 - ✅ CI（`.github/workflows/ci.yml`、frontend / server / judge の3ジョブ）と `engines: { node: ">=22.12" }`
 - ✅ ドキュメント: `CLAUDE.md` の Node 22.11 注記を「過去の事情」扱いに更新
+- ✅（2026-09-26）基本のセキュリティヘッダー — 全レスポンスに `X-Content-Type-Options: nosniff` と `Referrer-Policy: strict-origin-when-cross-origin`（結合テストで確認。CSP は未対応のまま 9-1）
 - ✅（2026-09-26）ブラウザ E2E テスト — Playwright（`npm run test:e2e`、`e2e/`）。本番同様の同一オリジン構成（本番ビルド＋サーバー）を専用 DB `wasm_exam_e2e_test` で起動し、生徒のログイン→受験→実行（AC）→下書き保存→最終提出→結果、教師の成績画面と提出コード、演習モードの再読み込み→復元→提出を自動操作。CI に `e2e` ジョブを追加。復元機能を意図的に壊すと失敗することを確認
 - ✅（2026-09-26）受験回数の個別付与 — `ExamAttemptGrant`（マイグレーション `20260925163159_add_exam_attempt_grants`）。成績画面の「追加受験」列で生徒ごとに受験可能回数を上乗せ（差し戻しと違い履歴は残る）。生徒側の受験可否・表示される上限にも反映
 - ✅（2026-09-26）過去の受験回の閲覧 — 成績画面の「提出コードと結果を表示」に受験回の切り替え（★ = 成績に採用されている最後の提出回）。`submission-detail` に `?attempt=N` と提出済み全回の一覧を追加し、各設問の打鍵数・貼り付け回数・解答時間も表示
