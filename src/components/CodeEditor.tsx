@@ -4,7 +4,7 @@ import Editor, {
   type OnMount,
   type OnChange,
 } from '@monaco-editor/react';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme } from '../contexts/useTheme';
 
 type StandaloneEditor = Parameters<OnMount>[0];
 import { MONACO_DARK_THEME_NAME, MONACO_LIGHT_THEME_NAME, ensureMonokaiProThemes } from '../runner/monacoThemes';

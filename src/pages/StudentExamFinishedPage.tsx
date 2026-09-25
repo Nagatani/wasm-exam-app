@@ -18,7 +18,7 @@ import { UserDrawer } from '../components/UserDrawer';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PageSkeleton } from '../components/Skeleton';
 import { statusGlyph } from '../lib/status';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 import {
   clearBackups,
   examAttemptBackupPrefix,

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { changePassword } from '../api/auth';
 import { ApiError } from '../api/client';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 import { PasswordField } from '../components/PasswordField';
 import { UserDrawer } from '../components/UserDrawer';
 

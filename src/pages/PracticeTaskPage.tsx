@@ -28,7 +28,7 @@ import { confirmLeaveIfDirty, useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useCodeBackup } from '../hooks/useCodeBackup';
 import { RestoreBackupBanner } from '../components/RestoreBackupBanner';
 import { practiceBackupKey } from '../lib/localBackup';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 import { ApiError } from '../api/client';
 import type { JudgeOutcome, JudgeVerdict } from '../types/student';
 import type { PracticeSubmissionSummary, PracticeTask, PracticeTaskSummary } from '../types/practice';

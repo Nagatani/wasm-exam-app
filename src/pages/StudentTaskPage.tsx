@@ -21,7 +21,7 @@ import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useCodeBackup } from '../hooks/useCodeBackup';
 import { RestoreBackupBanner } from '../components/RestoreBackupBanner';
 import { clearBackup, examBackupKey } from '../lib/localBackup';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 import { ApiError } from '../api/client';
 import type { JudgeOutcome, JudgeVerdict } from '../types/student';
 import type { StudentTask, StudentTaskSummary } from '../types/student';

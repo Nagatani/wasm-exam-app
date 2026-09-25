@@ -286,7 +286,6 @@ AIヒント: 教師がタスクごとにON/OFF・最大段階を設定→生徒�
 | 低 | `PerTestCaseResult` 型の3重定義 | `server/src/lib/judge.ts`・`src/types/student.ts`・`src/types/exam.ts` を手で同期。型のみで実行時テストの対象外 | 共有パッケージ化するか、JSON スキーマ等でのスナップショットテスト |
 | 低 | `main` のブランチ保護が未設定 | CI（`.github/workflows/ci.yml`）は動くが、通過をマージ条件にしていない（2026-09-26、GitHub API で未設定を確認） | GitHub のリポジトリ設定で CI の3ジョブを必須チェックに（ユーザー作業） |
 | 低 | メインバンドルが約780KB | Vite が 500KB 超の警告を出す（2026-09-26 のビルドで 781KB / gzip 213KB。AI 関連は分離済みで、残りは Monaco 等）。教室の一斉受験時の初回ロードに効く | ルート単位の `React.lazy`（教師用ページを生徒のバンドルから外す等） |
-| 低 | lint 警告2件 | `AuthContext.tsx` / `ThemeContext.tsx` がコンポーネント以外も export しており `react(only-export-components)` 警告（Fast Refresh のみの問題で動作影響なし） | フック・定数を別ファイルに分ける |
 | 低 | 使い終わった git worktree・ブランチが残っている | worktree `.claude/worktrees/runtime-gate`（ブランチ `feature/hide-score-during-retake`）と、main にマージ済みの `feature/*` ローカルブランチ9本 | 不要なら `git worktree remove` とブランチ削除（git 操作はユーザーが実施） |
 
 ### 9-3. 採点・実行環境
@@ -337,6 +336,7 @@ AIヒント: 教師がタスクごとにON/OFF・最大段階を設定→生徒�
 - ✅ 自動テスト4層（サーバー単体・DB 結合・judge 経由・フロントエンド単体。テスト用 DB は名前が `_test` で終わらなければ接続拒否）と、`compareOutput` のサーバー／クライアント実装を同じ表で検証するテスト
 - ✅ CI（`.github/workflows/ci.yml`、frontend / server / judge の3ジョブ）と `engines: { node: ">=22.12" }`
 - ✅ ドキュメント: `CLAUDE.md` の Node 22.11 注記を「過去の事情」扱いに更新
+- ✅（2026-09-26）lint 警告2件の解消 — `AuthContext` / `ThemeContext` をプロバイダー（`.tsx`）・コンテキスト本体（`authContextValue.ts` / `themeContextValue.ts`）・フック（`useAuth.ts` / `useTheme.ts`）に分割。`npm run lint` の警告は0件
 - ✅（2026-09-26）基本のセキュリティヘッダー — 全レスポンスに `X-Content-Type-Options: nosniff` と `Referrer-Policy: strict-origin-when-cross-origin`（結合テストで確認。CSP は未対応のまま 9-1）
 - ✅（2026-09-26）ブラウザ E2E テスト — Playwright（`npm run test:e2e`、`e2e/`）。本番同様の同一オリジン構成（本番ビルド＋サーバー）を専用 DB `wasm_exam_e2e_test` で起動し、生徒のログイン→受験→実行（AC）→下書き保存→最終提出→結果、教師の成績画面と提出コード、演習モードの再読み込み→復元→提出を自動操作。CI に `e2e` ジョブを追加。復元機能を意図的に壊すと失敗することを確認
 - ✅（2026-09-26）受験回数の個別付与 — `ExamAttemptGrant`（マイグレーション `20260925163159_add_exam_attempt_grants`）。成績画面の「追加受験」列で生徒ごとに受験可能回数を上乗せ（差し戻しと違い履歴は残る）。生徒側の受験可否・表示される上限にも反映

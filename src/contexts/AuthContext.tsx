@@ -1,22 +1,9 @@
-import {
-  createContext,
-  useContext,
-  useCallback,
-  useEffect,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { fetchMe } from '../api/auth';
 import type { UserProfile } from '../types/user';
+import { AuthContext } from './authContextValue';
 
-interface AuthContextValue {
-  profile: UserProfile | null;
-  loading: boolean;
-  refresh: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextValue | undefined>(undefined);
-
+// The hook lives in ./useAuth, the context object in ./authContextValue.
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,12 +22,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth(): AuthContextValue {
-  const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return ctx;
 }

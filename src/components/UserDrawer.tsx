@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { logOut } from '../api/auth';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 import { ThemeToggle } from './ThemeToggle';
 import { clearBackups } from '../lib/localBackup';
 
