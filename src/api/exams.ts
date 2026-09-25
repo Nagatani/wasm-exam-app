@@ -77,6 +77,14 @@ export function getPublishCheck(examId: string) {
 }
 
 // Per-student time accommodation (minutes; 0 removes it).
+// "もう1回受けさせる": extra attempts for one student (0 removes).
+export function setExtraAttempts(examId: string, studentId: string, extraAttempts: number) {
+  return apiFetch<{ extraAttempts: number }>(
+    `/api/exams/${examId}/students/${studentId}/extra-attempts`,
+    { method: 'PUT', body: JSON.stringify({ extraAttempts }) },
+  );
+}
+
 export function setTimeExtension(examId: string, studentId: string, extraMinutes: number) {
   return apiFetch<{ extraMinutes: number }>(
     `/api/exams/${examId}/students/${studentId}/time-extension`,

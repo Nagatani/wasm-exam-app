@@ -259,6 +259,44 @@ describe('retakes', () => {
     expect((await student.get(base)).status).toBe(403);
   });
 
+  it('a per-student extra attempt lets one student retake past maxAttempts, keeping history', async () => {
+    const { teacher, student, studentId, examId, tasks } = await setup({ maxAttempts: 1 });
+    const { client: other } = await signup('s002');
+    await takeAndSubmit(student, examId, tasks, ['3', '30']);
+    await takeAndSubmit(other, examId, tasks, ['3', '30']);
+    expect((await student.post(`/api/student/exams/${examId}/attempts`)).status).toBe(409);
+
+    const grant = await teacher.put(`/api/exams/${examId}/students/${studentId}/extra-attempts`, { extraAttempts: 1 });
+    expect(grant.status).toBe(200);
+
+    const dash = (await student.get('/api/student/exams')).body.exams[0];
+    expect(dash).toMatchObject({ maxAttempts: 2, attemptsUsed: 1, canStart: true });
+    expect((await student.get(`/api/student/exams/${examId}/result`)).body).toMatchObject({ maxAttempts: 2, canRetake: true });
+    const second = await takeAndSubmit(student, examId, tasks, 'wrong');
+    expect(second.body.attempt).toMatchObject({ attemptNumber: 2, score: 0 });
+    expect((await student.post(`/api/student/exams/${examId}/attempts`)).status).toBe(409);
+
+    // Only the granted student; history kept; the results view reports it.
+    expect((await other.post(`/api/student/exams/${examId}/attempts`)).status).toBe(409);
+    const results = (await teacher.get(`/api/exams/${examId}/results`)).body;
+    expect(results.exam.maxAttempts).toBe(1);
+    const row = results.students.find((s: { studentNumber: string }) => s.studentNumber === 's001');
+    expect(row).toMatchObject({ extraAttempts: 1, attemptCount: 2, totalScore: 0 });
+
+    // 0 removes the grant.
+    await teacher.put(`/api/exams/${examId}/students/${studentId}/extra-attempts`, { extraAttempts: 0 });
+    expect((await student.get('/api/student/exams')).body.exams[0].maxAttempts).toBe(1);
+  });
+
+  it('extra attempts: rejected for unlimited exams, validated, teacher-only', async () => {
+    const { teacher, student, studentId, examId } = await setup({ maxAttempts: null });
+    const url = `/api/exams/${examId}/students/${studentId}/extra-attempts`;
+    expect((await teacher.put(url, { extraAttempts: 1 })).status).toBe(400);
+    expect((await teacher.put(url, { extraAttempts: -1 })).status).toBe(400);
+    expect((await teacher.put(url, { extraAttempts: 0 })).status).toBe(200);
+    expect((await student.put(url, { extraAttempts: 1 })).status).toBe(403);
+  });
+
   it('a new attempt starts with no drafts (白紙開始)', async () => {
     const { student, examId, tasks } = await setup({ maxAttempts: null });
     await takeAndSubmit(student, examId, tasks, ['3', '30']);

@@ -78,6 +78,7 @@ model User {
   coursesCreated   Course[]
   enrollments      Enrollment[]
   timeExtensions   ExamTimeExtension[]
+  attemptGrants    ExamAttemptGrant[]
   practiceSubmissions PracticeSubmission[]
 
   @@map("users")
@@ -128,6 +129,24 @@ model ExamTimeExtension {
 
   @@unique([examId, studentId])
   @@map("exam_time_extensions")
+}
+
+// Per-student extra attempts ("もう1回受けさせる"): added on top of the exam's
+// maxAttempts for this one student. Irrelevant (ignored) when maxAttempts is
+// null (unlimited). Distinct from 差し戻し, which wipes the student's history.
+model ExamAttemptGrant {
+  id            String   @id @default(uuid())
+  examId        String
+  studentId     String
+  extraAttempts Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  exam    Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+  student User @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, studentId])
+  @@map("exam_attempt_grants")
 }
 
 // Server-side session store: possessing the raw token isn't enough to prove
@@ -190,6 +209,7 @@ model Exam {
   submissions    Submission[]
   attempts       ExamAttempt[]
   timeExtensions ExamTimeExtension[]
+  attemptGrants  ExamAttemptGrant[]
 
   @@index([courseId])
   @@map("exams")

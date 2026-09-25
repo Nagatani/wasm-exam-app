@@ -406,6 +406,45 @@ examsRouter.get('/:examId/results/csv', async (req, res) => {
   res.send(csv);
 });
 
+// Per-student extra attempts ("もう1回受けさせる"), added to the exam's
+// maxAttempts for this student only — unlike 差し戻し, their history stays.
+// `extraAttempts: 0` removes it. Rejected for an unlimited-attempts exam,
+// where it would mean nothing.
+const extraAttemptsSchema = z.object({ extraAttempts: z.number().int().min(0).max(100) });
+
+examsRouter.put('/:examId/students/:studentId/extra-attempts', async (req, res) => {
+  const { examId, studentId } = req.params;
+  const parsed = extraAttemptsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'invalid_request' });
+    return;
+  }
+  const exam = await prisma.exam.findUnique({ where: { id: examId } });
+  const student = await prisma.user.findUnique({ where: { id: studentId } });
+  if (!exam || !student || student.role !== 'STUDENT') {
+    res.status(404).json({ error: '試験または生徒が見つかりません。' });
+    return;
+  }
+  const { extraAttempts } = parsed.data;
+  if (exam.maxAttempts === null && extraAttempts > 0) {
+    res.status(400).json({ error: 'この試験は受験回数が無制限のため、追加は不要です。' });
+    return;
+  }
+
+  if (extraAttempts === 0) {
+    await prisma.examAttemptGrant
+      .delete({ where: { examId_studentId: { examId, studentId } } })
+      .catch(() => null);
+  } else {
+    await prisma.examAttemptGrant.upsert({
+      where: { examId_studentId: { examId, studentId } },
+      create: { examId, studentId, extraAttempts },
+      update: { extraAttempts },
+    });
+  }
+  res.json({ extraAttempts });
+});
+
 // Per-student time accommodation for this exam (extra minutes added to the
 // student's time limit and personal closesAt). `extraMinutes: 0` removes it.
 const timeExtensionSchema = z.object({ extraMinutes: z.number().int().min(0).max(600) });

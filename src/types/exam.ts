@@ -163,10 +163,12 @@ export interface StudentResultRow {
   attemptCount: number;
   // Per-student time accommodation for this exam, in minutes (0 if none).
   extraMinutes: number;
+  // Per-student extra attempts on top of the exam's maxAttempts (0 if none).
+  extraAttempts: number;
 }
 
 export interface ExamResults {
-  exam: { id: string; title: string };
+  exam: { id: string; title: string; maxAttempts: number | null };
   tasks: TaskResultColumn[];
   students: StudentResultRow[];
 }

@@ -57,6 +57,20 @@ export async function extraMinutesFor(examId: string, studentId: string): Promis
   return row?.extraMinutes ?? 0;
 }
 
+// Per-student extra attempts for an exam (0 if none) — "もう1回受けさせる".
+export async function extraAttemptsFor(examId: string, studentId: string): Promise<number> {
+  const row = await prisma.examAttemptGrant.findUnique({
+    where: { examId_studentId: { examId, studentId } },
+  });
+  return row?.extraAttempts ?? 0;
+}
+
+// The attempt cap that actually applies to one student: the exam's
+// maxAttempts plus their grant. null (unlimited) stays unlimited.
+export function effectiveMaxAttempts(maxAttempts: number | null, extraAttempts: number): number | null {
+  return maxAttempts === null ? null : maxAttempts + extraAttempts;
+}
+
 // Turn a judge-container run response into the { compileFailed, outcomes }
 // shape judgeSubmission consumes.
 export function judgeInputFromContainer(jr: Awaited<ReturnType<typeof runOnJudge>>): JudgeInput {

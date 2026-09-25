@@ -5,6 +5,7 @@ import {
   downloadExamResultsCsv,
   getExamResults,
   getSubmissionDetail,
+  setExtraAttempts,
   setTimeExtension,
 } from '../api/exams';
 import { ApiError } from '../api/client';
@@ -346,6 +347,12 @@ export function ExamResultsPage() {
                     <th className="whitespace-nowrap px-3 py-2 text-left font-bold" title="時間延長（分）">
                       延長
                     </th>
+                    <th
+                      className="whitespace-nowrap px-3 py-2 text-left font-bold"
+                      title="この生徒だけに追加で認める受験回数（受験可能回数への上乗せ）"
+                    >
+                      追加受験
+                    </th>
                     <SortHeader label="所要時間" sortKey="elapsedSeconds" sort={sort} onSort={handleSort} />
                     <SortHeader
                       label="最終提出日時"
@@ -363,6 +370,7 @@ export function ExamResultsPage() {
                       examId={examId!}
                       student={student}
                       tasks={results.tasks}
+                      maxAttempts={results.exam.maxAttempts}
                       expanded={expandedIds.has(student.id)}
                       onToggle={() => toggleExpanded(student.id)}
                       onRevert={() =>
@@ -440,28 +448,40 @@ function SortHeader({
   );
 }
 
-function TimeExtensionCell({
-  examId,
-  studentId,
+// Inline number input for a per-student setting, saved on blur / Enter.
+function NumberSettingCell({
   value,
+  max,
+  unit,
+  title,
+  onCommit,
 }: {
-  examId: string;
-  studentId: string;
   value: number;
+  max: number;
+  unit: string;
+  title: string;
+  onCommit: (n: number) => Promise<unknown>;
 }) {
   const [text, setText] = useState(String(value));
+  const [saved, setSaved] = useState(value);
   const [saving, setSaving] = useState(false);
   const [flash, setFlash] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   async function commit() {
-    const n = Math.max(0, Math.min(600, Math.floor(Number(text) || 0)));
+    const n = Math.max(0, Math.min(max, Math.floor(Number(text) || 0)));
     setText(String(n));
-    if (n === value) return;
+    if (n === saved) return;
     setSaving(true);
+    setFailed(false);
     try {
-      await setTimeExtension(examId, studentId, n);
+      await onCommit(n);
+      setSaved(n);
       setFlash(true);
       setTimeout(() => setFlash(false), 1500);
+    } catch {
+      setText(String(saved));
+      setFailed(true);
     } finally {
       setSaving(false);
     }
@@ -472,7 +492,7 @@ function TimeExtensionCell({
       <input
         type="number"
         min={0}
-        max={600}
+        max={max}
         value={text}
         disabled={saving}
         onChange={(e) => setText(e.target.value)}
@@ -481,9 +501,12 @@ function TimeExtensionCell({
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
         }}
         className="w-14 rounded border border-mp-border bg-mp-bg px-1 py-0.5 text-xs text-mp-fg"
-        title="時間延長（分）— 0で解除"
+        title={title}
       />
-      <span className="text-xs text-mp-muted">分{flash ? ' ✓' : ''}</span>
+      <span className={`text-xs ${failed ? 'text-mp-red' : 'text-mp-muted'}`}>
+        {unit}
+        {flash ? ' ✓' : failed ? ' 保存失敗' : ''}
+      </span>
     </span>
   );
 }
@@ -492,6 +515,7 @@ interface StudentResultRowGroupProps {
   examId: string;
   student: StudentResultRow;
   tasks: TaskResultColumn[];
+  maxAttempts: number | null;
   expanded: boolean;
   onToggle: () => void;
   onRevert: () => void;
@@ -502,11 +526,13 @@ function StudentResultRowGroup({
   examId,
   student,
   tasks,
+  maxAttempts,
   expanded,
   onToggle,
   onRevert,
   reverting,
 }: StudentResultRowGroupProps) {
+  const [extraAttempts, setExtraAttemptsState] = useState(student.extraAttempts);
   const [detail, setDetail] = useState<SubmissionDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -548,13 +574,36 @@ function StudentResultRowGroup({
         <td className="whitespace-nowrap px-3 py-2 font-bold">{student.totalScore}</td>
         <td className="whitespace-nowrap px-3 py-2 text-mp-muted">
           {student.attemptCount > 0 ? `${student.attemptCount}回` : '-'}
+          {maxAttempts !== null && (
+            <span title="この生徒の受験可能回数（追加分を含む）"> / {maxAttempts + extraAttempts}</span>
+          )}
         </td>
         <td className="whitespace-nowrap px-3 py-2" onClick={(e) => e.stopPropagation()}>
-          <TimeExtensionCell
-            examId={examId}
-            studentId={student.id}
+          <NumberSettingCell
             value={student.extraMinutes}
+            max={600}
+            unit="分"
+            title="時間延長（分）— 0で解除"
+            onCommit={(n) => setTimeExtension(examId, student.id, n)}
           />
+        </td>
+        <td className="whitespace-nowrap px-3 py-2" onClick={(e) => e.stopPropagation()}>
+          {maxAttempts === null ? (
+            <span className="text-xs text-mp-muted" title="この試験は受験回数が無制限です">
+              無制限
+            </span>
+          ) : (
+            <NumberSettingCell
+              value={student.extraAttempts}
+              max={100}
+              unit="回"
+              title="この生徒だけに追加で認める受験回数 — 0で解除。差し戻しと違い、これまでの提出は残ります。"
+              onCommit={async (n) => {
+                await setExtraAttempts(examId, student.id, n);
+                setExtraAttemptsState(n);
+              }}
+            />
+          )}
         </td>
         <td
           className="whitespace-nowrap px-3 py-2 text-mp-muted"
@@ -581,7 +630,7 @@ function StudentResultRowGroup({
       </tr>
       {expanded && (
         <tr className="border-t border-mp-border bg-mp-bg">
-          <td colSpan={9} className="px-3 py-3">
+          <td colSpan={10} className="px-3 py-3">
             <table className="w-full min-w-max text-xs">
               <thead className="text-mp-muted">
                 <tr>

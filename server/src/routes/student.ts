@@ -9,6 +9,8 @@ import { withJudgeSlot, QueueRejectedError } from '../lib/executionQueue';
 import {
   attemptDeadline,
   extraMinutesFor,
+  extraAttemptsFor,
+  effectiveMaxAttempts,
   isServerExec,
   maybeSettleAttempt,
 } from '../lib/attempts';
@@ -130,6 +132,11 @@ studentRouter.get('/exams', async (req, res) => {
     });
   }
 
+  const grants = await prisma.examAttemptGrant.findMany({
+    where: { studentId: userId, examId: { in: examIds } },
+  });
+  const extraAttemptsByExam = new Map(grants.map((g) => [g.examId, g.extraAttempts]));
+
   const byExam = new Map<string, typeof attempts>();
   for (const a of attempts) {
     const list = byExam.get(a.examId) ?? [];
@@ -147,6 +154,7 @@ studentRouter.get('/exams', async (req, res) => {
       const latestSubmitted = submitted[0] ?? null; // list is desc by attemptNumber
       const notYetOpen = exam.opensAt !== null && now < exam.opensAt.getTime();
       const closed = exam.closesAt !== null && now >= exam.closesAt.getTime();
+      const maxAttempts = effectiveMaxAttempts(exam.maxAttempts, extraAttemptsByExam.get(exam.id) ?? 0);
       return {
         id: exam.id,
         title: exam.title,
@@ -155,7 +163,7 @@ studentRouter.get('/exams', async (req, res) => {
         taskCount: exam._count.tasks,
         totalPoints: exam.tasks.reduce((sum, t) => sum + t.points, 0),
         languages: [...new Set(exam.tasks.map((t) => t.language))],
-        maxAttempts: exam.maxAttempts, // null = unlimited
+        maxAttempts, // null = unlimited; includes this student's extra attempts
         opensAt: exam.opensAt,
         closesAt: exam.closesAt,
         notYetOpen,
@@ -165,7 +173,7 @@ studentRouter.get('/exams', async (req, res) => {
         canStart:
           !notYetOpen &&
           !closed &&
-          (hasInProgress || canStartAnother(exam.maxAttempts, submitted.length)),
+          (hasInProgress || canStartAnother(maxAttempts, submitted.length)),
         // Hidden while a retake is in progress (2026-09-15, user decision):
         // a student mid-retake shouldn't see the prior attempt's score, so
         // it isn't influenced by it before finishing the new one. Reappears
@@ -220,7 +228,8 @@ studentRouter.post('/exams/:examId/attempts', async (req, res) => {
     where: { examId: exam.id, studentId: userId },
   });
   const submittedCount = all.filter((a) => a.status === 'SUBMITTED').length;
-  if (!canStartAnother(exam.maxAttempts, submittedCount)) {
+  const maxAttempts = effectiveMaxAttempts(exam.maxAttempts, await extraAttemptsFor(exam.id, userId));
+  if (!canStartAnother(maxAttempts, submittedCount)) {
     res.status(409).json({ error: 'この試験の受験可能回数を超えています。' });
     return;
   }
@@ -287,6 +296,7 @@ studentRouter.get('/exams/:examId', async (req, res) => {
   const now = Date.now();
   const notYetOpen = exam.opensAt !== null && now < exam.opensAt.getTime();
   const closed = exam.closesAt !== null && now >= exam.closesAt.getTime();
+  const maxAttempts = effectiveMaxAttempts(exam.maxAttempts, await extraAttemptsFor(exam.id, userId));
 
   res.json({
     exam: {
@@ -295,7 +305,7 @@ studentRouter.get('/exams/:examId', async (req, res) => {
       description: exam.description,
       timeLimitMinutes: exam.timeLimitMinutes,
       tasks: exam.tasks,
-      maxAttempts: exam.maxAttempts,
+      maxAttempts,
       opensAt: exam.opensAt,
       closesAt: exam.closesAt,
       totalPoints: exam.tasks.reduce((sum, t) => sum + t.points, 0),
@@ -306,7 +316,7 @@ studentRouter.get('/exams/:examId', async (req, res) => {
       current === null &&
       !notYetOpen &&
       !closed &&
-      canStartAnother(exam.maxAttempts, submittedCount),
+      canStartAnother(maxAttempts, submittedCount),
   });
 });
 
@@ -706,12 +716,13 @@ studentRouter.get('/exams/:examId/result', async (req, res) => {
   const latestSubmitted = submitted[0] ?? null;
   const hasInProgress = all.some((a) => a.status === 'IN_PROGRESS');
   const totalPoints = exam.tasks.reduce((sum, t) => sum + t.points, 0);
-  const canRetake = !hasInProgress && canStartAnother(exam.maxAttempts, submitted.length);
+  const maxAttempts = effectiveMaxAttempts(exam.maxAttempts, await extraAttemptsFor(exam.id, userId));
+  const canRetake = !hasInProgress && canStartAnother(maxAttempts, submitted.length);
 
   const base = {
     exam: { id: exam.id, title: exam.title, tasks: exam.tasks, totalPoints },
     attemptsUsed: submitted.length,
-    maxAttempts: exam.maxAttempts,
+    maxAttempts,
     canRetake,
   };
 
