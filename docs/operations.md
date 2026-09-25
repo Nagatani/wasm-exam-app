@@ -176,7 +176,7 @@ C（clang ツールチェイン、初回 ~106MB）と Python（Pyodide、初回 
 - 生徒が初回ログインで `/change-password` からパスワードを変更すると、`initialPassword` は `NULL` になり以後表示されません（`mustChangePassword` も解除）。
 - **平文保存はユーザー承認済みの割り切り**（2026-09-11）です。自ホスト＝institution 管理下の DB で、プロビジョニングから初回変更までの短い期間だけ存在し、講師専用ルートからしか返しません。許容できない場合は `POST /bulk` のレスポンスでのみ初期パスワードを返す方式（列を持たない）＋「パスワードリセット」操作に切り替えてください。
 - 配布スリップは印刷後に適切に管理・破棄してください。
-- **パスワードを忘れた生徒**は、講師がクラスの受講者一覧の「パスワード再発行」で復旧できます（`POST /api/students/reset-password`）。新しい初期パスワードが発行されて 🔑 に表示され（再印刷も可）、`mustChangePassword` が立ち、その生徒の**全セッションが失効**します（ログイン中の端末は再ログインが必要）。ログイン制限（下記）も解除されます。教員アカウントは対象外です。
+- **パスワードを忘れた生徒**は、講師がクラスの受講者一覧の「パスワード再発行」、または☰メニュー →「管理者メニュー」の「パスワードの再発行」（学籍番号指定。クラス未所属の生徒にも使える）で復旧できます（`POST /api/students/reset-password`）。新しい初期パスワードが発行されて 🔑 に表示され（再印刷も可）、`mustChangePassword` が立ち、その生徒の**全セッションが失効**します（ログイン中の端末は再ログインが必要）。ログイン制限（下記）も解除されます。教員アカウントは対象外です。
 
 ## ログイン・アカウントの保護
 
@@ -255,7 +255,7 @@ npm run docker:prod                                       # judge・server 両�
 | 症状 | 原因 / 対処 |
 |---|---|
 | CやPythonの「実行」が無反応・エラー | COOP/COEPヘッダー未設定。DevToolsコンソールに `SharedArrayBuffer` / cross-origin isolation関連のエラーが出ていないか、`self.crossOriginIsolated` が `true` かを確認。リバースプロキシがヘッダーを消していないか確認 |
-| Javaの問題が生徒側で「準備中」のまま | `server/.env` の `JUDGE_URL` が空、またはjudgeコンテナ未起動。`curl $JUDGE_URL/health` で確認 |
+| Javaの問題が生徒側で「準備中」のまま | `server/.env` の `JUDGE_URL` が空、またはjudgeコンテナ未起動。講師画面の☰ →「管理者メニュー」の「サービス状態」、または `curl $JUDGE_URL/health` で確認 |
 | Javaの実行が502になる | judge側のエラー。`docker compose logs judge` を確認。コンテナの `mem_limit` / `pids_limit` に達していないか |
 | 429（前の実行がまだ処理中） が頻発 | 同時受験者数に対して `JUDGE_CONCURRENCY` が小さい。値を上げる。judgeコンテナのリソースも合わせて増やす |
 | DBに繋がらない / `P1010` | 接続先ポート違い（開発機は5433）。native PostgreSQLとの衝突。`DATABASE_URL` を確認 |
