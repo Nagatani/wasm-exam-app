@@ -281,7 +281,6 @@ AIヒント: 教師がタスクごとにON/OFF・最大段階を設定→生徒�
 
 | 優先 | 項目 | 現状（根拠） | 打ち手の案 |
 |---|---|---|---|
-| 低 | C の E2E が CI で走らない | 2026-09-26 に `E2E_WITH_C=1` で動く C の E2E を追加（手元で確認済み）。CI では clang 約106MB の取得を避けて実行していない | CI のキャッシュ（actions/cache）に clang を載せられるか検討 |
 | 低 | `main` のブランチ保護が未設定 | CI（`.github/workflows/ci.yml`）は動くが、通過をマージ条件にしていない（2026-09-26、GitHub API で未設定を確認） | GitHub のリポジトリ設定で CI の3ジョブを必須チェックに（ユーザー作業） |
 
 ### 9-3. 採点・実行環境
@@ -328,6 +327,7 @@ AIヒント: 教師がタスクごとにON/OFF・最大段階を設定→生徒�
 - ✅ 自動テスト4層（サーバー単体・DB 結合・judge 経由・フロントエンド単体。テスト用 DB は名前が `_test` で終わらなければ接続拒否）と、`compareOutput` のサーバー／クライアント実装を同じ表で検証するテスト
 - ✅ CI（`.github/workflows/ci.yml`、frontend / server / judge の3ジョブ）と `engines: { node: ">=22.12" }`
 - ✅ ドキュメント: `CLAUDE.md` の Node 22.11 注記を「過去の事情」扱いに更新
+- ✅（2026-09-26）C の E2E を CI でも実行 — CI の `e2e` ジョブで `E2E_WITH_C=1`。clang（約106MB）の取得込みで約7秒
 - ✅（2026-09-26）Content-Security-Policy — 取得先の許可リスト（jsDelivr・Wasmer・Hugging Face/GitHub raw）で CSP を設定。既定は Report-Only（ブロックせず違反をサーバーログへ）、`CSP_MODE=enforce` で適用。E2E は enforce で実行し違反があれば失敗（許可リストを意図的に狭めると失敗することを確認）、C は `E2E_WITH_C=1` の E2E で確認。AI機能（WebLLM）は enforce で未検証
 - ✅（2026-09-26）使い終わった worktree（`.claude/worktrees/runtime-gate`）と main にマージ済みの `feature/*` ブランチ（ローカル9本・リモートの `feature/task-bank`）を削除
 - ✅（2026-09-26）**不具合修正**: Python の初回実行が誤って WA になる — ページを開いた直後の Pyodide 事前読み込み中に「実行」を押すと、ワーカーへの要求と応答の対応が取れず、事前読み込みの応答が実行結果として扱われて「出力なし・WA」になっていた（キャッシュのない初回だけ起きるため手元では再現せず、CI 上の E2E で発見）。要求ごとの ID で応答を照合するよう修正。E2E で Pyodide の取得を遅延させて再現し、修正前に失敗・修正後に成功することを確認
