@@ -42,7 +42,29 @@ export function prepareJs(source: string, language: 'JS' | 'TS'): JsPrepareResul
     new Function(source);
     return { ok: true, js: source, error: '' };
   } catch (err) {
-    return { ok: false, js: '', error: formatError(err) };
+    const message = formatError(err);
+    // V8's SyntaxError carries no line/column, so the editor couldn't mark
+    // it (compileErrors.ts looks for `(line:col)`). Re-parse with sucrase
+    // only to locate the error; `new Function` stays the authority on
+    // whether the code is valid.
+    const position = syntaxErrorPosition(source);
+    return {
+      ok: false,
+      js: '',
+      error: position && !/\(\d+:\d+\)/.test(message) ? `${message} (${position})` : message,
+    };
+  }
+}
+
+// `line:col` of the first syntax error sucrase finds, or null if it parses
+// (sucrase is more lenient than V8 in a few places, e.g. top-level await).
+function syntaxErrorPosition(source: string): string | null {
+  try {
+    transform(source, { transforms: [] });
+    return null;
+  } catch (err) {
+    const m = err instanceof Error ? err.message.match(/\((\d+:\d+)\)/) : null;
+    return m ? m[1] : null;
   }
 }
 

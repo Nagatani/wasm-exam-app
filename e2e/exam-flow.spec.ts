@@ -10,6 +10,8 @@ test.describe.configure({ mode: 'serial' });
 const PASSWORD = 'password123';
 const EXAM_TITLE = 'E2E 確認テスト';
 const PRACTICE_TITLE = 'E2E 演習セット';
+// CodeEditor.tsx's MARKER_OWNER for compile-error markers.
+const MARKER_OWNER = 'compile-errors';
 const SOLUTION = "const [a, b] = readline().split(' ').map(Number);\nprint(a + b);\n";
 
 async function seed(request: APIRequestContext) {
@@ -83,9 +85,25 @@ test('a student takes the exam from login to final submit', async ({ page }) => 
   // unreliable because of auto-indent / auto-close — see CLAUDE.md).
   await expect(page.getByText('問題 1: 2つの整数の和')).toBeVisible();
   await page.waitForFunction(() => (window as any).monaco?.editor.getModels().length > 0);
-  await page.evaluate((code) => (window as any).monaco.editor.getModels()[0].setValue(code), SOLUTION);
+  const setCode = (code: string) =>
+    page.evaluate((c) => (window as any).monaco.editor.getModels()[0].setValue(c), code);
+  const run = page.getByRole('button', { name: /コンパイル＆テスト実行/ });
 
-  await page.getByRole('button', { name: /コンパイル＆テスト実行/ }).click();
+  // A syntax error is reported as CE and the app marks its line in the
+  // editor (owner-filtered: Monaco's own JS validation adds markers too).
+  await setCode('const a = 1;\na +* 2;\n');
+  await run.click();
+  await expect(page.getByText('コンパイルエラー').first()).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate((owner) =>
+        (window as any).monaco.editor.getModelMarkers({ owner }).map((m: any) => m.startLineNumber),
+      MARKER_OWNER),
+    )
+    .toEqual([2]);
+
+  await setCode(SOLUTION);
+  await run.click();
   await expect(page.getByText('AC（全テストケース正解）')).toBeVisible();
 
   await page.getByRole('button', { name: '下書き保存', exact: true }).click();
