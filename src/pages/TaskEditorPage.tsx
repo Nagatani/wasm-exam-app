@@ -36,7 +36,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { FileLoadButton } from '../components/FileLoadButton';
 import { HelpPopover } from '../components/HelpPopover';
 import { PageSkeleton } from '../components/Skeleton';
-import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
+import { confirmLeaveIfDirty, useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { changedOrders, moveItem } from '../lib/reorder';
 import { parseBulkCases } from '../lib/bulkTestCases';
 
@@ -518,7 +518,11 @@ export function TaskEditorPage() {
 
   return (
     <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
-      <BackHeader to={`/teacher/exams/${examId}`} label="試験詳細に戻る" />
+      <BackHeader
+        to={`/teacher/exams/${examId}`}
+        label="試験詳細に戻る"
+        beforeNavigate={confirmLeaveIfDirty(anyDirty)}
+      />
 
       {/* This page has 3 independently-saved sections (below); this banner is
           the one place that shows every unsaved one at once, so a save click

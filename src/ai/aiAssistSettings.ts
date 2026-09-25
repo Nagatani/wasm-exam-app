@@ -5,13 +5,14 @@
 // browser's cache", which is inherently per-device and can't be synced
 // across a teacher's machines anyway (each one would need to redownload the
 // model regardless of what a server-side flag said). Only referenced from
-// UserDrawer (the toggle) and TaskEditorPage (the AiAssistPanel gate).
+// SettingsPage's AiAssistSettings (the toggle) and TaskEditorPage (the
+// AiAssistPanel gate).
 const STORAGE_KEY = 'wasm-exam-ai-assist-enabled';
 
 // localStorage writes don't fire a same-tab `storage` event (only other
-// tabs see those), so UserDrawer's toggle and TaskEditorPage's gate — both
-// live on the same page when the drawer is open over the editor — need
-// their own signal to stay in sync without a full reload.
+// tabs see those), so the settings toggle and TaskEditorPage's gate need
+// their own signal to stay in sync without a full reload (harmless now that
+// the toggle lives on its own page, and still correct if both ever share one).
 const CHANGE_EVENT = 'wasm-exam-ai-assist-settings-changed';
 
 export function isAiAssistEnabled(): boolean {

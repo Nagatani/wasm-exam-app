@@ -14,7 +14,7 @@ import { PageSkeleton } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState';
 import { HelpPopover } from '../components/HelpPopover';
 import { EXAM_MODE_HELP_TEXT } from '../lib/examModeHelp';
-import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
+import { confirmLeaveIfDirty, useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { datetimeLocalToIso, toDatetimeLocalValue } from '../lib/datetime';
 import { changedOrders, moveItem } from '../lib/reorder';
 
@@ -199,7 +199,11 @@ export function ExamDetailPage() {
 
   return (
     <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
-      <BackHeader to="/teacher" label="試験一覧に戻る" />
+      <BackHeader
+        to="/teacher"
+        label="試験一覧に戻る"
+        beforeNavigate={confirmLeaveIfDirty(dirty)}
+      />
 
       <form
         onSubmit={handleSave}

@@ -15,12 +15,12 @@ function formatBytes(bytes: number): string {
 
 /**
  * Student-only settings section for the practice-mode AI hint feature
- * (PracticeTaskPage's HintPanel) — lives in UserDrawer next to 表示テーマ,
+ * (PracticeTaskPage's HintPanel) — lives on SettingsPage (/settings),
  * mirroring AiAssistSettings.tsx's structure exactly (same caution-before-
  * enabling / storage-usage / delete-cache flow). Kept as its own component
  * rather than a parameterized shared one because the two features have
  * different opt-in flags (see aiHintSettings.ts) and different audiences
- * (UserDrawer gates this to STUDENT, AiAssistSettings to TEACHER) — the
+ * (SettingsPage shows this to STUDENT, AiAssistSettings to TEACHER) — the
  * model/cache underneath is shared (../ai/aiAssist), the opt-in isn't.
  */
 export function AiHintSettings() {
@@ -137,7 +137,7 @@ export function AiHintSettings() {
   );
 }
 
-// Default export so UserDrawer can `React.lazy()` this — same reasoning as
+// Default export so SettingsPage can `React.lazy()` this — same reasoning as
 // AiAssistSettings.tsx (several MB of JS via ../ai/aiAssist that shouldn't
-// land in the shared main bundle just from rendering UserDrawer).
+// land in the shared main bundle).
 export default AiHintSettings;

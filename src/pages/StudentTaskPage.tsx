@@ -268,6 +268,19 @@ export function StudentTaskPage() {
     navigate(`/student/exams/${examId}/tasks/${targetId}`);
   }
 
+  // Drawer navigation / logout mid-exam: save the draft first, same as
+  // goToReview, so leaving through the menu never drops typed code.
+  async function saveDraftBeforeLeaving(): Promise<boolean> {
+    if (code === savedCodeRef.current || !task) return true;
+    try {
+      await persistDraft();
+      return true;
+    } catch {
+      setError('下書きの保存に失敗したため移動を中止しました。');
+      return false;
+    }
+  }
+
   async function goToReview() {
     if (!examId) return;
     if (code !== savedCodeRef.current && task) {
@@ -346,7 +359,7 @@ export function StudentTaskPage() {
               </button>
             </div>
             <div className="border-l border-mp-border pl-3">
-              <UserDrawer />
+              <UserDrawer beforeNavigate={saveDraftBeforeLeaving} />
             </div>
           </div>
         </div>

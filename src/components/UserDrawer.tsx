@@ -1,40 +1,61 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { logOut } from '../api/auth';
 import { useAuth } from '../contexts/AuthContext';
 import { ThemeToggle } from './ThemeToggle';
-
-// Lazy: this (and @mlc-ai/web-llm underneath it) is several MB of JS that
-// must never land in the shared main bundle every page pulls in just by
-// rendering UserDrawer — including every student page. Rendered only once
-// the drawer is actually opened by a teacher (see `open && profile.role ===
-// 'TEACHER'` below), not merely mounted, so opening the drawer itself stays
-// cheap for the (much more common) case of a teacher who never touches it.
-const AiAssistSettings = lazy(() => import('./AiAssistSettings'));
-// Same lazy/gated-by-role reasoning as AiAssistSettings above, but for the
-// student-facing practice-mode AI hint feature (gated `role === 'STUDENT'`
-// below instead of 'TEACHER').
-const AiHintSettings = lazy(() => import('./AiHintSettings'));
 
 const ROLE_LABEL: Record<'STUDENT' | 'TEACHER', string> = {
   STUDENT: '学生',
   TEACHER: '教師',
 };
 
+interface NavItem {
+  to: string;
+  label: string;
+  // Exact match only — otherwise "/teacher" would highlight on every
+  // /teacher/... page too.
+  end?: boolean;
+}
+
+const NAV_ITEMS: Record<'STUDENT' | 'TEACHER', NavItem[]> = {
+  TEACHER: [
+    { to: '/teacher', label: 'ダッシュボード', end: true },
+    { to: '/teacher/courses', label: 'クラス管理' },
+    { to: '/teacher/admin', label: '管理者メニュー' },
+  ],
+  STUDENT: [{ to: '/student', label: 'ダッシュボード', end: true }],
+};
+
+const SETTINGS_ITEMS: NavItem[] = [
+  { to: '/settings', label: '設定（AI機能など）' },
+  { to: '/change-password', label: 'パスワードを変更' },
+];
+
 /**
- * Consolidated user menu: normally closed, a single icon button opens a
- * right-side drawer with the signed-in user's info, the theme toggle
- * (relocated here from being a standalone button in every header), a link to
- * change password, and logout. Replaces the theme-toggle + logout button
- * cluster that used to be hand-copied across every page (see AppHeader /
- * BackHeader — this is what they render now instead of that pair).
+ * App-wide hamburger menu: normally closed, a single ☰ button opens a
+ * right-side drawer holding everything that isn't the current page's own
+ * work — the signed-in user's info, role-based navigation (dashboard, クラス
+ * 管理, 管理者メニュー), the quick theme toggle, links to the settings /
+ * password pages, and logout. Pages render only this in their header instead
+ * of their own nav/settings buttons (see AppHeader / BackHeader).
+ *
+ * Heavier settings (AI model opt-in/download/delete) live on SettingsPage,
+ * not inline here, so the drawer stays a short navigation list.
+ *
+ * `beforeNavigate` lets a page with unsaved server-side state (the exam's
+ * StudentTaskPage draft) persist it before any drawer navigation or logout;
+ * returning false cancels the navigation.
  *
  * Renders nothing if there's no signed-in user (e.g. LoginPage/SignupPage,
- * which keep their own standalone `<ThemeToggle />` since there's no user
- * menu to show yet).
+ * which keep their own standalone `<ThemeToggle />`).
  */
-export function UserDrawer() {
+export function UserDrawer({
+  beforeNavigate,
+}: {
+  beforeNavigate?: () => Promise<boolean>;
+} = {}) {
   const { profile, refresh } = useAuth();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -56,10 +77,48 @@ export function UserDrawer() {
 
   if (!profile) return null;
 
+  async function go(to: string) {
+    setOpen(false);
+    if (beforeNavigate && !(await beforeNavigate())) return;
+    navigate(to);
+  }
+
   async function handleLogout() {
     setOpen(false);
+    if (beforeNavigate && !(await beforeNavigate())) return;
     await logOut();
     await refresh();
+  }
+
+  const tab = open ? 0 : -1;
+  const linkClass = ({ isActive }: { isActive: boolean }) =>
+    `block rounded px-3 py-2 text-sm ${
+      isActive
+        ? 'bg-mp-cyan/15 font-bold text-mp-cyan'
+        : 'text-mp-fg hover:bg-mp-surface-hover'
+    }`;
+
+  function renderLinks(items: NavItem[]) {
+    return (
+      <ul className="space-y-0.5">
+        {items.map((item) => (
+          <li key={item.to}>
+            <NavLink
+              to={item.to}
+              end={item.end}
+              tabIndex={tab}
+              onClick={(e) => {
+                e.preventDefault();
+                void go(item.to);
+              }}
+              className={linkClass}
+            >
+              {item.label}
+            </NavLink>
+          </li>
+        ))}
+      </ul>
+    );
   }
 
   return (
@@ -67,13 +126,15 @@ export function UserDrawer() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        title={profile.displayName}
-        aria-label="ユーザーメニューを開く"
+        title="メニュー"
+        aria-label="メニューを開く"
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm hover:bg-mp-surface-hover"
+        className="flex h-8 w-9 flex-col items-center justify-center gap-1 rounded border border-mp-border bg-mp-surface hover:bg-mp-surface-hover"
       >
-        ⚙️
+        <span className="block h-0.5 w-4 rounded bg-mp-fg" />
+        <span className="block h-0.5 w-4 rounded bg-mp-fg" />
+        <span className="block h-0.5 w-4 rounded bg-mp-fg" />
       </button>
 
       {/* Always mounted (not conditionally rendered) so the open/close
@@ -87,15 +148,15 @@ export function UserDrawer() {
         <button
           type="button"
           aria-label="メニューを閉じる"
-          tabIndex={open ? 0 : -1}
+          tabIndex={tab}
           onClick={() => setOpen(false)}
           className="absolute inset-0 bg-black/40"
         />
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="ユーザーメニュー"
-          className={`absolute top-0 right-0 flex h-full w-80 max-w-[85vw] flex-col border-l border-mp-border bg-mp-surface p-4 shadow-xl transition-transform duration-200 ${
+          aria-label="メニュー"
+          className={`absolute top-0 right-0 flex h-full w-80 max-w-[85vw] flex-col overflow-y-auto border-l border-mp-border bg-mp-surface p-4 text-mp-fg shadow-xl transition-transform duration-200 ${
             open ? 'translate-x-0' : 'translate-x-full'
           }`}
         >
@@ -104,7 +165,7 @@ export function UserDrawer() {
             <button
               ref={closeButtonRef}
               type="button"
-              tabIndex={open ? 0 : -1}
+              tabIndex={tab}
               onClick={() => setOpen(false)}
               aria-label="閉じる"
               className="rounded px-2 py-1 text-mp-muted hover:bg-mp-surface-hover hover:text-mp-fg"
@@ -125,40 +186,24 @@ export function UserDrawer() {
             </div>
           </div>
 
-          <div className="mb-4">
-            <p className="mb-1 text-xs font-bold text-mp-muted">表示テーマ</p>
-            <ThemeToggle />
+          <nav aria-label="メインメニュー" className="mb-4">
+            <p className="mb-1 px-1 text-xs font-bold text-mp-muted">ページ</p>
+            {renderLinks(NAV_ITEMS[profile.role])}
+          </nav>
+
+          <div className="mb-4 border-t border-mp-border pt-4">
+            <p className="mb-1 px-1 text-xs font-bold text-mp-muted">設定</p>
+            <div className="mb-2 flex items-center justify-between px-3 py-1">
+              <span className="text-sm">表示テーマ</span>
+              <ThemeToggle />
+            </div>
+            {renderLinks(SETTINGS_ITEMS)}
           </div>
-
-          {open && profile.role === 'TEACHER' && (
-            <Suspense
-              fallback={<p className="mb-4 text-xs text-mp-muted">読み込み中...</p>}
-            >
-              <AiAssistSettings />
-            </Suspense>
-          )}
-
-          {open && profile.role === 'STUDENT' && (
-            <Suspense
-              fallback={<p className="mb-4 text-xs text-mp-muted">読み込み中...</p>}
-            >
-              <AiHintSettings />
-            </Suspense>
-          )}
-
-          <Link
-            to="/change-password"
-            tabIndex={open ? 0 : -1}
-            onClick={() => setOpen(false)}
-            className="mb-2 rounded border border-mp-border bg-mp-bg px-3 py-2 text-sm hover:bg-mp-surface-hover"
-          >
-            パスワードを変更
-          </Link>
 
           <div className="mt-auto pt-4">
             <button
               type="button"
-              tabIndex={open ? 0 : -1}
+              tabIndex={tab}
               onClick={handleLogout}
               className="w-full rounded border border-mp-border bg-mp-bg px-3 py-2 text-sm font-bold hover:bg-mp-surface-hover"
             >

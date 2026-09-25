@@ -91,7 +91,7 @@ export async function estimateStorageUsageBytes(): Promise<number | null> {
 
 // Unloads the live engine (if any) and deletes every cache entry WebLLM
 // wrote for this model (weights, wasm, tokenizer/config) — the counterpart
-// to the "モデルを削除してオフにする" button in UserDrawer. Resets local
+// to the "モデルを削除してオフにする" button on SettingsPage. Resets local
 // state so the next loadAiAssistModel() call re-downloads from scratch.
 export async function clearAiAssistCache(): Promise<void> {
   if (enginePromise) {

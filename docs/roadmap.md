@@ -209,7 +209,7 @@
 
 - `src/ai/aiAssist.ts`: モデルのロード状態管理（`idle`/`loading`/`ready`/`error`）、`generateTaskDraft()`（JSON mode制約付き生成）、`estimateStorageUsageBytes()`、`clearAiAssistCache()`（`deleteModelAllInfoInCache`）、`isWebGpuSupported()`。
 - `src/ai/aiAssist.worker.ts`: `WebWorkerMLCEngineHandler`を動かすESモジュールWorker（既存のC/JS/Python用Workerと異なり`{type:'module'}`が必要）。
-- `src/components/AiAssistSettings.tsx`: `UserDrawer`内・教師専用セクション。トグルON時に容量目安・ブラウザ限定である旨の注意文を表示してから実行、有効時は保存領域使用量の概算表示と`ConfirmDialog`経由の削除ボタン。
+- `src/components/AiAssistSettings.tsx`: 教師専用セクション（当初は`UserDrawer`内、2026-09-26 に設定画面 `/settings` へ移動）。トグルON時に容量目安・ブラウザ限定である旨の注意文を表示してから実行、有効時は保存領域使用量の概算表示と`ConfirmDialog`経由の削除ボタン。
 - `src/components/AiAssistPanel.tsx`: `TaskEditorPage`の「解答言語」直後に配置。プロンプト＋テストケース数→生成→プレビュー（テストケース件数、Java注記）→「この内容を反映する」。反映は既存の保存経路をそのまま使う（統計文・初期テンプレートは基本情報フォームの未保存state、テストケースは`bulkCreateTestCases`で実際に作成、解答例は`SolutionEditor`に未保存の上書きとして流し込み — 新しい永続化の仕組みは何も作っていない）。
 - `TaskEditorPage`側で`isAiAssistEnabled()`を見て有効時のみ`AiAssistPanel`を`lazy`ロード、既存フィールドに内容がある場合は上書き前に確認。
 
@@ -276,7 +276,6 @@ AIヒント: 教師がタスクごとにON/OFF・最大段階を設定→生徒�
 |---|---|---|---|---|
 | 中 | 強制ログアウト（セッション失効）の操作がない | `Session.revoked` はこのために DB セッションを選んだ経緯があるが、他人のセッションを失効させるのはパスワード再発行（`POST /api/students/reset-password`）だけ | パスワードを変えずにセッションだけ失効させる教師向け操作（受講者一覧の行・成績画面など） | 新規 |
 | 中 | 期限切れ・失効セッションが溜まり続ける | `sessions` の行を削除する処理がどこにもない（2026-09-26 確認） | 起動時＋定期（例: 1日1回）に `expiresAt < now() OR revoked` を `deleteMany`。またはバックアップ用 cron と同じ場所に SQL を1行追加 | 新規 |
-| 低 | クラス未所属の生徒のパスワードを画面から再発行できない | 再発行ボタンはクラスの受講者一覧にしかない（API 自体は学籍番号指定なので所属は不要） | 教師ダッシュボードの管理者メニューに学籍番号指定のフォームを追加 | 新規 |
 | 低 | ログイン制限のカウンタがメモリ上 | `loginRateLimit.ts` は再起動で消え、複数インスタンスでは共有されない（単一インスタンス前提。`executionQueue.ts` と同じ） | 複数インスタンス化するときに Redis 等へ（9-3「`server` の複数インスタンス化」と同時に） | 新規 |
 | 低 | CSP 等のセキュリティヘッダーが未設定 | COOP/COEP は設定済みだが、`Content-Security-Policy` / `X-Content-Type-Options` 等はない（`helmet` 未導入）。Monaco・Pyodide CDN・WebLLM・Wasmer レジストリの取得先があるため CSP は許可リストの設計が必要 | 最低限 `X-Content-Type-Options: nosniff` と `Referrer-Policy`。CSP は取得先を洗い出してから | 新規 |
 | 低 | ブラウザ実行言語の採点は生徒端末の自己申告に依存 | C/JS/TS/Python は各テストケースの stdout をブラウザが送る。非公開テストの期待値は渡していないので「解かずに正解を偽装」はできないが、入力ごとに出力を直書きする等の改変は技術的には可能（判定はサーバーだが、実行結果の真正性は保証しない） | 9-3「本採点をサーバー実行に寄せるか」と同じ話。今は「メトリクスと同じ信頼レベル」と明記して運用で割り切っている | 1-4 |
@@ -345,3 +344,4 @@ AIヒント: 教師がタスクごとにON/OFF・最大段階を設定→生徒�
 - ✅ 自動テスト4層（サーバー単体・DB 結合・judge 経由・フロントエンド単体。テスト用 DB は名前が `_test` で終わらなければ接続拒否）と、`compareOutput` のサーバー／クライアント実装を同じ表で検証するテスト
 - ✅ CI（`.github/workflows/ci.yml`、frontend / server / judge の3ジョブ）と `engines: { node: ">=22.12" }`
 - ✅ ドキュメント: `CLAUDE.md` の Node 22.11 注記を「過去の事情」扱いに更新
+- ✅（2026-09-26）クラス未所属の生徒のパスワード再発行 — ☰メニュー →「管理者メニュー」（`/teacher/admin`）に学籍番号指定のフォームを追加。あわせて、ハンバーガーメニュー（ドロワー）にページ移動・設定・管理者メニューを集約し、管理者メニューと設定（AI機能など）を独立した画面にした

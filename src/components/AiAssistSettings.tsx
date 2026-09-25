@@ -15,7 +15,8 @@ function formatBytes(bytes: number): string {
 
 /**
  * Teacher-only settings section for AI作問サポート (TaskEditorPage's
- * AiAssistPanel) — lives in UserDrawer next to 表示テーマ. Turning the
+ * AiAssistPanel) — lives on SettingsPage (/settings, linked from the
+ * hamburger drawer). Turning the
  * feature on is gated behind an inline caution (download size, browser-only
  * storage) rather than taking effect immediately on click; turning it off
  * just stops offering the panel and leaves any already-downloaded model
@@ -137,8 +138,7 @@ export function AiAssistSettings() {
   );
 }
 
-// Default export so UserDrawer can `React.lazy()` this — it (and everything
+// Default export so SettingsPage can `React.lazy()` this — it (and everything
 // it imports from ../ai/aiAssist, ultimately @mlc-ai/web-llm) is otherwise
-// several MB of JS that would land in the shared main bundle every page —
-// including student pages — since UserDrawer renders on all of them.
+// several MB of JS that would land in the shared main bundle.
 export default AiAssistSettings;

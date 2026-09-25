@@ -17,6 +17,8 @@ import { PracticeTaskPage } from './pages/PracticeTaskPage';
 import { ExamResultsPage } from './pages/ExamResultsPage';
 import { CoursesPage } from './pages/CoursesPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
+import { SettingsPage } from './pages/SettingsPage';
+import { AdminPage } from './pages/AdminPage';
 
 function App() {
   return (
@@ -31,6 +33,14 @@ function App() {
             element={
               <ProtectedRoute allowPasswordChangePending>
                 <ChangePasswordPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <SettingsPage />
               </ProtectedRoute>
             }
           />
@@ -119,6 +129,14 @@ function App() {
             element={
               <ProtectedRoute role="TEACHER">
                 <CoursesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/teacher/admin"
+            element={
+              <ProtectedRoute role="TEACHER">
+                <AdminPage />
               </ProtectedRoute>
             }
           />
