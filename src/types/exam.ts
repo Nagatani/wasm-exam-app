@@ -203,13 +203,28 @@ export interface SubmissionDetailTask {
   overallStatus: SubmissionOverallStatus | null;
   score: number;
   code: string | null;
+  // Editor metrics of that submission; null when not submitted.
+  keystrokeCount: number | null;
+  pasteCount: number | null;
+  pastedCharCount: number | null;
+  timeSpentSeconds: number | null;
   results: SubmissionDetailResult[];
   testCases: SubmissionDetailTestCase[];
 }
 
-// GET /api/exams/:examId/students/:studentId/submission-detail — the student's
-// latest submitted attempt, with code + per-test-case outcomes.
+export interface SubmissionDetailAttempt {
+  attemptNumber: number;
+  score: number;
+  startedAt: string;
+  submittedAt: string | null;
+}
+
+// GET /api/exams/:examId/students/:studentId/submission-detail[?attempt=N] —
+// one submitted attempt (default: the latest, which is the grade), with code +
+// per-test-case outcomes, plus every submitted attempt for drill-down.
 export interface SubmissionDetail {
   attemptNumber: number | null;
+  latestAttemptNumber: number | null;
+  attempts: SubmissionDetailAttempt[];
   tasks: SubmissionDetailTask[];
 }

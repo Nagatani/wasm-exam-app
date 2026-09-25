@@ -441,7 +441,10 @@ examsRouter.put('/:examId/students/:studentId/time-extension', async (req, res) 
 
 // The submitted code + per-test-case outcomes for one student's *latest
 // submitted attempt* — so a teacher can see why a submission got its verdict.
-// Mirrors `getExamResults`'s "latest SUBMITTED attempt" rule.
+// Mirrors `getExamResults`'s "latest SUBMITTED attempt" rule by default;
+// `?attempt=N` selects an earlier SUBMITTED attempt instead (drill-down into
+// past attempts — they're kept, only the latest one counts as the grade).
+// `attempts` lists every SUBMITTED attempt so the UI can offer the choice.
 examsRouter.get('/:examId/students/:studentId/submission-detail', async (req, res) => {
   const { examId, studentId } = req.params;
   const exam = await prisma.exam.findUnique({
@@ -458,12 +461,29 @@ examsRouter.get('/:examId/students/:studentId/submission-detail', async (req, re
     return;
   }
 
-  const attempt = await prisma.examAttempt.findFirst({
+  const submittedAttempts = await prisma.examAttempt.findMany({
     where: { examId, studentId, status: 'SUBMITTED' },
-    orderBy: { attemptNumber: 'desc' },
+    orderBy: { attemptNumber: 'asc' },
   });
+  const attempts = submittedAttempts.map((a) => ({
+    attemptNumber: a.attemptNumber,
+    score: a.score ?? 0,
+    startedAt: a.startedAt,
+    submittedAt: a.submittedAt,
+  }));
+  const latestAttemptNumber = submittedAttempts.at(-1)?.attemptNumber ?? null;
+
+  let attempt = submittedAttempts.at(-1) ?? null;
+  if (req.query.attempt !== undefined) {
+    const requested = Number(req.query.attempt);
+    attempt = submittedAttempts.find((a) => a.attemptNumber === requested) ?? null;
+    if (!attempt) {
+      res.status(404).json({ error: '指定された回の提出済みの受験が見つかりません。' });
+      return;
+    }
+  }
   if (!attempt) {
-    res.json({ attemptNumber: null, tasks: [] });
+    res.json({ attemptNumber: null, latestAttemptNumber, attempts, tasks: [] });
     return;
   }
 
@@ -472,6 +492,8 @@ examsRouter.get('/:examId/students/:studentId/submission-detail', async (req, re
 
   res.json({
     attemptNumber: attempt.attemptNumber,
+    latestAttemptNumber,
+    attempts,
     tasks: exam.tasks.map((t) => {
       const s = byTask.get(t.id);
       return {
@@ -484,6 +506,10 @@ examsRouter.get('/:examId/students/:studentId/submission-detail', async (req, re
         overallStatus: s?.overallStatus ?? null,
         score: s?.score ?? 0,
         code: s?.code ?? null,
+        keystrokeCount: s?.keystrokeCount ?? null,
+        pasteCount: s?.pasteCount ?? null,
+        pastedCharCount: s?.pastedCharCount ?? null,
+        timeSpentSeconds: s?.timeSpentSeconds ?? null,
         results: s ? s.results : [],
         testCases: t.testCases.map((tc) => ({
           id: tc.id,

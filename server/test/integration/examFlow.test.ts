@@ -232,6 +232,33 @@ describe('retakes', () => {
     expect((await student.get(`/api/student/exams/${examId}`)).text).not.toContain('"score"');
   });
 
+  it('submission-detail shows the latest attempt by default and earlier ones on request', async () => {
+    const { teacher, student, studentId, examId, tasks } = await setup({ maxAttempts: null });
+    await takeAndSubmit(student, examId, tasks, ['3', '30']); // attempt 1: 10
+    await takeAndSubmit(student, examId, tasks, 'wrong'); // attempt 2: 0
+    await student.post(`/api/student/exams/${examId}/attempts`); // attempt 3: in progress
+    const base = `/api/exams/${examId}/students/${studentId}/submission-detail`;
+
+    const latest = await teacher.get(base);
+    expect(latest.status).toBe(200);
+    expect(latest.body).toMatchObject({ attemptNumber: 2, latestAttemptNumber: 2 });
+    // Only SUBMITTED attempts are listed (the in-progress 3rd is not).
+    expect(latest.body.attempts.map((a: { attemptNumber: number; score: number }) => [a.attemptNumber, a.score])).toEqual([
+      [1, 10],
+      [2, 0],
+    ]);
+    expect(latest.body.tasks[0].overallStatus).toBe('WA');
+
+    const first = await teacher.get(`${base}?attempt=1`);
+    expect(first.body).toMatchObject({ attemptNumber: 1, latestAttemptNumber: 2 });
+    expect(first.body.tasks[0]).toMatchObject({ overallStatus: 'AC', submitted: true });
+    expect(first.body.tasks[0].keystrokeCount).toEqual(expect.any(Number));
+
+    expect((await teacher.get(`${base}?attempt=3`)).status).toBe(404); // in progress
+    expect((await teacher.get(`${base}?attempt=9`)).status).toBe(404);
+    expect((await student.get(base)).status).toBe(403);
+  });
+
   it('a new attempt starts with no drafts (白紙開始)', async () => {
     const { student, examId, tasks } = await setup({ maxAttempts: null });
     await takeAndSubmit(student, examId, tasks, ['3', '30']);

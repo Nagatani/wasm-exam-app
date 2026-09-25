@@ -84,11 +84,12 @@ export function setTimeExtension(examId: string, studentId: string, extraMinutes
   );
 }
 
-// A student's submitted code + per-test-case outcomes for their latest
-// submitted attempt (teacher review).
-export function getSubmissionDetail(examId: string, studentId: string) {
+// A student's submitted code + per-test-case outcomes for one submitted
+// attempt (teacher review) — the latest unless `attemptNumber` is given.
+export function getSubmissionDetail(examId: string, studentId: string, attemptNumber?: number) {
+  const query = attemptNumber === undefined ? '' : `?attempt=${attemptNumber}`;
   return apiFetch<SubmissionDetail>(
-    `/api/exams/${examId}/students/${studentId}/submission-detail`,
+    `/api/exams/${examId}/students/${studentId}/submission-detail${query}`,
   );
 }
 

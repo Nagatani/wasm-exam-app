@@ -511,12 +511,12 @@ function StudentResultRowGroup({
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
-  async function loadDetail() {
-    if (detail || loadingDetail) return;
+  async function loadDetail(attemptNumber?: number) {
+    if (loadingDetail) return;
     setLoadingDetail(true);
     setDetailError(null);
     try {
-      setDetail(await getSubmissionDetail(examId, student.id));
+      setDetail(await getSubmissionDetail(examId, student.id, attemptNumber));
     } catch (err) {
       setDetailError(err instanceof ApiError ? err.message : '提出内容の取得に失敗しました。');
     } finally {
@@ -633,7 +633,7 @@ function StudentResultRowGroup({
               <div className="mt-3">
                 {!detail && (
                   <button
-                    onClick={loadDetail}
+                    onClick={() => void loadDetail()}
                     disabled={loadingDetail}
                     className="rounded border border-mp-border bg-mp-surface px-3 py-1 text-xs font-bold hover:bg-mp-surface-hover disabled:opacity-50"
                   >
@@ -641,7 +641,13 @@ function StudentResultRowGroup({
                   </button>
                 )}
                 {detailError && <p className="mt-1 text-xs text-mp-red">{detailError}</p>}
-                {detail && <SubmissionDetailView detail={detail} />}
+                {detail && (
+                  <SubmissionDetailView
+                    detail={detail}
+                    loading={loadingDetail}
+                    onSelectAttempt={(n) => void loadDetail(n)}
+                  />
+                )}
               </div>
             )}
           </td>
@@ -651,11 +657,55 @@ function StudentResultRowGroup({
   );
 }
 
-function SubmissionDetailView({ detail }: { detail: SubmissionDetail }) {
+function SubmissionDetailView({
+  detail,
+  loading,
+  onSelectAttempt,
+}: {
+  detail: SubmissionDetail;
+  loading: boolean;
+  onSelectAttempt: (attemptNumber: number) => void;
+}) {
+  const isLatest = detail.attemptNumber === detail.latestAttemptNumber;
   return (
     <div className="mt-2 space-y-4">
+      {detail.attempts.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs" role="group" aria-label="受験回">
+          <span className="mr-1 text-mp-muted">受験回:</span>
+          {detail.attempts.map((a) => {
+            const selected = a.attemptNumber === detail.attemptNumber;
+            return (
+              <button
+                key={a.attemptNumber}
+                type="button"
+                disabled={loading || selected}
+                aria-pressed={selected}
+                onClick={() => onSelectAttempt(a.attemptNumber)}
+                title={`提出: ${formatDateTime(a.submittedAt)}`}
+                className={`rounded border px-2 py-0.5 ${
+                  selected
+                    ? 'border-mp-cyan bg-mp-cyan/15 font-bold text-mp-cyan'
+                    : 'border-mp-border bg-mp-surface hover:bg-mp-surface-hover disabled:opacity-50'
+                }`}
+              >
+                {a.attemptNumber}回目（{a.score}点）
+                {a.attemptNumber === detail.latestAttemptNumber ? ' ★' : ''}
+              </button>
+            );
+          })}
+          <span className="text-mp-muted">★ = 成績に採用（最後に提出した回）</span>
+        </div>
+      )}
       {detail.attemptNumber !== null && (
-        <p className="text-xs text-mp-muted">{detail.attemptNumber} 回目の受験の提出</p>
+        <p className="text-xs text-mp-muted">
+          {detail.attemptNumber} 回目の受験の提出
+          {detail.attempts.length > 1 &&
+            (isLatest ? '（成績に採用されている回）' : '（過去の回 — 成績には反映されていません）')}
+          {(() => {
+            const a = detail.attempts.find((x) => x.attemptNumber === detail.attemptNumber);
+            return a ? ` ・ 提出 ${formatDateTime(a.submittedAt)}` : '';
+          })()}
+        </p>
       )}
       {detail.tasks.map((t) => (
         <div key={t.taskId} className="rounded-lg border border-mp-border bg-mp-surface p-3">
@@ -674,6 +724,12 @@ function SubmissionDetailView({ detail }: { detail: SubmissionDetail }) {
             <span className="text-mp-muted">
               {t.score} / {t.points} 点
             </span>
+            {t.submitted && (
+              <span className="text-mp-muted">
+                打鍵 {t.keystrokeCount ?? '-'} ・ 貼り付け {t.pasteCount ?? '-'}回 ・ 解答時間{' '}
+                {formatDuration(t.timeSpentSeconds)}
+              </span>
+            )}
           </div>
 
           {t.submitted && t.code !== null && (
