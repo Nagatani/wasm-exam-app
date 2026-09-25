@@ -25,8 +25,9 @@
 - UI改善（2026-09-11〜12）完了 — 問題編集画面の保存ボタン統一（セクションごとのラベル・未保存インジケータ・横断バナー）、ネットワーク／実行環境未取得時の分かりやすいエラーメッセージ、テストケースごとの時間・メモリ制限入力欄（Java・C再採点のみ）、問題一覧・テストケース一覧のドラッグ＆ドロップ並び替え、**問題ごとの部分点設定**（`Task.allowPartialCredit`、通過テスト数比例で採点）、**問題文への画像アップロード**（`POST /api/uploads`、PNG/JPEG/GIF/WebP・5MB上限、`/uploads/*` で公開配信）、**ユーザーメニューのドロワー化**（右上の⚙️アイコンから開閉。ユーザー情報・ライト/ダーク切り替え・パスワード変更・ログアウトを集約し、各画面に個別配置されていたテーマ切り替え／ログアウトボタンを整理）
 - **AI作問サポート（2026-09-16）完了** — 教師専用・ブラウザ内蔵LLM（`@mlc-ai/web-llm`、モデルダウンロードはブラウザごとにオプトイン）による問題文・初期テンプレート・テストケース・解答例の下書き生成。期待される出力はLLMに書かせず、生成された解答例コードを実際に実行して求めます。詳細は [`docs/teacher-guide.md`](./docs/teacher-guide.md)。
 - **演習モード + AIヒント（2026-09-18〜19）完了** — 試験（時間制限あり）とは別に、時間制限なし・何度でも実行/提出できる学習支援用の「演習」モードを追加（既存の問題作成UIをそのまま使えます）。演習モードの問題では、教師が許可すれば生徒はAIによる**段階的ヒント**（着眼点→疑わしい箇所→修正方針、生徒のブラウザでのオプトインが別途必要）を利用できます。**ヒント3は簡単な問題では答えに近い内容になることがあると実機検証済み**のため、教師は問題ごとにヒントを何段階まで公開するか制限できます。詳細は [`docs/teacher-guide.md`](./docs/teacher-guide.md)。
-- **残タスク・要対応事項**（自動テスト未整備、ログインのレート制限、サインアップの制御、パスワード再発行、judgeのJS/TS/Python対応ほか）は [`docs/roadmap.md`](./docs/roadmap.md) の9節に一覧化
-- **マイグレーションの適用が必要**（未適用の環境では `npm --prefix server run prisma:migrate`。開発用ローカルdbには適用済みです）: `20260910120000_add_attempt_lifecycle` / `20260910130000_comparison_mode_and_schedule` / `20260911090000_courses_enrollments` / `20260911100000_student_provisioning` / `20260911110000_exam_time_extension` / `20260911150357_add_task_partial_credit` / `20260913074346_add_task_bank_fields` / `20260914122155_add_ignore_case_comparison` / `20260916133441_add_exam_default_language` / `20260918160954_add_practice_mode` / `20260918162457_add_task_ai_hint_enabled` / `20260918173448_add_task_ai_hint_max_stage`
+- **ログイン・アカウント保護と品質基盤（2026-09-25）完了** — ログインのレート制限、自己サインアップを閉じる設定（`ALLOW_SIGNUP=false`）、講師によるパスワード再発行（[`docs/operations.md`](./docs/operations.md)「ログイン・アカウントの保護」）。自動テスト（サーバー単体・DB結合・judge経由・フロントエンド単体）と GitHub Actions による CI
+- **残タスク・要対応事項**（強制ログアウト、期限切れセッションの削除、受験回のドリルダウン・受験回数の個別付与、下書きの `localStorage` 退避、JS/TS/Pythonの再採点、ブラウザE2Eテストほか）は [`docs/roadmap.md`](./docs/roadmap.md) の9節に一覧化（優先度「中」以上は 9-0 に要約）
+- **既存環境を更新したとき**は、未適用のマイグレーションを `npm --prefix server run prisma:deploy`（開発環境では `prisma:migrate`）で適用してください。適用状況は `server/` 内で `npx prisma migrate status` で確認できます
 
 設計判断の背景は [`CLAUDE.md`](./CLAUDE.md)を参照してください。
 
@@ -175,5 +176,5 @@ docker exec wasm-exam-app-db-1 psql -U wasm_exam -d wasm_exam \
 | [`docs/languages.md`](./docs/languages.md) | 対応言語ごとの実行モデル・標準入出力の作法・制限・注意点 |
 | [`docs/teacher-guide.md`](./docs/teacher-guide.md) | 講師向け：試験・問題・テストケース・解答例の作成、成績確認、CSV出力 |
 | [`docs/operations.md`](./docs/operations.md) | 本番デプロイ、必須HTTPヘッダー、judgeサービスの運用、トラブルシューティング |
-| [`docs/roadmap.md`](./docs/roadmap.md) | フェーズ6以降のバックログ、教師・生徒双方の体験改善の展望と優先度 |
+| [`docs/roadmap.md`](./docs/roadmap.md) | フェーズ6以降のバックログと経緯。**残タスク一覧は9節** |
 | [`CLAUDE.md`](./CLAUDE.md) | アーキテクチャと設計判断の背景（開発者向け） |
