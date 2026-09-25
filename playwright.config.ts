@@ -51,6 +51,10 @@ export default defineConfig({
       JUDGE_URL: '',
       ALLOW_SIGNUP: 'true',
       SESSION_CLEANUP_INTERVAL_HOURS: '0',
+      // Run the real CSP (not report-only) so the specs prove the allow-list
+      // is enough for Monaco / the JS runner / Pyodide; each spec also fails
+      // on any securitypolicyviolation event (see e2e/exam-flow.spec.ts).
+      CSP_MODE: 'enforce',
       UPLOADS_DIR: path.join(os.tmpdir(), 'wasm-exam-e2e-uploads'),
     },
   },

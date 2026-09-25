@@ -141,7 +141,7 @@ docker exec wasm-exam-app-db-1 psql -U wasm_exam -d wasm_exam \
 | `npm test` | 単体テスト（フロントエンドの補助関数＋サーバーの採点ロジック。DB不要） |
 | `npm run test:frontend` | フロントエンドの単体テストのみ |
 | `npm run test:integration` | 結合テスト（APIを実際のDBに対して実行。開発用 `db` コンテナが必要。専用の `wasm_exam_test` DBを自動作成し、開発用DBには触れません） |
-| `npm run test:e2e` | ブラウザE2Eテスト（Playwright + Chromium。ログイン〜受験〜最終提出〜成績確認などを実ブラウザで自動操作。`db` コンテナが必要、初回は `npx playwright install chromium`。専用の `wasm_exam_e2e_test` DBを使用） |
+| `npm run test:e2e` | ブラウザE2Eテスト（Playwright + Chromium。ログイン〜受験〜最終提出〜成績確認などを実ブラウザで自動操作。`db` コンテナが必要、初回は `npx playwright install chromium`。専用の `wasm_exam_e2e_test` DBを使用。`E2E_WITH_C=1` を付けると clang〈約106MB〉を取得して C の実行も確認） |
 | `npm run test:judge` | judge 経由の結合テスト（Java・Cを実際にコンパイル・実行。`db` と `judge` コンテナが必要。専用の `wasm_exam_judge_test` DBを使用） |
 | `npm run preview` | 本番ビルドをローカルでプレビュー |
 

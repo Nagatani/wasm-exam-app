@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { Client, PASSWORD, prisma, resetDb, signup, signupTeacher, startServer, stopServer } from './helpers';
+import { Client, getBaseUrl, PASSWORD, prisma, resetDb, signup, signupTeacher, startServer, stopServer } from './helpers';
 import { purgeStaleSessions } from '../../src/lib/session';
 
 beforeAll(startServer);
@@ -274,5 +274,20 @@ describe('security headers', () => {
       expect(res.headers.get('cross-origin-opener-policy')).toBe('same-origin');
       expect(res.headers.get('cross-origin-embedder-policy')).toBe('require-corp');
     }
+  });
+
+  it('sends a report-only CSP by default and accepts violation reports', async () => {
+    const res = await new Client().get('/api/auth/signup-status');
+    expect(res.headers.get('content-security-policy')).toBeNull();
+    expect(res.headers.get('content-security-policy-report-only')).toContain("default-src 'self'");
+
+    const report = await fetch(`${getBaseUrl()}/api/csp-report`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/csp-report' },
+      body: JSON.stringify({
+        'csp-report': { 'document-uri': 'http://x/student', 'violated-directive': 'script-src', 'blocked-uri': 'https://evil.example' },
+      }),
+    });
+    expect(report.status).toBe(204);
   });
 });

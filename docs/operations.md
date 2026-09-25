@@ -127,7 +127,22 @@ X-Content-Type-Options: nosniff
 Referrer-Policy: strict-origin-when-cross-origin
 ```
 
-`nosniff` はアップロード画像（`/uploads/*`）などがブラウザに別の形式として解釈されるのを防ぎ、`Referrer-Policy` は試験・問題のIDを含むURLが外部サイトへ送られないようにします。`Content-Security-Policy` は、Monaco・Pyodide・WebLLM・Wasmer レジストリなど外部の取得先の許可リスト設計が必要なため、まだ設定していません。
+`nosniff` はアップロード画像（`/uploads/*`）などがブラウザに別の形式として解釈されるのを防ぎ、`Referrer-Policy` は試験・問題のIDを含むURLが外部サイトへ送られないようにします。
+
+### Content-Security-Policy（CSP）
+
+外部から読み込んでよい取得先を許可リストで限定するヘッダーです（2026-09-26）。許可しているのは jsDelivr（Monaco エディタ・Pyodide）、Wasmer レジストリ（C の clang）、Hugging Face / GitHub raw（AI機能のモデル）だけです。サーバーの環境変数 `CSP_MODE` で動作を選びます。
+
+| `CSP_MODE` | 動作 |
+|---|---|
+| `report`（既定） | `Content-Security-Policy-Report-Only` を送る。**何もブロックしない**。違反があればブラウザが `/api/csp-report` に報告し、サーバーのログに `CSP violation: ...` と出る（1分あたり最大30行） |
+| `enforce` | 本当に適用する（許可リスト外の読み込みをブロック） |
+| `off` | 送らない |
+
+- 推奨手順：まず既定の `report` で授業を一通り動かし（C・Python・AI機能を使う場合はそれも）、サーバーログに `CSP violation` が出ないことを確認してから `enforce` にしてください。
+- 自動テスト（E2E）は `enforce` で実行しており、Monaco・JS/TS 実行・Python（Pyodide）・C（clang、`E2E_WITH_C=1` のとき）が違反なしで動くことを確認済みです。AI機能（WebLLM、約2.5GB）は `enforce` では未検証のため、AI機能を使うなら `report` のまま様子を見るのが安全です。
+- Pyodide を別ホストに自ホストした場合などは、`CSP_EXTRA_SOURCES` にその origin（空白区切り、例 `https://mirror.example.ac.jp`）を足してください（同一オリジンに置くなら不要）。
+
 
 ## judgeサービス（Java・C実行）
 

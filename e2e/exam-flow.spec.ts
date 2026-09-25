@@ -91,6 +91,22 @@ async function setEditorCode(page: Page, code: string) {
     .toBe(code);
 }
 
+// Record CSP violations in every page (the server runs with CSP_MODE=enforce)
+// and fail the test if any occurred.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as any).__cspViolations = [];
+    document.addEventListener('securitypolicyviolation', (e) => {
+      (window as any).__cspViolations.push(`${e.violatedDirective} ${e.blockedURI}`);
+    });
+  });
+});
+
+test.afterEach(async ({ page }) => {
+  const violations = await page.evaluate(() => (window as any).__cspViolations ?? []).catch(() => []);
+  expect(violations, 'CSP violations').toEqual([]);
+});
+
 let examId = '';
 let practiceId = '';
 
@@ -222,4 +238,18 @@ test('a Python task runs in the browser through Pyodide', async ({ page }) => {
   await setEditorCode(page, 'a, b = map(int, input().split())\nprint(a + b)\n');
   await page.getByRole('button', { name: /実行（お試し）/ }).click();
   await expect(page.getByText('AC（全テストケース正解）')).toBeVisible({ timeout: 150_000 });
+});
+
+// Opt-in (E2E_WITH_C=1): the first C compile downloads the ~106MB clang
+// toolchain from the Wasmer registry, too heavy for every CI run. Covers the
+// @wasmer/sdk path end to end, including under the enforced CSP.
+test('C: clang compiles and runs in the browser (opt-in: E2E_WITH_C=1)', async ({ page }) => {
+  test.skip(!process.env.E2E_WITH_C, 'set E2E_WITH_C=1 to download clang (~106MB)');
+  test.setTimeout(600_000);
+  await login(page, 'teacher01');
+  await expect(page.getByRole('heading', { name: '教師ダッシュボード' })).toBeVisible();
+  await page.goto('/teacher/sandbox');
+  await page.getByRole('button', { name: '▶ コンパイル＆実行' }).click();
+  await expect(page.getByText('実行成功')).toBeVisible({ timeout: 540_000 });
+  await expect(page.locator('pre', { hasText: '15' })).toBeVisible();
 });

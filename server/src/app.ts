@@ -5,6 +5,7 @@ import express, { type Express } from 'express';
 import path from 'node:path';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
+import { CSP_REPORT_PATH, cspMiddleware, cspMode, cspReportHandler } from './lib/csp';
 import { authRouter } from './routes/auth';
 import { adminRouter } from './routes/admin';
 import { examsRouter } from './routes/exams';
@@ -38,6 +39,13 @@ export function createApp(): Express {
   }
 
   app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
+  // CSP violation reports arrive as application/csp-report (report-uri), so
+  // this route parses that type itself, before the generic JSON parser.
+  app.post(
+    CSP_REPORT_PATH,
+    express.json({ type: ['application/csp-report', 'application/reports+json', 'application/json'], limit: '16kb' }),
+    cspReportHandler,
+  );
   app.use(express.json());
   app.use(cookieParser());
 
@@ -57,6 +65,12 @@ export function createApp(): Express {
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     next();
   });
+  app.use(
+    cspMiddleware(
+      cspMode(process.env.CSP_MODE),
+      (process.env.CSP_EXTRA_SOURCES ?? '').split(/\s+/),
+    ),
+  );
 
   app.get('/health', (_req, res) => {
     res.json({ ok: true });
