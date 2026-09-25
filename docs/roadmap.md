@@ -283,7 +283,6 @@ AIヒント: 教師がタスクごとにON/OFF・最大段階を設定→生徒�
 | 優先 | 項目 | 現状（根拠） | 打ち手の案 |
 |---|---|---|---|
 | 低 | ブラウザ内ランナーの C / Python は E2E 未対象 | E2E（2026-09-26）は JavaScript の問題のみ。C（clang 約106MB）・Python（Pyodide）は初回ダウンロードが重く、CI で毎回取得するのは現実的でない | ランタイムをキャッシュできる環境で、C/Python の問題を1本ずつ追加 |
-| 低 | `PerTestCaseResult` 型の3重定義 | `server/src/lib/judge.ts`・`src/types/student.ts`・`src/types/exam.ts` を手で同期。型のみで実行時テストの対象外 | 共有パッケージ化するか、JSON スキーマ等でのスナップショットテスト |
 | 低 | `main` のブランチ保護が未設定 | CI（`.github/workflows/ci.yml`）は動くが、通過をマージ条件にしていない（2026-09-26、GitHub API で未設定を確認） | GitHub のリポジトリ設定で CI の3ジョブを必須チェックに（ユーザー作業） |
 | 低 | 使い終わった git worktree・ブランチが残っている | worktree `.claude/worktrees/runtime-gate`（ブランチ `feature/hide-score-during-retake`）と、main にマージ済みの `feature/*` ローカルブランチ9本 | 不要なら `git worktree remove` とブランチ削除（git 操作はユーザーが実施） |
 
@@ -332,6 +331,7 @@ AIヒント: 教師がタスクごとにON/OFF・最大段階を設定→生徒�
 - ✅ 自動テスト4層（サーバー単体・DB 結合・judge 経由・フロントエンド単体。テスト用 DB は名前が `_test` で終わらなければ接続拒否）と、`compareOutput` のサーバー／クライアント実装を同じ表で検証するテスト
 - ✅ CI（`.github/workflows/ci.yml`、frontend / server / judge の3ジョブ）と `engines: { node: ">=22.12" }`
 - ✅ ドキュメント: `CLAUDE.md` の Node 22.11 注記を「過去の事情」扱いに更新
+- ✅（2026-09-26）`PerTestCaseResult` 型の3重定義の同期保証 — `server/test/typeParity.test.ts` がサーバー・生徒側・教師側の3つの型と、判定ステータス・比較モード・言語の列挙がサーバー（Prisma）と一致することをコンパイル時に検査。片側だけにフィールドを足すと `typecheck:test` が失敗することを確認
 - ✅（2026-09-26）JS の構文エラー位置 — V8 の SyntaxError には行・列がないため、失敗時だけ sucrase で再パースして `(行:列)` を付け、エディタにマーカーを出す（判定は従来どおり V8）。単体テストと E2E（修正を外すと失敗することを確認）
 - ✅（2026-09-26）AI作問サポートの Java 自動検証 — `check-solution` に任意の入力（`inputs`）で実行するモードを追加し、生成された Java の解答例を judge で実行して期待値を求める（judge が使えないときだけ従来どおり空欄＋警告）。judge 経由のテストで確認（実モデルでの生成は未確認）
 - ✅（2026-09-26）演習モードの提出統計 — 「演習の状況」画面（`/teacher/exams/:examId/practice-stats`）。問題別の正解者数/取り組んだ人数、生徒×問題の正解状況と提出回数、セルから提出履歴（コード）を表示。結合テストと E2E で確認

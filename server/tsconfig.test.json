@@ -1,7 +1,8 @@
 {
   // Typechecks the vitest suite (server/test) — the build tsconfig only
   // covers src/. The suite also imports the frontend's client-side
-  // compareOutput mirror (../src/lib/compareOutput.ts) for the parity test.
+  // compareOutput mirror (../src/lib/compareOutput.ts) for the parity test,
+  // and (via imports) the frontend wire types checked by typeParity.test.ts.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
