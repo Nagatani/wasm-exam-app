@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Client, PASSWORD, prisma, resetDb, signup, signupTeacher, startServer, stopServer } from './helpers';
+import { purgeStaleSessions } from '../../src/lib/session';
 
 beforeAll(startServer);
 afterAll(stopServer);
@@ -243,5 +244,23 @@ describe('teacher force-logout', () => {
     expect((await student.post('/api/students/force-logout', { studentNumber: 's002' })).status).toBe(403);
     expect((await teacher.post('/api/students/force-logout', { studentNumber: 'teacher01' })).status).toBe(400);
     expect((await teacher.post('/api/students/force-logout', { studentNumber: 'nobody' })).status).toBe(404);
+  });
+});
+
+describe('stale session cleanup', () => {
+  it('deletes expired and revoked sessions but keeps live ones', async () => {
+    await signupTeacher();
+    const { client: live, userId } = await signup('s001');
+    const past = new Date(Date.now() - 60_000);
+    await prisma.session.create({ data: { userId, tokenHash: 'expired', expiresAt: past } });
+    await prisma.session.create({
+      data: { userId, tokenHash: 'revoked', expiresAt: new Date(Date.now() + 60_000), revoked: true },
+    });
+
+    expect(await purgeStaleSessions()).toBe(2);
+    const left = await prisma.session.findMany({ where: { userId } });
+    expect(left.map((s) => s.tokenHash)).not.toContain('expired');
+    expect(left.map((s) => s.tokenHash)).not.toContain('revoked');
+    expect((await live.get('/api/auth/me')).status).toBe(200);
   });
 });

@@ -46,3 +46,41 @@ export async function revokeSessionByToken(token: string): Promise<void> {
     data: { revoked: true },
   });
 }
+
+/**
+ * Deletes session rows that can never authenticate again — expired or
+ * revoked. Nothing else ever removes them, so without this the `sessions`
+ * table grows by one row per login forever. Safe to run at any time: a
+ * deleted row and a revoked/expired row are treated identically by
+ * getUserForSessionToken (both → not signed in). Returns the deleted count.
+ */
+export async function purgeStaleSessions(now: Date = new Date()): Promise<number> {
+  const { count } = await prisma.session.deleteMany({
+    where: { OR: [{ expiresAt: { lt: now } }, { revoked: true }] },
+  });
+  return count;
+}
+
+const DEFAULT_CLEANUP_INTERVAL_HOURS = 6;
+
+/**
+ * Runs purgeStaleSessions once at startup and then every
+ * SESSION_CLEANUP_INTERVAL_HOURS (default 6; 0 disables). Called from
+ * index.ts only — not createApp() — so tests never start a timer. The timer
+ * is unref()'d so it never keeps the process alive on its own.
+ */
+export function startSessionCleanup(): void {
+  const raw = process.env.SESSION_CLEANUP_INTERVAL_HOURS;
+  const hours = raw === undefined || raw === '' ? DEFAULT_CLEANUP_INTERVAL_HOURS : Number(raw);
+  if (!Number.isFinite(hours) || hours <= 0) return;
+
+  const run = () =>
+    purgeStaleSessions()
+      .then((n) => {
+        if (n > 0) console.log(`session cleanup: deleted ${n} expired/revoked session(s)`);
+      })
+      .catch((err) => console.error('session cleanup failed:', err));
+
+  void run();
+  setInterval(run, hours * 60 * 60 * 1000).unref();
+}
