@@ -147,7 +147,17 @@ tasksRouter.patch('/:taskId', async (req, res) => {
 // outputs. Java only — client-exec languages (C/JS/TS/Python) are run in the
 // teacher's browser via the same `runClientSide` the student flow uses, so
 // they never hit this endpoint. Never persists anything.
-const checkSolutionSchema = z.object({ code: z.string().min(1).max(200_000) });
+//
+// With `inputs`, runs against those ad-hoc stdin values instead of the saved
+// test cases (outcome `testCaseId` = the input's index as a string, default
+// limits) — AI作問サポート uses this to compute expected outputs for a Java
+// draft whose test cases don't exist yet (2026-09-26).
+const DRAFT_TIME_LIMIT_MS = 2000;
+const DRAFT_MEMORY_LIMIT_MB = 256;
+const checkSolutionSchema = z.object({
+  code: z.string().min(1).max(200_000),
+  inputs: z.array(z.string().max(100_000)).min(1).max(50).optional(),
+});
 
 tasksRouter.post('/:taskId/check-solution', async (req, res) => {
   const task = await prisma.task.findUnique({
@@ -173,17 +183,25 @@ tasksRouter.post('/:taskId/check-solution', async (req, res) => {
     res.status(503).json({ error: 'この言語の実行環境が現在利用できません。' });
     return;
   }
-  if (task.testCases.length === 0) {
+  const { inputs } = parsed.data;
+  if (!inputs && task.testCases.length === 0) {
     res.status(400).json({ error: 'テストケースがありません。' });
     return;
   }
 
-  const tests = task.testCases.map((tc) => ({
-    id: tc.id,
-    stdin: tc.input,
-    timeLimitMs: tc.timeLimitMs,
-    memoryLimitMb: tc.memoryLimitMb,
-  }));
+  const tests = inputs
+    ? inputs.map((stdin, i) => ({
+        id: String(i),
+        stdin,
+        timeLimitMs: DRAFT_TIME_LIMIT_MS,
+        memoryLimitMb: DRAFT_MEMORY_LIMIT_MB,
+      }))
+    : task.testCases.map((tc) => ({
+        id: tc.id,
+        stdin: tc.input,
+        timeLimitMs: tc.timeLimitMs,
+        memoryLimitMb: tc.memoryLimitMb,
+      }));
 
   let jr;
   try {

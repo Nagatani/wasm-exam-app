@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { aiAssistState, generateTaskDraft, loadAiAssistModel } from '../ai/aiAssist';
 import { isServerExec, LANGUAGE_LABEL } from '../lib/language';
 import { runClientSide } from '../runner/clientRunner';
+import { checkSolution } from '../api/tasks';
+import { ApiError } from '../api/client';
 import type { Language } from '../types/exam';
 
 export interface AiAssistApplyDraft {
@@ -26,11 +28,12 @@ interface GeneratedDraft {
   // guessed expected output, just reported so the teacher knows fewer test
   // cases were produced than requested.
   excludedCount: number;
-  // Java has no client-side way to execute the generated solution, so its
-  // test cases always arrive with an empty expectedOutput the teacher must
-  // fill in themselves (e.g. by running "解答例でテストケースを検証" after
-  // saving, or by hand) — never a value invented by the LLM.
+  // Java runs on the server-side judge (check-solution with ad-hoc inputs,
+  // 2026-09-26). Only when the judge is unavailable do its test cases arrive
+  // with an empty expectedOutput the teacher must fill in themselves — never
+  // a value invented by the LLM. `unverifiedReason` says why.
   unverifiedJava: boolean;
+  unverifiedReason?: string;
 }
 
 type Phase = 'idle' | 'loading-model' | 'generating' | 'verifying' | 'ready' | 'error';
@@ -48,10 +51,12 @@ type Phase = 'idle' | 'loading-model' | 'generating' | 'verifying' | 'ready' | '
  * aiAssistSettings.ts); this component doesn't re-check that itself.
  */
 export function AiAssistPanel({
+  taskId,
   language,
   hasExistingContent,
   onApply,
 }: {
+  taskId: string;
   language: Language;
   hasExistingContent: boolean;
   onApply: (draft: AiAssistApplyDraft) => Promise<void>;
@@ -82,23 +87,31 @@ export function AiAssistPanel({
       setProgressText('生成しています...');
       const generated = await generateTaskDraft({ language, prompt, testCaseCount });
 
-      if (serverExec) {
-        setDraft({
-          statementMarkdown: generated.statementMarkdown,
-          starterCode: generated.starterCode,
-          solutionCode: generated.solutionCode,
-          verified: generated.testCaseInputs.map((input) => ({ input, expectedOutput: '' })),
-          excludedCount: 0,
-          unverifiedJava: true,
-        });
-        setPhase('ready');
-        return;
-      }
-
       setPhase('verifying');
       setProgressText('解答例を実行してテストケースの期待値を求めています...');
-      const testCases = generated.testCaseInputs.map((input, i) => ({ id: String(i), input }));
-      const result = await runClientSide(language, generated.solutionCode, testCases, () => {});
+      let result;
+      if (serverExec) {
+        try {
+          result = await checkSolution(taskId, generated.solutionCode, generated.testCaseInputs);
+        } catch (err) {
+          // Judge down / not configured / busy: fall back to unverified cases
+          // rather than losing the whole draft.
+          setDraft({
+            statementMarkdown: generated.statementMarkdown,
+            starterCode: generated.starterCode,
+            solutionCode: generated.solutionCode,
+            verified: generated.testCaseInputs.map((input) => ({ input, expectedOutput: '' })),
+            excludedCount: 0,
+            unverifiedJava: true,
+            unverifiedReason: err instanceof ApiError ? err.message : undefined,
+          });
+          setPhase('ready');
+          return;
+        }
+      } else {
+        const testCases = generated.testCaseInputs.map((input, i) => ({ id: String(i), input }));
+        result = await runClientSide(language, generated.solutionCode, testCases, () => {});
+      }
       if (result.compileFailed) {
         throw new Error(
           `生成された解答例のコンパイル/検証に失敗しました。もう一度「生成する」をお試しください。（${result.compileStderr.slice(0, 200)}）`,
@@ -106,7 +119,7 @@ export function AiAssistPanel({
       }
       const verified: VerifiedCase[] = [];
       for (const [i, input] of generated.testCaseInputs.entries()) {
-        const outcome = result.outcomes[i];
+        const outcome = result.outcomes.find((o) => o.testCaseId === String(i));
         if (outcome?.stage === 'success') {
           verified.push({ input, expectedOutput: outcome.stdout });
         }
@@ -220,7 +233,8 @@ export function AiAssistPanel({
               </p>
               {draft.unverifiedJava && (
                 <p className="mb-2 text-xs text-mp-orange">
-                  ⚠️ Java は自動検証に対応していません。期待される出力は空欄で追加されるので、保存後に必ず動作確認してください。
+                  ⚠️ Java の実行環境（judge）で解答例を実行できなかったため、期待される出力は空欄で追加されます。保存後に「解答例でテストケースを検証」などで必ず確認してください。
+                  {draft.unverifiedReason && `（${draft.unverifiedReason}）`}
                 </p>
               )}
               <div className="flex items-center gap-2">

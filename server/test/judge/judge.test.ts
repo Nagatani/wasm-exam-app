@@ -149,6 +149,20 @@ describe('teacher: check-solution (Java)', () => {
     expect(await prisma.submission.count()).toBe(0);
   });
 
+  it('runs against ad-hoc inputs (AI作問サポート draft) even with no saved test cases', async () => {
+    const { teacher, tasks } = await javaSetup({ publish: false });
+    await prisma.testCase.deleteMany();
+    const url = `/api/tasks/${tasks[0].id}/check-solution`;
+    expect((await teacher.post(url, { code: JAVA_SUM })).status).toBe(400); // no test cases, no inputs
+    const res = await teacher.post(url, { code: JAVA_SUM, inputs: ['2 5', '100 -1'] });
+    expect(res.status).toBe(200);
+    expect(res.body.outcomes.map((o: { testCaseId: string; stdout: string }) => [o.testCaseId, o.stdout.trim()])).toEqual([
+      ['0', '7'],
+      ['1', '99'],
+    ]);
+    expect(await prisma.testCase.count()).toBe(0);
+  });
+
   it('is refused for a browser-executed language', async () => {
     const { client: teacher } = await signupTeacher();
     const exam = await createExam(teacher, { publish: false, tasks: [{ language: 'PYTHON' }] });

@@ -115,10 +115,12 @@ export interface SolutionCheckResponse {
   outcomes: { testCaseId: string; stage: 'success' | 'runtime_error'; stdout: string }[];
 }
 
-export function checkSolution(taskId: string, code: string) {
+// Java only (server-side judge). With `inputs`, runs against those ad-hoc
+// stdin values instead of the saved test cases (outcome testCaseId = index).
+export function checkSolution(taskId: string, code: string, inputs?: string[]) {
   return apiFetch<SolutionCheckResponse>(`/api/tasks/${taskId}/check-solution`, {
     method: 'POST',
-    body: JSON.stringify({ code }),
+    body: JSON.stringify(inputs ? { code, inputs } : { code }),
   });
 }
 

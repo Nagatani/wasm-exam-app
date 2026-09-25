@@ -737,6 +737,7 @@ export function TaskEditorPage() {
         {aiAssistEnabled ? (
           <Suspense fallback={<p className="mb-3 text-xs text-mp-muted">読み込み中...</p>}>
             <AiAssistPanel
+              taskId={task.id}
               language={task.language}
               hasExistingContent={
                 task.statementMarkdown.trim() !== '' || !isUntouchedTemplate(task.starterCode ?? '')
