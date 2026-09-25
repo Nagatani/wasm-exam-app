@@ -8,102 +8,11 @@ import { HelpPopover } from '../components/HelpPopover';
 import { EXAM_MODE_HELP_TEXT } from '../lib/examModeHelp';
 import { createExam, duplicateExam, listExams } from '../api/exams';
 import { listCourses } from '../api/courses';
-import { getServiceHealth, promoteToTeacher, type ServiceHealth } from '../api/admin';
 import { ApiError } from '../api/client';
 import { datetimeLocalToIso } from '../lib/datetime';
 import { ALL_LANGUAGES, LANGUAGE_LABEL } from '../lib/language';
 import type { ExamSummary, ExamStatus, ExamMode, Language } from '../types/exam';
 import type { CourseSummary } from '../types/course';
-
-function ServiceStatusStrip() {
-  const [health, setHealth] = useState<ServiceHealth | null>(null);
-
-  useEffect(() => {
-    const tick = () => getServiceHealth().then(setHealth).catch(() => setHealth(null));
-    tick();
-    const id = setInterval(tick, 30_000);
-    return () => clearInterval(id);
-  }, []);
-
-  const dot = (state: string) =>
-    state === 'ok'
-      ? 'text-mp-green'
-      : state === 'disabled'
-        ? 'text-mp-muted'
-        : 'text-mp-red';
-  const word: Record<string, string> = {
-    ok: '正常',
-    error: '接続不可',
-    disabled: '無効',
-  };
-
-  if (!health) return null;
-  return (
-    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-mp-border bg-mp-surface p-2 text-xs">
-      <span className="font-bold text-mp-muted">サービス状態</span>
-      <span className={dot(health.db)}>● DB: {word[health.db] ?? health.db}</span>
-      <span className={dot(health.judge)}>
-        ● Java judge: {word[health.judge] ?? health.judge}
-      </span>
-    </div>
-  );
-}
-
-function PromoteTeacherForm() {
-  const [studentNumber, setStudentNumber] = useState('');
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    setMessage(null);
-    try {
-      const { user } = await promoteToTeacher(studentNumber.trim());
-      setMessage({ ok: true, text: `${user.displayName}（${user.studentNumber}）を教員にしました。` });
-      setStudentNumber('');
-    } catch (err) {
-      setMessage({
-        ok: false,
-        text: err instanceof ApiError ? err.message : '昇格に失敗しました。',
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <form
-      onSubmit={handleSubmit}
-      className="mb-6 flex flex-wrap items-end gap-2 rounded-lg border border-mp-border bg-mp-surface p-3"
-    >
-      <div>
-        <label className="mb-1 block text-xs text-mp-muted" htmlFor="promote-sn">
-          学籍番号を指定して教員に昇格
-        </label>
-        <input
-          id="promote-sn"
-          className="rounded border border-mp-border bg-mp-bg px-3 py-1.5 text-sm text-mp-fg"
-          value={studentNumber}
-          onChange={(e) => setStudentNumber(e.target.value)}
-          required
-        />
-      </div>
-      <button
-        type="submit"
-        disabled={submitting || studentNumber.trim() === ''}
-        className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
-      >
-        {submitting ? '処理中...' : '昇格'}
-      </button>
-      {message && (
-        <span className={`text-xs ${message.ok ? 'text-mp-green' : 'text-mp-red'}`}>
-          {message.text}
-        </span>
-      )}
-    </form>
-  );
-}
 
 const STATUS_LABEL: Record<ExamStatus, string> = {
   DRAFT: '非公開',
@@ -116,7 +25,6 @@ export function TeacherDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [showAdminMenu, setShowAdminMenu] = useState(false);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
 
   async function loadExams() {
@@ -150,17 +58,7 @@ export function TeacherDashboard() {
 
   return (
     <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
-      <AppHeader
-        title="教師ダッシュボード"
-        actions={
-          <Link
-            to="/teacher/courses"
-            className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm hover:bg-mp-surface-hover"
-          >
-            クラス管理
-          </Link>
-        }
-      />
+      <AppHeader title="教師ダッシュボード" />
 
       <p className="mb-4 text-mp-muted">ようこそ、{profile?.displayName} さん。</p>
 
@@ -243,26 +141,6 @@ export function TeacherDashboard() {
         </ul>
       )}
 
-      <div className="mt-8 border-t border-mp-border pt-4">
-        <button
-          onClick={() => setShowAdminMenu((v) => !v)}
-          className="text-sm text-mp-muted hover:text-mp-fg"
-        >
-          {showAdminMenu ? '▼' : '▶'} 管理者メニュー
-        </button>
-        {showAdminMenu && (
-          <div className="mt-2 space-y-3">
-            <ServiceStatusStrip />
-            <PromoteTeacherForm />
-            <Link
-              to="/teacher/sandbox"
-              className="inline-block text-xs text-mp-muted underline hover:text-mp-fg"
-            >
-              サンドボックス動作確認（開発用の動作検証ツール）
-            </Link>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

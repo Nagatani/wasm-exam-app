@@ -24,7 +24,7 @@ import { PageSkeleton } from '../components/Skeleton';
 import { SampleDiff } from '../components/SampleDiff';
 import type { EditorMarker } from '../components/CodeEditor';
 import { parseCompileErrors } from '../lib/compileErrors';
-import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
+import { confirmLeaveIfDirty, useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { ApiError } from '../api/client';
 import type { JudgeOutcome, JudgeVerdict } from '../types/student';
 import type { PracticeSubmissionSummary, PracticeTask, PracticeTaskSummary } from '../types/practice';
@@ -294,7 +294,7 @@ export function PracticeTaskPage() {
               演習セットに戻る
             </Link>
             <div className="border-l border-mp-border pl-3">
-              <UserDrawer />
+              <UserDrawer beforeNavigate={confirmLeaveIfDirty(dirty)} />
             </div>
           </div>
         </div>

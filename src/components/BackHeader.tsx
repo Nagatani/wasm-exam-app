@@ -6,13 +6,22 @@ import { UserDrawer } from './UserDrawer';
  * a "back" link on the left and the user menu on the right. Keeps the
  * back-link markup and spacing identical across those pages.
  */
-export function BackHeader({ to, label }: { to: string; label: string }) {
+export function BackHeader({
+  to,
+  label,
+  beforeNavigate,
+}: {
+  to: string;
+  label: string;
+  // Forwarded to UserDrawer — see its doc comment.
+  beforeNavigate?: () => Promise<boolean>;
+}) {
   return (
     <div className="mb-4 flex items-center justify-between gap-3">
       <Link to={to} className="inline-block text-sm font-semibold text-mp-cyan hover:underline">
         ← {label}
       </Link>
-      <UserDrawer />
+      <UserDrawer beforeNavigate={beforeNavigate} />
     </div>
   );
 }

@@ -17,3 +17,13 @@ export function useUnsavedGuard(dirty: boolean): void {
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
 }
+
+/**
+ * `beforeNavigate` handler for UserDrawer / BackHeader on a page guarded by
+ * useUnsavedGuard: the drawer's in-app links aren't covered by
+ * `beforeunload`, so ask before leaving unsaved edits behind.
+ */
+export function confirmLeaveIfDirty(dirty: boolean): () => Promise<boolean> {
+  return async () =>
+    !dirty || window.confirm('保存していない変更があります。破棄して移動しますか？');
+}
