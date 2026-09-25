@@ -182,3 +182,24 @@ describe('judgeSubmission: non-revealing WA hints', () => {
     expect(r.hint).not.toContain(secret.toLowerCase());
   });
 });
+
+describe('judgeSubmission: run time', () => {
+  it('copies each outcome’s timeMs onto its result, and never lets it affect the verdict', () => {
+    const v = judge([
+      { ...outcome('t1'), timeMs: 12 },
+      { ...outcome('t2', 'ng'), timeMs: 9999 },
+      { ...outcome('t3', '', 'tle'), timeMs: 10000 },
+    ]);
+    expect(v.results.map((r) => [r.status, r.timeMs])).toEqual([
+      ['AC', 12],
+      ['WA', 9999],
+      ['TLE', 10000],
+    ]);
+  });
+
+  it('omits timeMs when the outcome has none (older clients / judge images)', () => {
+    const v = judge([outcome('t1'), outcome('t2'), outcome('t3')]);
+    expect(v.results.every((r) => !('timeMs' in r))).toBe(true);
+    expect(v.overallStatus).toBe('AC');
+  });
+});

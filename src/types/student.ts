@@ -112,6 +112,8 @@ export interface PerTestCaseResult {
   isSample: boolean;
   status: PerTestCaseStatus;
   actualOutput: string;
+  // Wall-clock run time (ms) — informational, never part of the verdict.
+  timeMs?: number;
   // Non-revealing category for a WA (e.g. "may just be a whitespace/case
   // difference") — never the expected output itself, so it's safe to show
   // for a hidden test case too. Only present on the run-preview response.
@@ -130,6 +132,7 @@ export interface JudgeOutcome {
   testCaseId: string;
   stage: 'success' | 'runtime_error' | 'tle' | 'mle';
   stdout: string;
+  timeMs?: number;
 }
 
 // ---- final submission / review ----

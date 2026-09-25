@@ -797,6 +797,9 @@ function SubmissionDetailView({
                     <th className="px-2 py-1 text-left">期待</th>
                     <th className="px-2 py-1 text-left">実際</th>
                     <th className="px-2 py-1 text-left">判定</th>
+                    <th className="px-2 py-1 text-left" title="実行時間。C/JS/TS/Python は生徒の端末で計測した目安、Java は judge での計測（JVM の起動時間を含む）">
+                      時間
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="font-mono">
@@ -829,6 +832,9 @@ function SubmissionDetailView({
                           ) : (
                             '-'
                           )}
+                        </td>
+                        <td className="whitespace-nowrap px-2 py-1 text-mp-muted">
+                          {r?.timeMs !== undefined ? `${r.timeMs}ms` : '-'}
                         </td>
                       </tr>
                     );

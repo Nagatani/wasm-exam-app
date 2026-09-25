@@ -40,7 +40,9 @@ import java.util.concurrent.TimeUnit;
  *                    "timeLimitMs": 2000, "memoryLimitMb": 256 } ] }
  *   200 { "compile": { "ok": bool, "stderr": "..." },
  *         "results": [ { "id", "stdout", "stderr", "exitCode",
- *                        "timedOut": bool, "oom": bool } ] }
+ *                        "timedOut": bool, "oom": bool, "timeMs": long } ] }
+ *   timeMs = wall-clock from process start to exit (for Java this includes
+ *   JVM startup, typically a few hundred ms).
  *
  * The verdict (AC/WA/CE) is NOT computed here — the app server re-derives it
  * from these raw outcomes via its own judgeSubmission(). This service only
@@ -123,15 +125,17 @@ public final class Judge {
     final Integer exitCode;
     final boolean timedOut;
     final boolean oom;
+    final long timeMs;
 
     TestOutcome(String id, String stdout, String stderr, Integer exitCode,
-        boolean timedOut, boolean oom) {
+        boolean timedOut, boolean oom, long timeMs) {
       this.id = id;
       this.stdout = stdout;
       this.stderr = stderr;
       this.exitCode = exitCode;
       this.timedOut = timedOut;
       this.oom = oom;
+      this.timeMs = timeMs;
     }
   }
 
@@ -375,6 +379,7 @@ public final class Judge {
     pb.environment().put("LANG", "C.UTF-8");
 
     Process process = pb.start();
+    long startedNanos = System.nanoTime();
 
     Thread stdinPump = new Thread(() -> {
       try (OutputStream os = process.getOutputStream()) {
@@ -393,6 +398,7 @@ public final class Judge {
     errDrainer.start();
 
     boolean exited = process.waitFor(timeLimitMs + 500, TimeUnit.MILLISECONDS);
+    long timeMs = (System.nanoTime() - startedNanos) / 1_000_000;
     boolean timedOut = false;
     if (!exited) {
       timedOut = true;
@@ -418,7 +424,7 @@ public final class Judge {
     boolean oom = !isC
         && (stderr.contains("OutOfMemoryError") || stderr.contains("java.lang.OutOfMemoryError"));
 
-    return new TestOutcome(test.id, stdout, stderr, exitCode, timedOut, oom);
+    return new TestOutcome(test.id, stdout, stderr, exitCode, timedOut, oom, timeMs);
   }
 
   // ---- helpers ----------------------------------------------------------

@@ -71,6 +71,17 @@ describe('Java: preview run', () => {
     expect(res.body.verdict.overallStatus).toBe('TLE');
   });
 
+  it('reports each test case’s run time measured in the judge', async () => {
+    const { student, tasks } = await javaSetup();
+    const res = await student.post(`/api/student/tasks/${tasks[0].id}/run`, { code: JAVA_SUM });
+    expect(res.body.verdict.overallStatus).toBe('AC');
+    for (const r of res.body.verdict.results as { timeMs?: number }[]) {
+      expect(r.timeMs).toEqual(expect.any(Number));
+      expect(r.timeMs).toBeGreaterThan(0); // includes JVM startup
+      expect(r.timeMs).toBeLessThan(15_000);
+    }
+  });
+
   it('an uncaught exception → per-test RE, overall WA', async () => {
     const { student, tasks } = await javaSetup();
     const res = await student.post(`/api/student/tasks/${tasks[0].id}/run`, { code: JAVA_THROWS });

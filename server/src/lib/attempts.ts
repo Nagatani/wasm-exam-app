@@ -89,6 +89,7 @@ export function judgeInputFromContainer(jr: Awaited<ReturnType<typeof runOnJudge
             ? ('runtime_error' as const)
             : ('success' as const),
       stdout: r.stdout,
+      timeMs: r.timeMs,
     })),
   };
 }

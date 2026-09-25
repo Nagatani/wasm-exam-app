@@ -188,6 +188,8 @@ export interface SubmissionDetailResult {
   isSample: boolean;
   status: PerTestCaseStatus;
   actualOutput: string;
+  // Wall-clock run time (ms); absent on submissions judged before 2026-09-26.
+  timeMs?: number;
   // Same non-revealing WA category as the student-facing run preview (see
   // src/types/student.ts). Redundant for a teacher, who already sees
   // `expectedOutput` unconditionally here, but kept in sync since it's

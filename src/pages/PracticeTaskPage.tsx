@@ -523,6 +523,11 @@ export function PracticeTaskPage() {
                       </span>
                       <span className={result?.status ? TESTCASE_STATUS_COLOR[result.status] ?? 'text-mp-red' : ''}>
                         {result?.status ? `${statusGlyph(result.status)} ${result.status}` : '-'}
+                        {result?.timeMs !== undefined && (
+                          <span className="ml-1 font-normal text-mp-muted" title="実行時間（この端末での目安）">
+                            {result.timeMs}ms
+                          </span>
+                        )}
                       </span>
                     </div>
                     {tc.isSample && result && (

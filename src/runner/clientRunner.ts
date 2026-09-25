@@ -55,13 +55,21 @@ export async function runClientSide(
   onProgress({ phase: 'compiling' });
   const total = testCases.length;
   const outcomes: JudgeOutcome[] = [];
-  const record = (id: string, r: { ok: boolean; timedOut: boolean; stdout: string }) => {
+  // Wall-clock time per test case, measured around the runner call (so it
+  // includes e.g. JS's per-test Worker startup) — a rough guide for the
+  // teacher, never used for the verdict.
+  const timed = async <T>(run: () => Promise<T>): Promise<[T, number]> => {
+    const start = performance.now();
+    const result = await run();
+    return [result, Math.round(performance.now() - start)];
+  };
+  const record = (id: string, r: { ok: boolean; timedOut: boolean; stdout: string }, timeMs: number) => {
     const stage: JudgeOutcome['stage'] = r.timedOut
       ? 'tle'
       : r.ok
         ? 'success'
         : 'runtime_error';
-    outcomes.push({ testCaseId: id, stage, stdout: r.stdout });
+    outcomes.push({ testCaseId: id, stage, stdout: r.stdout, timeMs });
   };
 
   if (language === 'C') {
@@ -71,8 +79,9 @@ export async function runClientSide(
     }
     for (const [index, tc] of testCases.entries()) {
       onProgress({ phase: 'running', current: index + 1, total });
-      const result = await runCompiledC(compiled.wasmBinary, tc.input);
-      record(tc.id, result);
+      const wasm = compiled.wasmBinary;
+      const [result, ms] = await timed(() => runCompiledC(wasm, tc.input));
+      record(tc.id, result, ms);
     }
     return { compileFailed: false, compileStderr: '', outcomes };
   }
@@ -84,8 +93,8 @@ export async function runClientSide(
     }
     for (const [index, tc] of testCases.entries()) {
       onProgress({ phase: 'running', current: index + 1, total });
-      const result = await runJsOnce(prepared.js, tc.input);
-      record(tc.id, result);
+      const [result, ms] = await timed(() => runJsOnce(prepared.js, tc.input));
+      record(tc.id, result, ms);
     }
     return { compileFailed: false, compileStderr: '', outcomes };
   }
@@ -97,8 +106,8 @@ export async function runClientSide(
     }
     for (const [index, tc] of testCases.entries()) {
       onProgress({ phase: 'running', current: index + 1, total });
-      const result = await runPyOnce(source, tc.input);
-      record(tc.id, result);
+      const [result, ms] = await timed(() => runPyOnce(source, tc.input));
+      record(tc.id, result, ms);
     }
     return { compileFailed: false, compileStderr: '', outcomes };
   }

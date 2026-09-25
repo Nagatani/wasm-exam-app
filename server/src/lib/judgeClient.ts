@@ -33,6 +33,8 @@ export interface JudgeTestOutcome {
   exitCode: number | null;
   timedOut: boolean;
   oom: boolean;
+  // Wall-clock run time; absent from a judge image built before 2026-09-26.
+  timeMs?: number;
 }
 
 export interface JudgeRunResponse {

@@ -133,6 +133,8 @@ test('the teacher sees the graded result and the submitted code', async ({ page 
   await expect(page.getByText('readline().split')).toBeVisible();
   // Hidden test case is judged too (and visible to the teacher).
   await expect(page.getByText('1 回目の受験の提出')).toBeVisible();
+  // Run time measured in the student's browser is shown per test case.
+  await expect(page.getByRole('cell', { name: /^\d+ms$/ }).first()).toBeVisible();
 });
 
 test('practice mode: unsaved code survives a reload and can be restored, then submitted', async ({ page }) => {

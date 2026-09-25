@@ -232,6 +232,7 @@ tasksRouter.post('/:taskId/check-solution', async (req, res) => {
           ? ('runtime_error' as const)
           : ('success' as const),
       stdout: r.stdout,
+      timeMs: r.timeMs,
     })),
   });
 });

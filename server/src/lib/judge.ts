@@ -6,6 +6,11 @@ export interface ClientTestCaseOutcome {
   // 'mle'          — hit the memory limit (server-exec only for now)
   stage: 'success' | 'runtime_error' | 'tle' | 'mle';
   stdout: string;
+  // Wall-clock run time of this test case (ms). Informational only — never
+  // affects the verdict (limits are enforced by the runners themselves). For
+  // client-exec languages it's self-reported by the browser, same trust level
+  // as stdout.
+  timeMs?: number;
 }
 
 export interface JudgeInput {
@@ -20,6 +25,8 @@ export interface PerTestCaseResult {
   isSample: boolean;
   status: PerTestCaseStatus;
   actualOutput: string;
+  // Copied from the outcome (see ClientTestCaseOutcome.timeMs).
+  timeMs?: number;
   // A coarse, non-revealing category for *why* a WA happened (e.g. "the
   // output would match under looser whitespace rules") — never the expected
   // content itself, so it's safe to show even for a hidden test case. Only
@@ -167,12 +174,14 @@ export function judgeSubmission(
     if (!outcome) {
       return { testCaseId: tc.id, isSample: tc.isSample, status: 'WA', actualOutput: '' };
     }
+    const timing = outcome.timeMs === undefined ? {} : { timeMs: outcome.timeMs };
     if (outcome.stage !== 'success') {
       return {
         testCaseId: tc.id,
         isSample: tc.isSample,
         status: STAGE_TO_STATUS[outcome.stage],
         actualOutput: outcome.stdout,
+        ...timing,
       };
     }
     const matched = compareOutput(tc.expectedOutput, outcome.stdout, comparison);
@@ -180,7 +189,7 @@ export function judgeSubmission(
     const hint = matched
       ? undefined
       : computeWaHint(tc.expectedOutput, outcome.stdout, comparison);
-    return { testCaseId: tc.id, isSample: tc.isSample, status, actualOutput: outcome.stdout, hint };
+    return { testCaseId: tc.id, isSample: tc.isSample, status, actualOutput: outcome.stdout, hint, ...timing };
   });
 
   const overallStatus = computeOverall(results);

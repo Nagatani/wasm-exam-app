@@ -18,6 +18,7 @@ export const outcomeSchema = z.object({
   testCaseId: z.string(),
   stage: z.enum(['success', 'runtime_error', 'tle', 'mle']),
   stdout: z.string(),
+  timeMs: z.number().int().min(0).max(3_600_000).optional(),
 });
 
 export const clientExecSchema = z.object({
@@ -108,6 +109,7 @@ export async function resolveOutcomes(
           ? ('runtime_error' as const)
           : ('success' as const),
     stdout: r.stdout,
+    timeMs: r.timeMs,
   }));
 
   return { judgeInput: { compileFailed: false, outcomes }, compileStderr: '' };
