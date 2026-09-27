@@ -27,7 +27,14 @@ export function isServerGraded(): boolean {
 }
 
 const RETRY_DELAY_MS = Math.max(1000, Number(process.env.GRADING_RETRY_MS ?? 15_000));
-const CONCURRENCY = Math.max(1, Number(process.env.GRADING_CONCURRENCY ?? process.env.JUDGE_CONCURRENCY ?? 3));
+// Attempts graded at once. Twice the judge slot count by default, so while one
+// attempt is between tasks (DB writes) another already has its next judge
+// request queued — the judge slots (withJudgeCapacity) stay busy, and they
+// alone bound the actual judge load.
+const CONCURRENCY = Math.max(
+  1,
+  Number(process.env.GRADING_CONCURRENCY ?? 2 * Number(process.env.JUDGE_CONCURRENCY ?? 2)),
+);
 
 // Run one task's code through the judge and derive the verdict exactly like
 // every other path (judgeSubmission).

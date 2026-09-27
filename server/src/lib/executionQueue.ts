@@ -9,7 +9,10 @@
 // This is deliberately a tiny in-process primitive (no Redis/pg-boss): the
 // operational deployment is a single Node process (consolidated serving).
 
-const GLOBAL_LIMIT = Math.max(1, Number(process.env.JUDGE_CONCURRENCY ?? 3));
+// Keep equal to the judge container's JUDGE_MAX_CONCURRENT (default 2) — more
+// only makes requests queue inside the judge instead of here, where the
+// interactive-first ordering below applies.
+const GLOBAL_LIMIT = Math.max(1, Number(process.env.JUDGE_CONCURRENCY ?? 2));
 
 export class QueueRejectedError extends Error {
   constructor(message: string) {
@@ -19,16 +22,21 @@ export class QueueRejectedError extends Error {
 }
 
 let active = 0;
-const waiters: Array<() => void> = [];
+// Two waiting lines: interactive work (a student's "実行", a teacher's
+// check-solution / regrade) is always served before the background grader,
+// so a class-wide final-submit rush never makes a live preview wait behind
+// dozens of gradings.
+const interactiveWaiters: Array<() => void> = [];
+const backgroundWaiters: Array<() => void> = [];
 const usersInFlight = new Set<string>();
 
-function acquireGlobalSlot(): Promise<void> {
+function acquireGlobalSlot(priority: 'interactive' | 'background' = 'interactive'): Promise<void> {
   if (active < GLOBAL_LIMIT) {
     active += 1;
     return Promise.resolve();
   }
   return new Promise((resolve) => {
-    waiters.push(() => {
+    (priority === 'interactive' ? interactiveWaiters : backgroundWaiters).push(() => {
       active += 1;
       resolve();
     });
@@ -37,7 +45,7 @@ function acquireGlobalSlot(): Promise<void> {
 
 function releaseGlobalSlot(): void {
   active -= 1;
-  const next = waiters.shift();
+  const next = interactiveWaiters.shift() ?? backgroundWaiters.shift();
   if (next) next();
 }
 
@@ -69,7 +77,7 @@ export async function withJudgeSlot<T>(userId: string, fn: () => Promise<T>): Pr
  * another and must queue, never be rejected.
  */
 export async function withJudgeCapacity<T>(fn: () => Promise<T>): Promise<T> {
-  await acquireGlobalSlot();
+  await acquireGlobalSlot('background');
   try {
     return await fn();
   } finally {

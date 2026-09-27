@@ -37,8 +37,11 @@ services:
     security_opt:
       - no-new-privileges:true
     pids_limit: 512
-    mem_limit: 1g
-    cpus: 2.0
+    # Grading throughput scales with CPUs (docs/operations.md "採点の処理能力"):
+    # set JUDGE_CPUS and JUDGE_MAX_CONCURRENT together (≈ one run per CPU)
+    # and the server's JUDGE_CONCURRENCY to the same value.
+    mem_limit: ${JUDGE_MEM_LIMIT:-1g}
+    cpus: ${JUDGE_CPUS:-2.0}
     tmpfs:
       # Both noexec (Docker's tmpfs default): nothing is ever exec()ed from
       # here — Java runs .class data with the rootfs `java`, and C is compiled
@@ -47,7 +50,7 @@ services:
       - /work:size=192m,mode=1777
       - /tmp:size=64m,mode=1777
     environment:
-      JUDGE_MAX_CONCURRENT: '2'
+      JUDGE_MAX_CONCURRENT: ${JUDGE_MAX_CONCURRENT:-2}
     ports:
       # Loopback only. In the two-terminal dev workflow the app server runs on
       # the host and reaches the judge here; set JUDGE_URL=http://localhost:4001.

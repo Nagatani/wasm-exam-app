@@ -40,8 +40,11 @@ services:
     security_opt:
       - no-new-privileges:true
     pids_limit: 512
-    mem_limit: 1g
-    cpus: 2.0
+    # Grading throughput scales with CPUs (docs/operations.md "採点の処理能力"):
+    # set JUDGE_CPUS and JUDGE_MAX_CONCURRENT together (≈ one run per CPU)
+    # and the server's JUDGE_CONCURRENCY to the same value.
+    mem_limit: ${JUDGE_MEM_LIMIT:-1g}
+    cpus: ${JUDGE_CPUS:-2.0}
     tmpfs:
       # Both noexec (Docker's tmpfs default): nothing is ever exec()ed from
       # here — Java runs .class data with the rootfs `java`, and C is compiled
@@ -50,7 +53,7 @@ services:
       - /work:size=192m,mode=1777
       - /tmp:size=64m,mode=1777
     environment:
-      JUDGE_MAX_CONCURRENT: '2'
+      JUDGE_MAX_CONCURRENT: ${JUDGE_MAX_CONCURRENT:-2}
     networks:
       - internal
     # No `ports:` on purpose — see the file-level comment above.
@@ -68,6 +71,8 @@ services:
       # above. Anything set for JUDGE_URL in server/.env.prod.docker is
       # overridden by this.
       JUDGE_URL: http://judge:8080
+      # Same value as the judge's JUDGE_MAX_CONCURRENT (above) — always in step.
+      JUDGE_CONCURRENCY: ${JUDGE_MAX_CONCURRENT:-2}
     ports:
       - '4000:4000'
     volumes:
