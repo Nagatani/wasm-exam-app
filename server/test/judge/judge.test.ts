@@ -165,6 +165,15 @@ describe('Java: practice mode', () => {
   });
 });
 
+describe('publish check with a judge', () => {
+  it('does not warn about browser-only grading when a judge is configured', async () => {
+    const { client: teacher } = await signupTeacher();
+    const exam = await createExam(teacher, { publish: false, tasks: [{ language: 'C' }, { language: 'JAVA' }] });
+    const issues: Array<{ message: string }> = (await teacher.get(`/api/exams/${exam.examId}/publish-check`)).body.issues;
+    expect(issues.some((i) => i.message.includes('judge'))).toBe(false);
+  });
+});
+
 describe('teacher: check-solution (Java)', () => {
   it('returns raw stdout per test case without persisting anything', async () => {
     const { teacher, tasks } = await javaSetup({ publish: false });

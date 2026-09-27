@@ -285,6 +285,22 @@ examsRouter.get('/:examId/publish-check', async (req, res) => {
   if (exam.tasks.length > 0 && totalPoints === 0) {
     issues.push({ level: 'warn', message: '合計配点が0点です。' });
   }
+  const LANGUAGE_LABEL: Record<string, string> = { C: 'C', JAVA: 'Java', JS: 'JavaScript', TS: 'TypeScript', PYTHON: 'Python' };
+  // Without a judge, an EXAM's grading falls back to browser-reported outcomes
+  // for C/JS/TS/Python (and a deadline auto-finalize can't run those drafts:
+  // they score 0). One exam-level warning — Java tasks already get a per-task
+  // error above. PRACTICE submits are graded client-side by design either way.
+  const browserGradedLanguages = [
+    ...new Set(exam.tasks.map((t) => t.language).filter((l) => !isServerExec(l))),
+  ];
+  if (exam.mode === 'EXAM' && !isJudgeConfigured() && browserGradedLanguages.length > 0) {
+    issues.push({
+      level: 'warn',
+      message:
+        `採点サーバー（judge）が未設定のため、${browserGradedLanguages.map((l) => LANGUAGE_LABEL[l]).join(' / ')} の問題は生徒のブラウザでの実行結果で採点されます` +
+        '（生徒の端末の速さで時間切れの判定が変わることがあり、時間切れの自動提出ではこれらの問題は0点になります）。確認テストでは judge の設定を推奨します。',
+    });
+  }
   // opensAt/closesAt are EXAM-only concepts — a PRACTICE exam ignores them
   // even if somehow set, so there's nothing to warn about here.
   if (exam.mode === 'EXAM') {

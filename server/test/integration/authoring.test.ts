@@ -216,6 +216,28 @@ describe('publish check', () => {
     expect(messages.some((m) => m.includes('空'))).toBe(true);
     expect(messages.some((m) => m.includes('OK'))).toBe(false);
   });
+
+  it('warns once that browser-executed languages are not server-graded without a judge (EXAM only)', async () => {
+    const { client: teacher } = await signupTeacher();
+    const exam = await createExam(teacher, {
+      publish: false,
+      tasks: [{ language: 'C' }, { language: 'PYTHON' }, { language: 'PYTHON' }],
+    });
+    const issues: Array<{ level: string; message: string }> = (
+      await teacher.get(`/api/exams/${exam.examId}/publish-check`)
+    ).body.issues;
+    const judgeWarnings = issues.filter((i) => i.message.includes('judge'));
+    expect(judgeWarnings).toHaveLength(1);
+    expect(judgeWarnings[0].level).toBe('warn');
+    expect(judgeWarnings[0].message).toContain('C / Python');
+
+    // Practice sets are graded in the browser by design — no warning.
+    const practice = await createExam(teacher, { mode: 'PRACTICE', publish: false, tasks: [{ language: 'JS' }] });
+    const practiceIssues: Array<{ message: string }> = (
+      await teacher.get(`/api/exams/${practice.examId}/publish-check`)
+    ).body.issues;
+    expect(practiceIssues.some((i) => i.message.includes('judge'))).toBe(false);
+  });
 });
 
 describe('statement image upload', () => {
