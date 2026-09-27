@@ -165,6 +165,8 @@ export interface StudentResultRow {
   extraMinutes: number;
   // Per-student extra attempts on top of the exam's maxAttempts (0 if none).
   extraAttempts: number;
+  // Newest attempt submitted and still being graded on the judge.
+  grading: boolean;
 }
 
 export interface ExamResults {

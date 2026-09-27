@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../middleware/auth';
+import { beginGrading, isServerGraded } from '../lib/grading';
 import { judgeSubmission, type JudgeInput } from '../lib/judge';
 import { isJudgeConfigured, runOnJudge, JudgeError } from '../lib/judgeClient';
 import { withJudgeSlot, QueueRejectedError } from '../lib/executionQueue';
@@ -149,9 +150,12 @@ studentRouter.get('/exams', async (req, res) => {
     exams: exams.map((exam) => {
       const list = (byExam.get(exam.id) ?? []).sort((a, b) => b.attemptNumber - a.attemptNumber);
       const latest = list[0] ?? null;
-      const submitted = list.filter((a) => a.status === 'SUBMITTED');
+      // "Finished" attempts (SUBMITTED, or GRADING = submitted and being
+      // graded on the judge) count toward the cap.
+      const finished = list.filter((a) => a.status === 'SUBMITTED' || a.status === 'GRADING');
       const hasInProgress = latest?.status === 'IN_PROGRESS';
-      const latestSubmitted = submitted[0] ?? null; // list is desc by attemptNumber
+      const grading = latest?.status === 'GRADING';
+      const latestSubmitted = list.find((a) => a.status === 'SUBMITTED') ?? null; // desc by attemptNumber
       const notYetOpen = exam.opensAt !== null && now < exam.opensAt.getTime();
       const closed = exam.closesAt !== null && now >= exam.closesAt.getTime();
       const maxAttempts = effectiveMaxAttempts(exam.maxAttempts, extraAttemptsByExam.get(exam.id) ?? 0);
@@ -168,19 +172,22 @@ studentRouter.get('/exams', async (req, res) => {
         closesAt: exam.closesAt,
         notYetOpen,
         closed,
-        attemptsUsed: submitted.length,
+        attemptsUsed: finished.length,
         hasInProgress,
+        // The latest attempt is submitted and its grading isn't done yet.
+        grading,
         canStart:
           !notYetOpen &&
           !closed &&
-          (hasInProgress || canStartAnother(maxAttempts, submitted.length)),
+          !grading &&
+          (hasInProgress || canStartAnother(maxAttempts, finished.length)),
         // Hidden while a retake is in progress (2026-09-15, user decision):
         // a student mid-retake shouldn't see the prior attempt's score, so
         // it isn't influenced by it before finishing the new one. Reappears
         // once that attempt is submitted (it then becomes the new
         // `latestSubmitted`) — this only ever hides the *old* score during
         // the live retake window, not the student's own just-finished result.
-        latestScore: hasInProgress ? null : (latestSubmitted?.score ?? null),
+        latestScore: hasInProgress || grading ? null : (latestSubmitted?.score ?? null),
       };
     }),
   });
@@ -227,6 +234,10 @@ studentRouter.post('/exams/:examId/attempts', async (req, res) => {
   const all = await prisma.examAttempt.findMany({
     where: { examId: exam.id, studentId: userId },
   });
+  if (all.some((a) => a.status === 'GRADING')) {
+    res.status(409).json({ error: '前回の提出を採点中です。採点が終わってからもう一度お試しください。' });
+    return;
+  }
   const submittedCount = all.filter((a) => a.status === 'SUBMITTED').length;
   const maxAttempts = effectiveMaxAttempts(exam.maxAttempts, await extraAttemptsFor(exam.id, userId));
   if (!canStartAnother(maxAttempts, submittedCount)) {
@@ -292,7 +303,8 @@ studentRouter.get('/exams/:examId', async (req, res) => {
     orderBy: { attemptNumber: 'desc' },
   });
   const current = all[0]?.status === 'IN_PROGRESS' ? all[0] : null;
-  const submittedCount = all.filter((a) => a.status === 'SUBMITTED').length;
+  const grading = all[0]?.status === 'GRADING';
+  const submittedCount = all.filter((a) => a.status === 'SUBMITTED' || a.status === 'GRADING').length;
   const now = Date.now();
   const notYetOpen = exam.opensAt !== null && now < exam.opensAt.getTime();
   const closed = exam.closesAt !== null && now >= exam.closesAt.getTime();
@@ -314,6 +326,7 @@ studentRouter.get('/exams/:examId', async (req, res) => {
     attemptsUsed: submittedCount,
     canStartNew:
       current === null &&
+      !grading &&
       !notYetOpen &&
       !closed &&
       canStartAnother(maxAttempts, submittedCount),
@@ -492,7 +505,11 @@ studentRouter.get('/exams/:examId/attempt', async (req, res) => {
   const draftByTask = new Map(drafts.map((d) => [d.taskId, d]));
   const extra = await extraMinutesFor(exam.id, userId);
 
+  const serverGraded = isServerGraded();
   res.json({
+    // true → the judge grades every task from its saved draft after the
+    // final submit; the browser sends no outcomes (lib/grading.ts).
+    serverGraded,
     attempt: {
       id: latest.id,
       attemptNumber: latest.attemptNumber,
@@ -512,7 +529,9 @@ studentRouter.get('/exams/:examId/attempt', async (req, res) => {
         title: t.title,
         points: t.points,
         language: t.language,
-        serverExec: isServerExec(t.language),
+        // Whether the server (not the browser) runs this task's code at the
+        // final submit.
+        serverExec: serverGraded || isServerExec(t.language),
         hasDraft: !!d,
         draftCode: d?.code ?? null,
         testCases: t.testCases.map((tc) => ({ id: tc.id, input: tc.input })),
@@ -560,6 +579,23 @@ studentRouter.post('/exams/:examId/submit', async (req, res) => {
     return;
   }
 
+  // Server-side grading: lock the attempt now (submit time = this click) and
+  // grade every drafted task on the judge in the background.
+  if (isServerGraded()) {
+    const submittedAt = new Date();
+    if (!(await beginGrading(latest.id, submittedAt))) {
+      res.status(409).json({ error: 'この受験は既に提出済みです。' });
+      return;
+    }
+    res.status(202).json({
+      attempt: { attemptNumber: latest.attemptNumber, status: 'GRADING', submittedAt, score: null },
+      perTask: [],
+    });
+    return;
+  }
+
+  // Legacy (no judge): the browser ran the client-exec drafts and reports
+  // outcomes; the server still decides the verdict.
   const drafts = await prisma.taskDraft.findMany({ where: { attemptId: latest.id } });
   const draftByTask = new Map(drafts.map((d) => [d.taskId, d]));
   const clientByTask = new Map(parsed.data.tasks.map((t) => [t.taskId, t]));
@@ -712,19 +748,38 @@ studentRouter.get('/exams/:examId/result', async (req, res) => {
     where: { examId: exam.id, studentId: userId },
     orderBy: { attemptNumber: 'desc' },
   });
-  const submitted = all.filter((a) => a.status === 'SUBMITTED');
-  const latestSubmitted = submitted[0] ?? null;
+  const finished = all.filter((a) => a.status === 'SUBMITTED' || a.status === 'GRADING');
+  const latestSubmitted = all.find((a) => a.status === 'SUBMITTED') ?? null;
   const hasInProgress = all.some((a) => a.status === 'IN_PROGRESS');
+  const gradingAttempt = all[0]?.status === 'GRADING' ? all[0] : null;
   const totalPoints = exam.tasks.reduce((sum, t) => sum + t.points, 0);
   const maxAttempts = effectiveMaxAttempts(exam.maxAttempts, await extraAttemptsFor(exam.id, userId));
-  const canRetake = !hasInProgress && canStartAnother(maxAttempts, submitted.length);
+  const canRetake =
+    !hasInProgress && !gradingAttempt && canStartAnother(maxAttempts, finished.length);
 
   const base = {
     exam: { id: exam.id, title: exam.title, tasks: exam.tasks, totalPoints },
-    attemptsUsed: submitted.length,
+    attemptsUsed: finished.length,
     maxAttempts,
     canRetake,
+    // The latest attempt is submitted and still being graded on the judge —
+    // the client polls until this turns false.
+    grading: gradingAttempt !== null,
   };
+
+  if (gradingAttempt) {
+    res.json({
+      ...base,
+      attempt: {
+        attemptNumber: gradingAttempt.attemptNumber,
+        score: null,
+        submittedAt: gradingAttempt.submittedAt,
+        startedAt: gradingAttempt.startedAt,
+      },
+      perTask: [],
+    });
+    return;
+  }
 
   if (!latestSubmitted) {
     res.json({ ...base, attempt: null, perTask: [] });

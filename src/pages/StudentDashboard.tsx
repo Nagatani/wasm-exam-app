@@ -195,6 +195,11 @@ export function StudentDashboard() {
                         受験中
                       </span>
                     )}
+                    {exam.grading && (
+                      <span className="ml-2 rounded bg-mp-purple px-1.5 py-0.5 text-xs font-bold text-mp-btn-fg">
+                        採点中
+                      </span>
+                    )}
                   </p>
                   {exam.description && <p className="text-sm text-mp-muted">{exam.description}</p>}
                   <p className="text-sm text-mp-muted">

@@ -51,15 +51,12 @@ describe('language routing', () => {
     for (const lang of ['C', 'JS', 'TS', 'PYTHON'] as const) expect(isServerExec(lang)).toBe(false);
   });
 
-  it('Java and C are regrade-capable, the rest are not', () => {
-    expect(isRegradeCapable('JAVA')).toBe(true);
-    expect(isRegradeCapable('C')).toBe(true);
-    for (const lang of ['JS', 'TS', 'PYTHON'] as const) expect(isRegradeCapable(lang)).toBe(false);
+  it('every language is regrade-capable (the judge runs all of them since 2026-09-26)', () => {
+    for (const lang of ['JAVA', 'C', 'JS', 'TS', 'PYTHON'] as const) expect(isRegradeCapable(lang)).toBe(true);
   });
 
-  it('judgeLanguage maps to the judge protocol value', () => {
-    expect(judgeLanguage('C')).toBe('C');
-    expect(judgeLanguage('JAVA')).toBe('JAVA');
+  it('judgeLanguage maps to the judge protocol value (the same names)', () => {
+    for (const lang of ['JAVA', 'C', 'JS', 'TS', 'PYTHON'] as const) expect(judgeLanguage(lang)).toBe(lang);
   });
 });
 

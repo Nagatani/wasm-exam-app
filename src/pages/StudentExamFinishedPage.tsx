@@ -28,6 +28,8 @@ import {
 
 type Mode = 'loading' | 'review' | 'result';
 
+const GRADING_POLL_MS = 2000;
+
 const STATUS_COLOR: Record<'AC' | 'WA' | 'CE' | 'TLE' | 'MLE', string> = {
   AC: 'text-mp-green',
   WA: 'text-mp-red',
@@ -58,14 +60,27 @@ export function StudentExamFinishedPage() {
     setMode('result');
   }, [examId]);
 
+  // While the latest attempt is being graded on the judge, poll its result
+  // until the grade arrives (normally a few seconds).
+  useEffect(() => {
+    if (mode !== 'result' || !result?.grading) return;
+    const id = setTimeout(() => {
+      loadResult().catch(() => {});
+    }, GRADING_POLL_MS);
+    return () => clearTimeout(id);
+  }, [mode, result, loadResult]);
+
   const handleSubmit = useCallback(
     async () => {
       if (!examId || !payload || submitting) return;
       setSubmitting(true);
       setError(null);
       try {
+        // Server-side grading: the judge grades every saved draft after the
+        // submit, so nothing runs here. Legacy (no judge): run the
+        // client-exec drafts and report their outcomes.
         const clientResults: SubmitTaskResult[] = [];
-        for (const t of payload.tasks) {
+        for (const t of payload.serverGraded ? [] : payload.tasks) {
           if (t.serverExec || !t.hasDraft || t.draftCode == null) continue;
           setStatusText(`「${t.title}」を採点中...`);
           const { compileFailed, outcomes } = await runClientSide(
@@ -289,7 +304,7 @@ export function StudentExamFinishedPage() {
         <div className="w-full max-w-lg rounded-lg border border-mp-border bg-mp-surface p-6">
           <div className="mb-1 flex items-center justify-between">
             <h1 className="text-xl font-bold text-mp-cyan">
-              {attempt ? '🎉 提出完了' : '未受験'}
+              {result.grading ? '📨 提出しました' : attempt ? '🎉 提出完了' : '未受験'}
             </h1>
             <UserDrawer />
           </div>
@@ -300,7 +315,15 @@ export function StudentExamFinishedPage() {
 
           {error && <p className="mb-3 text-sm text-mp-red">{error}</p>}
 
-          {attempt ? (
+          {result.grading ? (
+            <div className="mb-6 rounded border border-mp-cyan/50 bg-mp-cyan/10 p-4 text-center" role="status">
+              <p className="mb-1 font-bold text-mp-cyan">採点中です…</p>
+              <p className="text-sm text-mp-muted">
+                提出は受け付けられています（このページを閉じても取り消されません）。
+                サーバーで採点が終わると、ここに結果が表示されます。
+              </p>
+            </div>
+          ) : attempt ? (
             <>
               <table className="mb-4 w-full text-sm">
                 <thead>
@@ -337,7 +360,7 @@ export function StudentExamFinishedPage() {
               </table>
 
               <p className="mb-6 text-right text-lg font-bold">
-                合計: {attempt.score} / {exam.totalPoints} 点
+                合計: {attempt.score ?? 0} / {exam.totalPoints} 点
               </p>
             </>
           ) : (

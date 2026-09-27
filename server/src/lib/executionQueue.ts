@@ -62,3 +62,17 @@ export async function withJudgeSlot<T>(userId: string, fn: () => Promise<T>): Pr
     usersInFlight.delete(userId);
   }
 }
+
+/**
+ * Runs `fn` once a global slot is free, without the per-user cap — for the
+ * background grader (lib/grading.ts), which runs one student's tasks one after
+ * another and must queue, never be rejected.
+ */
+export async function withJudgeCapacity<T>(fn: () => Promise<T>): Promise<T> {
+  await acquireGlobalSlot();
+  try {
+    return await fn();
+  } finally {
+    releaseGlobalSlot();
+  }
+}

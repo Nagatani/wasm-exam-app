@@ -142,6 +142,9 @@ jobs:
       # Also run the C spec (downloads the ~106MB clang toolchain from the
       # Wasmer registry; fast on GitHub's runners).
       E2E_WITH_C: '1'
+      # A judge is started below, so the final submit is graded server-side
+      # and the browser↔judge parity spec (e2e/server-grading.spec.ts) runs.
+      E2E_JUDGE_URL: http://localhost:4001
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -156,6 +159,16 @@ jobs:
         working-directory: server
       - run: npx prisma generate
         working-directory: server
+      - name: Build and start the judge container
+        run: docker compose up -d --build judge
+      - name: Wait for the judge to become healthy
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:4001/health; then exit 0; fi
+            sleep 2
+          done
+          docker compose logs judge
+          exit 1
       - run: npx playwright install --with-deps chromium
       # playwright.config.ts builds server + frontend, prepares the
       # *_e2e_test database and starts the consolidated server itself.

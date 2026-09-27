@@ -52,12 +52,14 @@ export default defineConfig({
           include: ['test/judge/**/*.test.ts'],
           globalSetup: ['test/judge/globalSetup.ts'],
           fileParallelism: false,
-          // javac/gcc + JVM start-up per submission; a TLE case waits out
-          // its time limit.
-          testTimeout: 60_000,
+          // javac/clang + JVM/Node/Pyodide start-up per submission; a TLE case
+          // waits out its (browser-equal, 10–15s) time limit.
+          testTimeout: 120_000,
           env: {
             DATABASE_URL: process.env.TEST_JUDGE_DATABASE_URL,
             JUDGE_URL: process.env.TEST_JUDGE_URL,
+            // Server-side grading retries a failed judge call after this.
+            GRADING_RETRY_MS: '1000',
             NODE_ENV: 'test',
             UPLOADS_DIR: TEST_UPLOADS_DIR,
           },

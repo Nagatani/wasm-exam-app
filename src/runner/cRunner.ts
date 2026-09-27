@@ -1,4 +1,9 @@
 import { init, Wasmer, Directory } from '@wasmer/sdk';
+import {
+  C_COMPILE_FLAGS,
+  C_MEMORY_LIMIT_BYTES as SHARED_C_MEMORY_LIMIT_BYTES,
+  RUN_TIME_LIMIT_MS,
+} from '../../judge/runner/shared/limits.js';
 
 // Both the SDK init and the ~100MB clang/clang WASIX package fetch are
 // memoized module-wide: they only need to happen once per page load no
@@ -70,10 +75,10 @@ export type RunCStage = 'compile_error' | 'runtime_error' | 'success';
 // Python (15s) runners. Per-test-case configurable limits are a separate
 // Phase 6 concern (currently Java-only); C is a fixed constant like the other
 // client languages.
-export const C_TIME_LIMIT_MS = 10_000;
+export const C_TIME_LIMIT_MS = RUN_TIME_LIMIT_MS.C; // shared with the judge
 
 // Linear-memory cap for compiled C programs (see compileC).
-export const C_MEMORY_LIMIT_BYTES = 256 * 1024 * 1024;
+export const C_MEMORY_LIMIT_BYTES = SHARED_C_MEMORY_LIMIT_BYTES;
 
 export interface CompileResult {
   ok: boolean;
@@ -118,7 +123,8 @@ export async function compileC(sourceCode: string): Promise<CompileResult> {
     // memoryLimitMb), so a runaway allocation fails (malloc → NULL, or a
     // trap) instead of growing toward 4GB in the student's browser. It can't
     // be told apart from other crashes reliably, so it surfaces as RE, not MLE.
-    args: ['/project/main.c', '-o', '/project/main.wasm', `-Wl,--max-memory=${C_MEMORY_LIMIT_BYTES}`],
+    // Same flags as the judge's clang (judge/runner/shared/limits.js).
+    args: ['/project/main.c', '-o', '/project/main.wasm', ...C_COMPILE_FLAGS],
     mount: { '/project': project },
   });
   const compileOutput = await compileInstance.wait();

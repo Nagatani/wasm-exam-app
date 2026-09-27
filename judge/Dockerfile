@@ -1,18 +1,37 @@
-# Sandboxed Java + C compile/run service. The container itself is the sandbox
-# boundary — see docker-compose.yml for the hardening flags (cap_drop,
-# read_only, tmpfs, pids_limit, mem_limit, no outbound network). Nothing here
-# runs on the host.
+# Sandboxed compile/run service for every answer language. The container
+# itself is the sandbox boundary — see docker-compose.yml for the hardening
+# flags (cap_drop, read_only, tmpfs, pids_limit, mem_limit, no outbound
+# network). Nothing here runs on the host.
+#
+# Runtimes (2026-09-26): Java (JDK 24, --enable-preview) as before, plus the
+# same runtimes the browser uses for the C / JS / TS / Python preview, so the
+# server-side grading can't disagree with it:
+#   - clang 16 → wasm32-wasi + wasi-libc, run under Node's WASI (C)
+#   - Node 22 + runner/ (JS / TS via the shared harness + sucrase, Python via
+#     the pinned Pyodide npm package)
+
+# Node binary (copied into the final image) + the runner's npm dependencies.
+FROM node:22-bookworm-slim AS runner
+WORKDIR /runner
+COPY runner/package.json runner/package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+COPY runner/ ./
+
 FROM eclipse-temurin:24-jdk
 
 ARG GSON_VERSION=2.11.0
 ARG GSON_SHA256=57928d6e5a6edeb2abd3770a8f95ba44dce45f3b23b7a9dc2b309c581552a78b
 
-# gcc for the C executor (used only for teacher-triggered regrade today — see
-# CLAUDE.md "Server-side C executor"). libc6-dev supplies the headers/static
-# bits gcc needs to link a normal C program.
+# clang 16 + lld (wasm-ld) + wasi-libc (sysroot) + the wasm32 compiler-rt
+# builtins: the browser's @wasmer/sdk clang is 16.0.0, so this matches its
+# major version and target.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends gcc libc6-dev \
+    && apt-get install -y --no-install-recommends \
+         clang-16 lld-16 wasi-libc libclang-rt-16-dev-wasm32 \
     && rm -rf /var/lib/apt/lists/*
+
+COPY --from=runner /usr/local/bin/node /usr/local/bin/node
+COPY --from=runner /runner /app/runner
 
 WORKDIR /app
 
@@ -38,6 +57,5 @@ ENV JUDGE_PORT=8080 \
 
 EXPOSE 8080
 
-# JSON on the classpath for the app; -Xss for deep student recursion during
-# compile; the service itself is tiny.
+# JSON on the classpath for the app; the service itself is tiny.
 CMD ["java", "-XX:+UseSerialGC", "-Xmx256m", "-cp", "/app/classes:/app/lib/gson.jar", "Judge"]

@@ -34,7 +34,7 @@ import java.util.concurrent.TimeUnit;
  *
  * Protocol (called only by the app's own Express server, never a browser):
  *   POST /run
- *     { "language": "JAVA" | "C",   // optional, defaults to "JAVA"
+ *     { "language": "JAVA" | "C" | "JS" | "TS" | "PYTHON",   // default "JAVA"
  *       "code": "<Main.java or main.c source>",
  *       "tests": [ { "id": "...", "stdin": "...",
  *                    "timeLimitMs": 2000, "memoryLimitMb": 256 } ] }
@@ -48,16 +48,21 @@ import java.util.concurrent.TimeUnit;
  * from these raw outcomes via its own judgeSubmission(). This service only
  * reports what the program printed and how it exited.
  *
- * C support (2026-09) is deliberately narrow in scope: as of this writing the
- * app server only calls it for Java's day-to-day exam flow plus a
- * teacher-triggered *regrade* of already-submitted C code (see
- * server/src/routes/tasks.ts `/regrade` and CLAUDE.md "Server-side C
- * executor") — not for a student's live "実行"/final submit, which still runs
- * in-browser via @wasmer/sdk. `oom` is always reported `false` for C: unlike
- * Java's `-Xmx` there's no reliable signal to grep for, only the coarse
- * `ulimit -v` secondary guard applied at run time (matches the existing "C
- * has no MLE" note in docs/languages.md).
- */
+ * Languages (2026-09-26 — "本採点のサーバー実行化"): besides Java, the judge
+ * grades the languages whose day-to-day preview runs in the student's browser
+ * (C / JS / TS / Python), using the SAME runtimes as the browser so a program
+ * can't behave differently here than in the preview:
+ *   - C: clang 16 (the browser's @wasmer/sdk clang is 16.0.0) compiling to
+ *     wasm32-wasi against wasi-libc, run with Node's WASI (runner/runWasm.mjs)
+ *     — same type sizes (long = 4 bytes), same libc, same -O0, same
+ *     --max-memory cap.
+ *   - JS / TS / Python: delegated to runner/run.mjs (Node), which uses the
+ *     code shared with the browser in runner/shared/ (stdin helpers, output
+ *     formatting, sucrase TS transform, Pyodide of the same version).
+ * For these four languages the request's per-test timeLimitMs/memoryLimitMb
+ * are ignored: the limits come from runner/shared/limits.js, read once at
+ * startup, which the browser uses too.
+  */
 public final class Judge {
 
   private static final Gson GSON = new Gson();
@@ -77,26 +82,73 @@ public final class Judge {
   private static final long DEFAULT_MEM_LIMIT_MB = 256;
   private static final long MAX_MEM_LIMIT_MB = 512;
 
+  // Node runner (JS/TS/Python/C-wasm) and the wasm32-wasi C toolchain.
+  private static final Path RUNNER_DIR =
+      Path.of(System.getenv().getOrDefault("JUDGE_RUNNER_DIR", "/app/runner"));
+  private static final String NODE = System.getenv().getOrDefault("JUDGE_NODE", "/usr/local/bin/node");
+  private static final String CLANG =
+      System.getenv().getOrDefault("JUDGE_CLANG", "/usr/lib/llvm-16/bin/clang");
+  private static final String WASI_SYSROOT =
+      System.getenv().getOrDefault("JUDGE_WASI_SYSROOT", "/usr");
+  // First Pyodide load inside run.mjs (mirrors its PY_LOAD_TIMEOUT_MS) plus
+  // process startup — added on top of the per-test limits for the overall
+  // wall-clock cap on one run.mjs invocation.
+  private static final long NODE_RUNNER_BASE_TIMEOUT_MS = 95_000;
+  // Grace for Node startup + wasm instantiation on top of the C time limit.
+  private static final long C_RUN_GRACE_MS = 300;
+
+  private static SharedLimits SHARED;
+
   private static final Semaphore RUN_SLOTS = new Semaphore(MAX_CONCURRENT_RUNS, true);
   private static final Path WORK_ROOT = Path.of(System.getenv().getOrDefault("JUDGE_WORK", "/work"));
 
   private Judge() {}
 
-  public static void main(String[] args) throws IOException {
+  public static void main(String[] args) throws IOException, InterruptedException {
     Files.createDirectories(WORK_ROOT);
+    SHARED = loadSharedLimits();
     HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", PORT), 0);
     server.setExecutor(Executors.newFixedThreadPool(Math.max(4, MAX_CONCURRENT_RUNS + 2)));
     server.createContext("/health", ex -> writeJson(ex, 200, "{\"ok\":true}"));
     server.createContext("/run", Judge::handleRun);
     server.start();
     System.out.println("judge listening on :" + PORT
-        + " (maxConcurrent=" + MAX_CONCURRENT_RUNS + ")");
+        + " (maxConcurrent=" + MAX_CONCURRENT_RUNS + ", limits=" + GSON.toJson(SHARED) + ")");
   }
 
   // ---- request / response DTOs (Gson-mapped) --------------------------------
 
+  // runner/shared/limits.js, as JSON (see loadSharedLimits).
+  private static final class SharedLimits {
+    java.util.Map<String, Long> timeLimitMs;
+    List<String> cFlags;
+  }
+
+  // The node runner's request (run.mjs) — tests without per-test limits.
+  private static final class NodeRunRequest {
+    final String language;
+    final String code;
+    final List<NodeTest> tests;
+
+    NodeRunRequest(String language, String code, List<NodeTest> tests) {
+      this.language = language;
+      this.code = code;
+      this.tests = tests;
+    }
+  }
+
+  private static final class NodeTest {
+    final String id;
+    final String stdin;
+
+    NodeTest(String id, String stdin) {
+      this.id = id;
+      this.stdin = stdin;
+    }
+  }
+
   private static final class RunRequest {
-    String language; // "JAVA" (default) or "C"
+    String language; // "JAVA" (default) / "C" / "JS" / "TS" / "PYTHON"
     String code;
     List<TestSpec> tests;
   }
@@ -200,18 +252,38 @@ public final class Judge {
 
   private static String normalizeLanguage(String raw) {
     if (raw == null) return "JAVA";
-    return "C".equalsIgnoreCase(raw.trim()) ? "C" : "JAVA";
+    String upper = raw.trim().toUpperCase(Locale.ROOT);
+    return switch (upper) {
+      case "C", "JS", "TS", "PYTHON" -> upper;
+      default -> "JAVA";
+    };
+  }
+
+  // Reads runner/shared/limits.js through Node once at startup, so the time
+  // limits and C flags have exactly one definition (shared with the browser).
+  private static SharedLimits loadSharedLimits() throws IOException, InterruptedException {
+    String script = "import(" + GSON.toJson(RUNNER_DIR.resolve("shared/limits.js").toUri().toString()) + ")"
+        + ".then(m => process.stdout.write(JSON.stringify({ timeLimitMs: m.RUN_TIME_LIMIT_MS, cFlags: m.C_COMPILE_FLAGS })))";
+    Process p = new ProcessBuilder(NODE, "--input-type=module", "-e", script).redirectErrorStream(true).start();
+    String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+    if (!p.waitFor(20, TimeUnit.SECONDS) || p.exitValue() != 0) {
+      throw new IllegalStateException("could not read runner/shared/limits.js: " + out);
+    }
+    return GSON.fromJson(out, SharedLimits.class);
   }
 
   private static RunResponse compileAndRun(RunRequest req) throws IOException, InterruptedException {
     String language = normalizeLanguage(req.language);
     Path jobDir = Files.createTempDirectory(WORK_ROOT, "job-");
     try {
+      if ("JS".equals(language) || "TS".equals(language) || "PYTHON".equals(language)) {
+        return runNodeRunner(jobDir, language, req);
+      }
       if ("C".equals(language)) {
         Path srcDir = Files.createDirectories(jobDir.resolve("src"));
         Path mainC = srcDir.resolve("main.c");
         Files.writeString(mainC, req.code);
-        Path binary = jobDir.resolve("a.out");
+        Path binary = jobDir.resolve("main.wasm");
 
         CompileInfo compile = compileC(mainC, binary, srcDir);
         if (!compile.ok) {
@@ -296,22 +368,22 @@ public final class Judge {
     return holder[0] != null ? holder[0] : new CompileInfo(false, "compilation failed");
   }
 
-  // Subprocess gcc build — plain `-O2 -std=c11`, no student-facing flags to
-  // tune. Diagnostics come out as `main.c:LINE:COL: error: ...` (cwd = srcDir,
-  // relative filename) which is the same shape @wasmer/sdk's clang produces
-  // client-side, so anything that ever parses these (src/lib/compileErrors.ts)
-  // doesn't need a separate case for the server path.
+  // C → wasm32-wasi with clang 16 + wasi-libc: the same target, compiler
+  // major version, optimisation level (-O0, clang's default) and flags
+  // (runner/shared/limits.js C_COMPILE_FLAGS: the --max-memory cap) as the
+  // browser's @wasmer/sdk clang, so type sizes, libc behaviour and memory
+  // limits match the preview. Diagnostics read `main.c:LINE:COL: ...`.
   private static CompileInfo compileC(Path mainC, Path binary, Path srcDir)
       throws IOException, InterruptedException {
-    List<String> cmd = List.of(
-        "gcc", "-O2", "-std=c11", "-Wall",
+    List<String> cmd = new ArrayList<>(List.of(
+        CLANG, "--target=wasm32-wasi", "--sysroot=" + WASI_SYSROOT,
         "-o", binary.toString(),
-        mainC.getFileName().toString(),
-        "-lm");
+        mainC.getFileName().toString()));
+    cmd.addAll(SHARED.cFlags);
     ProcessBuilder pb = new ProcessBuilder(cmd);
     pb.directory(srcDir.toFile());
     pb.environment().clear();
-    pb.environment().put("PATH", "/usr/bin:/bin");
+    pb.environment().put("PATH", "/usr/lib/llvm-16/bin:/usr/bin:/bin");
     pb.environment().put("LANG", "C.UTF-8");
 
     Process process = pb.start();
@@ -333,20 +405,88 @@ public final class Judge {
 
     String stderr = errDrainer.text();
     if (process.exitValue() != 0) {
-      return new CompileInfo(false, stderr.isBlank() ? "gcc exited with status " + process.exitValue() : stderr);
+      return new CompileInfo(false, stderr.isBlank() ? "clang exited with status " + process.exitValue() : stderr);
     }
-    // Unlike javac's NOTE-stripping above, any gcc -Wall output on a
-    // successful build is genuinely about the student's own code.
     return new CompileInfo(true, stderr.trim());
+  }
+
+  // JS / TS / Python: one run.mjs process per request (it runs every test
+  // itself, with the shared per-test limits and browser-identical worker
+  // lifecycle) and answers in this service's own response shape.
+  private static RunResponse runNodeRunner(Path jobDir, String language, RunRequest req)
+      throws IOException, InterruptedException {
+    List<NodeTest> tests = new ArrayList<>();
+    for (TestSpec t : req.tests) tests.add(new NodeTest(t.id, t.stdin != null ? t.stdin : ""));
+    long perTest = SHARED.timeLimitMs.getOrDefault(language, 10_000L) + 2_000;
+    long overallMs = NODE_RUNNER_BASE_TIMEOUT_MS + perTest * tests.size();
+
+    ProcessBuilder pb = new ProcessBuilder(NODE, "--no-warnings", RUNNER_DIR.resolve("run.mjs").toString());
+    pb.directory(jobDir.toFile());
+    pb.environment().clear();
+    pb.environment().put("PATH", "/usr/local/bin:/usr/bin:/bin");
+    pb.environment().put("HOME", jobDir.toString());
+    pb.environment().put("LANG", "C.UTF-8");
+    Process process = pb.start();
+
+    byte[] input = GSON.toJson(new NodeRunRequest(language, req.code, tests)).getBytes(StandardCharsets.UTF_8);
+    Thread stdinPump = new Thread(() -> {
+      try (OutputStream os = process.getOutputStream()) {
+        os.write(input);
+      } catch (IOException ignored) {
+        // runner died early; reported below
+      }
+    }, "runner-stdin");
+    stdinPump.setDaemon(true);
+    stdinPump.start();
+
+    // The response carries every test's output (capped per stream below by
+    // capStreams), so allow far more than one stream's worth here.
+    StreamDrainer outDrainer = new StreamDrainer(process.getInputStream(), MAX_STREAM_BYTES * (tests.size() + 2) * 2);
+    StreamDrainer errDrainer = new StreamDrainer(process.getErrorStream());
+    outDrainer.start();
+    errDrainer.start();
+
+    boolean exited = process.waitFor(overallMs, TimeUnit.MILLISECONDS);
+    if (!exited) {
+      process.descendants().forEach(ProcessHandle::destroyForcibly);
+      process.destroyForcibly();
+      process.waitFor(2, TimeUnit.SECONDS);
+      throw new IllegalStateException("runner timed out");
+    }
+    outDrainer.join(2_000);
+    errDrainer.join(1_000);
+    if (process.exitValue() != 0) {
+      throw new IllegalStateException("runner failed: " + errDrainer.text());
+    }
+    RunResponse response = GSON.fromJson(outDrainer.text(), RunResponse.class);
+    return capStreams(response);
+  }
+
+  // Apply this service's usual per-stream cap to a runner response.
+  private static RunResponse capStreams(RunResponse r) {
+    List<TestOutcome> capped = new ArrayList<>();
+    for (TestOutcome o : r.results) {
+      capped.add(new TestOutcome(o.id, cap(o.stdout), cap(o.stderr), o.exitCode, o.timedOut, o.oom, o.timeMs));
+    }
+    return new RunResponse(r.compile, capped);
+  }
+
+  private static String cap(String s) {
+    if (s == null) return "";
+    byte[] b = s.getBytes(StandardCharsets.UTF_8);
+    return b.length <= MAX_STREAM_BYTES ? s : new String(b, 0, MAX_STREAM_BYTES, StandardCharsets.UTF_8);
   }
 
   private static TestOutcome runOne(Path jobDir, String language, Path artifact, TestSpec test)
       throws IOException, InterruptedException {
-    long timeLimitMs = clamp(test.timeLimitMs, DEFAULT_TIME_LIMIT_MS, MAX_TIME_LIMIT_MS);
+    boolean isC = "C".equals(language);
+    // C uses the browser's fixed limit (shared/limits.js), not the request's.
+    long timeLimitMs = isC
+        ? SHARED.timeLimitMs.getOrDefault("C", 10_000L)
+        : clamp(test.timeLimitMs, DEFAULT_TIME_LIMIT_MS, MAX_TIME_LIMIT_MS);
     long memLimitMb = clamp(test.memoryLimitMb, DEFAULT_MEM_LIMIT_MB, MAX_MEM_LIMIT_MB);
     long cpuSeconds = (timeLimitMs / 1000) + 2;
     String stdin = test.stdin != null ? test.stdin : "";
-    boolean isC = "C".equals(language);
 
     // ulimit gives cheap secondary guards (file size, CPU seconds, and for C
     // also address space) on top of the wall-clock kill below; `exec`
@@ -354,11 +494,12 @@ public final class Judge {
     // POSIX-portable options are used (the container's /bin/sh is dash — no
     // `ulimit -u`); fork bombs are contained by the container-level
     // pids_limit instead.
-    String shell = isC
-        ? "ulimit -f 32768; ulimit -t " + cpuSeconds + "; ulimit -v " + (memLimitMb * 1024) + "; exec \"$@\""
-        : "ulimit -f 32768; ulimit -t " + cpuSeconds + "; exec \"$@\"";
+    // (C's memory cap is the wasm --max-memory, not ulimit -v: Node itself
+    // needs far more address space than the program.)
+    String shell = "ulimit -f 32768; ulimit -t " + cpuSeconds + "; exec \"$@\"";
     List<String> cmd = isC
-        ? List.of("/bin/sh", "-c", shell, "sh", artifact.toString())
+        ? List.of("/bin/sh", "-c", shell, "sh", NODE, "--no-warnings",
+            RUNNER_DIR.resolve("runWasm.mjs").toString(), artifact.toString())
         : List.of(
             "/bin/sh", "-c", shell, "sh",
             "java",
@@ -397,7 +538,7 @@ public final class Judge {
     outDrainer.start();
     errDrainer.start();
 
-    boolean exited = process.waitFor(timeLimitMs + 500, TimeUnit.MILLISECONDS);
+    boolean exited = process.waitFor(timeLimitMs + (isC ? C_RUN_GRACE_MS : 500), TimeUnit.MILLISECONDS);
     long timeMs = (System.nanoTime() - startedNanos) / 1_000_000;
     boolean timedOut = false;
     if (!exited) {
@@ -419,8 +560,8 @@ public final class Judge {
 
     String stdout = outDrainer.text();
     String stderr = errDrainer.text();
-    // C: no reliable OOM signal to grep (see the class-level doc comment) —
-    // always report false rather than guess. Java: -Xmx makes this precise.
+    // C: no reliable OOM signal (an allocation past --max-memory just fails
+    // inside the program, as in the browser) — always false. Java: -Xmx.
     boolean oom = !isC
         && (stderr.contains("OutOfMemoryError") || stderr.contains("java.lang.OutOfMemoryError"));
 
@@ -478,11 +619,17 @@ public final class Judge {
   /** Reads a process stream fully (up to a cap) on its own thread. */
   private static final class StreamDrainer extends Thread {
     private final InputStream in;
+    private final int maxBytes;
     private final ByteArrayOutputStream buf = new ByteArrayOutputStream();
     private volatile boolean truncated = false;
 
     StreamDrainer(InputStream in) {
+      this(in, MAX_STREAM_BYTES);
+    }
+
+    StreamDrainer(InputStream in, int maxBytes) {
       this.in = in;
+      this.maxBytes = maxBytes;
       setDaemon(true);
     }
 
@@ -492,7 +639,7 @@ public final class Judge {
       int n;
       try {
         while ((n = in.read(chunk)) != -1) {
-          int room = MAX_STREAM_BYTES - buf.size();
+          int room = maxBytes - buf.size();
           if (room <= 0) {
             truncated = true;
             // keep draining so the process isn't blocked on a full pipe
