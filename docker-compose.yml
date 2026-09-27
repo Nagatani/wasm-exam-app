@@ -40,12 +40,11 @@ services:
     mem_limit: 1g
     cpus: 2.0
     tmpfs:
-      # `exec` is required on /work: Docker mounts tmpfs `noexec` by default,
-      # and a C submission's compiled binary has to be exec()able from wherever
-      # gcc wrote it (Java doesn't need this — `java` itself lives on the
-      # read-only rootfs; only .class *data* sits on tmpfs). /tmp has no such
-      # need and stays noexec.
-      - /work:size=192m,mode=1777,exec
+      # Both noexec (Docker's tmpfs default): nothing is ever exec()ed from
+      # here — Java runs .class data with the rootfs `java`, and C is compiled
+      # to wasm and run by the rootfs `node` (judge/Judge.java). (Until
+      # 2026-09-26 /work needed `exec` for gcc-built native binaries.)
+      - /work:size=192m,mode=1777
       - /tmp:size=64m,mode=1777
     environment:
       JUDGE_MAX_CONCURRENT: '2'

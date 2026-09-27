@@ -74,9 +74,11 @@ export function getSubmitPayload(examId: string) {
 // Finalize the current attempt. `tasks` carries per-task results only for
 // client-executed languages; server-exec tasks are graded server-side.
 export function submitExam(examId: string, tasks: SubmitTaskResult[]) {
+  // Server-side grading answers 202 with attempt.status 'GRADING' and no
+  // perTask (the result arrives later via getStudentExamResult).
   return apiFetch<{
-    attempt: { attemptNumber: number; score: number; submittedAt: string };
-    perTask: { taskId: string; status: 'AC' | 'WA' | 'CE'; score: number; compileStderr: string }[];
+    attempt: { attemptNumber: number; score: number | null; submittedAt: string; status?: 'GRADING' };
+    perTask: { taskId: string; status: 'AC' | 'WA' | 'CE' | 'TLE' | 'MLE'; score: number; compileStderr: string }[];
   }>(`/api/student/exams/${examId}/submit`, {
     method: 'POST',
     body: JSON.stringify({ tasks }),

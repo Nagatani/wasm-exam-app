@@ -1,3 +1,5 @@
+import { PYODIDE_VERSION, RUN_TIME_LIMIT_MS } from '../../judge/runner/shared/limits.js';
+
 // Python client-side runner backed by Pyodide in a Web Worker (see
 // py.worker.ts). The worker is reused across a run's test cases so Pyodide
 // only loads once (~10MB from the CDN on first use); on a timeout it is
@@ -23,7 +25,7 @@ export interface PyRunResult {
 // (for networks that block the CDN — see docs/operations.md). Resolved here on
 // the main thread and sent with every message, because py.worker.ts is a
 // classic worker (it needs importScripts) and can't read import.meta.env.
-export const DEFAULT_PYODIDE_BASE_URL = 'https://cdn.jsdelivr.net/pyodide/v0.28.0/full/';
+export const DEFAULT_PYODIDE_BASE_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 
 export function resolvePyodideBaseUrl(configured: string | undefined): string {
   const url = (configured ?? '').trim();
@@ -35,7 +37,7 @@ const PYODIDE_BASE_URL = resolvePyodideBaseUrl(import.meta.env.VITE_PYODIDE_BASE
 
 // First call pulls the Pyodide runtime; later calls are fast.
 const LOAD_TIMEOUT_MS = 90_000;
-const RUN_TIMEOUT_MS = 15_000;
+const RUN_TIMEOUT_MS = RUN_TIME_LIMIT_MS.PYTHON; // shared with the judge
 
 let worker: Worker | null = null;
 

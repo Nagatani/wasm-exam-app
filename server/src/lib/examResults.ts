@@ -40,6 +40,10 @@ export interface StudentResultRow {
   extraMinutes: number;
   // Per-student extra attempts on top of the exam's maxAttempts (0 if none).
   extraAttempts: number;
+  // The student's newest attempt is submitted and still being graded on the
+  // judge (lib/grading.ts). The row's cells/score still show the previous
+  // graded attempt (if any) until grading finishes, normally within seconds.
+  grading: boolean;
 }
 
 export interface ExamResults {
@@ -99,6 +103,12 @@ export async function getExamResults(examId: string): Promise<ExamResults | null
     where: { examId, status: 'SUBMITTED' },
     orderBy: { attemptNumber: 'desc' },
   });
+
+  const gradingAttempts = await prisma.examAttempt.findMany({
+    where: { examId, status: 'GRADING' },
+    select: { studentId: true },
+  });
+  const gradingStudents = new Set(gradingAttempts.map((a) => a.studentId));
 
   const latestByStudent = new Map<string, (typeof attempts)[number]>();
   const countByStudent = new Map<string, number>();
@@ -169,7 +179,8 @@ export async function getExamResults(examId: string): Promise<ExamResults | null
       lastSubmittedAt,
       startedAt,
       elapsedSeconds,
-      attemptCount: countByStudent.get(student.id) ?? 0,
+      attemptCount: (countByStudent.get(student.id) ?? 0) + (gradingStudents.has(student.id) ? 1 : 0),
+      grading: gradingStudents.has(student.id),
       extraMinutes: extraByStudent.get(student.id) ?? 0,
       extraAttempts: extraAttemptsByStudent.get(student.id) ?? 0,
     };

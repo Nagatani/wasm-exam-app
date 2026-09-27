@@ -387,7 +387,8 @@ examsRouter.get('/:examId/results/csv', async (req, res) => {
     student.displayName,
     results.exam.title,
     ...student.results.map((r) => String(r.score)),
-    String(student.totalScore),
+    // Newest attempt still being graded on the judge (normally seconds).
+    student.grading ? '採点中' : String(student.totalScore),
     String(student.attemptCount),
     student.lastSubmittedAt ? student.lastSubmittedAt.toISOString() : '',
     student.elapsedSeconds !== null ? String(student.elapsedSeconds) : '',

@@ -1,0 +1,10 @@
+{
+  "name": "wasm-exam-judge-runner",
+  "private": true,
+  "type": "module",
+  "description": "Node side of the judge: runs JS/TS/Python/C(wasm32-wasi) exactly like the browser does (see shared/).",
+  "dependencies": {
+    "pyodide": "0.28.0",
+    "sucrase": "3.35.1"
+  }
+}

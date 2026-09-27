@@ -3,32 +3,29 @@ import { prisma } from './prisma';
 import { judgeSubmission, type JudgeInput, type JudgeVerdict } from './judge';
 import { isJudgeConfigured, runOnJudge } from './judgeClient';
 import { withJudgeSlot } from './executionQueue';
+import { beginGrading, isServerGraded } from './grading';
 
-// Languages the server compiles+runs itself for the *day-to-day exam flow*
-// (in the sandboxed judge container). Everything else runs in the student's
-// browser and the client reports per-test outcomes back — the server cannot
-// reproduce those runs during a normal run/submit.
+// Languages whose "実行" preview (and, without a judge, whose grading) runs on
+// the server: only Java — it can't run in the browser. The others preview in
+// the student's browser. With a judge configured, *grading* (final submit,
+// auto-finalize, regrade) runs on the judge for every language — see
+// lib/grading.ts.
 const SERVER_EXEC_LANGUAGES: ReadonlySet<Language> = new Set<Language>(['JAVA']);
 
 export function isServerExec(language: Language): boolean {
   return SERVER_EXEC_LANGUAGES.has(language);
 }
 
-// Languages the judge container *can* compile+run when asked directly — a
-// superset of `SERVER_EXEC_LANGUAGES`. C was added 2026-09-11 for the
-// teacher-triggered "regrade" endpoint only (server/src/routes/tasks.ts);
-// the student's own run/submit for C still goes through the browser
-// (`isServerExec('C')` stays false) — see judge/Judge.java's class doc for
-// why the scope is deliberately narrow.
-const REGRADE_CAPABLE_LANGUAGES: ReadonlySet<Language> = new Set<Language>(['JAVA', 'C']);
-
-export function isRegradeCapable(language: Language): boolean {
-  return REGRADE_CAPABLE_LANGUAGES.has(language);
+// Teacher "regrade" re-runs stored submissions on the judge. Since
+// 2026-09-26 the judge runs every language with the browser's runtimes, so
+// every language is regradable (given a configured judge).
+export function isRegradeCapable(_language: Language): boolean {
+  return true;
 }
 
-// The judge protocol's `language` field for a regrade-capable language.
-export function judgeLanguage(language: Language): 'JAVA' | 'C' {
-  return language === 'C' ? 'C' : 'JAVA';
+// The judge protocol's `language` field — the same names as the enum.
+export function judgeLanguage(language: Language): Language {
+  return language;
 }
 
 // The wall-clock deadline of an attempt: a fixed offset from when it started,
@@ -95,11 +92,13 @@ export function judgeInputFromContainer(jr: Awaited<ReturnType<typeof runOnJudge
 }
 
 // Auto-finalize an attempt whose time is up but which the student never
-// submitted (decision 2026-09-10: "自動確定して評価"). The server can't re-run
-// browser-executed languages (C/JS/TS/Python), so a drafted client-exec task
-// whose result the student never sent is graded WA/0; server-exec (Java)
-// drafts are still compiled and run through the judge. A no-op unless the
-// attempt is IN_PROGRESS *and* past its deadline. Returns whether it settled.
+// submitted (decision 2026-09-10: "自動確定して評価"). With a judge configured
+// the attempt is locked as GRADING (submittedAt = the deadline) and every
+// drafted task — any language — is graded in the background from its saved
+// draft (lib/grading.ts). Without a judge (legacy), the server can't re-run
+// browser-executed languages, so a drafted client-exec task is graded WA/0.
+// A no-op unless the attempt is IN_PROGRESS *and* past its deadline. Returns
+// whether it settled (i.e. is no longer in progress).
 //
 // Concurrency-safe: the status flip is a single guarded UPDATE, so only one
 // caller wins and writes submissions.
@@ -122,6 +121,10 @@ export async function maybeSettleAttempt(attemptId: string): Promise<boolean> {
     await extraMinutesFor(attempt.examId, attempt.studentId),
   );
   if (Date.now() < deadline.getTime()) return false;
+
+  if (isServerGraded()) {
+    return beginGrading(attempt.id, deadline);
+  }
 
   const draftByTask = new Map(attempt.drafts.map((d) => [d.taskId, d]));
   const submissionData: Prisma.SubmissionCreateManyInput[] = [];

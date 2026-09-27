@@ -44,6 +44,10 @@ enum SubmissionStatus {
 
 enum AttemptStatus {
   IN_PROGRESS
+  // Final-submitted (by the student or at the deadline) and waiting for the
+  // judge to grade it in the background (2026-09-26, server-side grading).
+  // Locked like SUBMITTED; becomes SUBMITTED once every task is graded.
+  GRADING
   SUBMITTED
 }
 

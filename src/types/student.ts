@@ -20,6 +20,8 @@ export interface StudentExamSummary {
   attemptsUsed: number;
   // The student has an attempt currently in progress.
   hasInProgress: boolean;
+  // The latest attempt is submitted and still being graded on the judge.
+  grading: boolean;
   // Can enter the exam right now — within the schedule window, and either to
   // resume an in-progress attempt or start a fresh one within the retake limit.
   canStart: boolean;
@@ -152,6 +154,10 @@ export interface SubmitPayloadTask {
 // GET /api/student/exams/:examId/attempt — everything the review page needs to
 // grade the in-progress attempt client-side.
 export interface SubmitPayload {
+  // true → the judge grades every task from its saved draft after the final
+  // submit (server-side grading); the browser runs nothing and sends no
+  // outcomes. false (no judge configured) → legacy client-reported flow.
+  serverGraded: boolean;
   attempt: { id: string; attemptNumber: number; startedAt: string; deadline: string };
   exam: { id: string; title: string; totalPoints: number };
   tasks: SubmitPayloadTask[];
@@ -176,7 +182,8 @@ export interface StudentExamResult {
   exam: { id: string; title: string; tasks: StudentTaskSummary[]; totalPoints: number };
   attempt: {
     attemptNumber: number;
-    score: number;
+    // null while the attempt is still being graded.
+    score: number | null;
     submittedAt: string;
     startedAt: string;
   } | null;
@@ -184,4 +191,6 @@ export interface StudentExamResult {
   attemptsUsed: number;
   maxAttempts: number | null;
   canRetake: boolean;
+  // The latest attempt is submitted and still being graded on the judge.
+  grading: boolean;
 }

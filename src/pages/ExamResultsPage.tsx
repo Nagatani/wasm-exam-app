@@ -571,7 +571,17 @@ function StudentResultRowGroup({
         </td>
         <td className="whitespace-nowrap px-3 py-2">{student.studentNumber}</td>
         <td className="whitespace-nowrap px-3 py-2">{student.displayName}</td>
-        <td className="whitespace-nowrap px-3 py-2 font-bold">{student.totalScore}</td>
+        <td className="whitespace-nowrap px-3 py-2 font-bold">
+          {student.totalScore}
+          {student.grading && (
+            <span
+              className="ml-1 rounded bg-mp-purple px-1.5 py-0.5 text-xs font-bold text-mp-btn-fg"
+              title="最新の提出をサーバーで採点中です（通常は数秒）。完了するまでは前回までの結果を表示しています。再読み込みで更新されます。"
+            >
+              採点中
+            </span>
+          )}
+        </td>
         <td className="whitespace-nowrap px-3 py-2 text-mp-muted">
           {student.attemptCount > 0 ? `${student.attemptCount}回` : '-'}
           {maxAttempts !== null && (

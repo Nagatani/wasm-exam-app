@@ -48,7 +48,11 @@ export default defineConfig({
       CLIENT_DIST_PATH: DIST,
       // Same-origin build: API calls are relative (like .env.production).
       VITE_API_BASE_URL: '',
-      JUDGE_URL: '',
+      // With E2E_JUDGE_URL (e.g. http://localhost:4001, `docker compose up -d
+      // judge`) the final submit is graded on the judge (server-side grading)
+      // and the parity spec runs; without it the legacy client-reported flow
+      // is exercised.
+      JUDGE_URL: process.env.E2E_JUDGE_URL ?? '',
       ALLOW_SIGNUP: 'true',
       SESSION_CLEANUP_INTERVAL_HOURS: '0',
       // Run the real CSP (not report-only) so the specs prove the allow-list

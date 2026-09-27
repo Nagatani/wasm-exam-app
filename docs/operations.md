@@ -144,13 +144,16 @@ Referrer-Policy: strict-origin-when-cross-origin
 - Pyodide を別ホストに自ホストした場合などは、`CSP_EXTRA_SOURCES` にその origin（空白区切り、例 `https://mirror.example.ac.jp`）を足してください（同一オリジンに置くなら不要）。
 
 
-## judgeサービス（Java・C実行）
+## judgeサービス（採点・Java実行）
 
 - **方法A**（`docker-compose.yml`）：`docker compose up -d judge` で起動。ホストの **`127.0.0.1:4001`** にのみpublishされ、外部には公開されません。`server` は `JUDGE_URL=http://localhost:4001` で到達します。
 - **方法B**（`docker-compose.prod.yml`）：ホスト公開ポートなし。`server` コンテナから Docker 内部ネットワーク経由で `http://judge:8080` に到達します（`JUDGE_URL` は compose 側が自動設定）。
-- `JUDGE_URL` を空にするとJava実行は無効になり、生徒側でJavaの問題は「準備中」表示になります（他言語は影響なし）。
+- **本採点はすべて judge で行います**（2026-09-26）。試験の「最終提出」と時間切れの自動提出では、全言語（C / Java / JS / TS / Python）の下書きを judge が実行して採点します（生徒の「実行」＝お試しは従来どおり、Java 以外はブラウザ内）。**judge はブラウザと同じ実行環境**で採点するので、プレビューと本採点で結果がずれません：C は clang 16 で WebAssembly（wasm32-wasi）にして Node の WASI で実行（long が4バイトなど型の大きさ・標準ライブラリがブラウザと一致）、Python はブラウザと同じ版の Pyodide を Node で実行、JS/TS はブラウザと共通の入出力コード（`judge/runner/shared/`）を Node で実行します。時間制限もブラウザと同じ（C/JS/TS 10秒・Python 15秒、テストケースの設定は Java のみ有効）。
+- 最終提出は押した時点で確定（提出時刻もその時点）し、採点は裏で行います（生徒の画面は「採点中」→数秒で結果）。**judge が止まっていても提出は失われません**：「採点中」のまま `GRADING_RETRY_MS`（既定15秒）ごとに再試行し、judge が戻れば自動で採点されます。サーバーを再起動しても、採点中の受験は起動時に再開されます（`GRADING_CONCURRENCY` で同時に採点する受験数を調整、既定は `JUDGE_CONCURRENCY` と同じ3）。
+- `JUDGE_URL` を空にすると judge を使わない従来方式になります：Java の問題は「準備中」表示、C / JS / TS / Python は生徒のブラウザで実行した結果をもとに採点します（時間切れで自動提出された場合、これらの言語の下書きは再実行できず0点）。**確認テストでは judge を使う構成を推奨します。**
 - **サンドボックスはコンテナ自体**です。`docker-compose.yml` で `cap_drop: ALL` / `read_only` / tmpfs作業領域 / `pids_limit` / `mem_limit` / `cpus` / `no-new-privileges` / 非rootユーザーを設定しています。学生コードのコンパイル・実行はこのコンテナ内でのみ行われ、ホストでは一切実行されません。macOSでもLinuxでもDocker上で同一に動きます。
-- **C 実行（2026-09-11 追加）**：`Judge.java` は `language: "C"` を受け取ると gcc でコンパイル・実行します。現状は**講師の「既存の提出を再採点」からのみ呼ばれ**、生徒の通常の受験フロー（実行プレビュー・最終提出）は従来どおりブラウザ内 `@wasmer/sdk` のままです。C はメモリ上限を `ulimit -v` で緩く保護するのみで、Java の `-Xmx` ほど確実な MLE 検出はできません（`oom` は常に `false` を返します）。
+- **judge イメージの中身**：JDK 24（Java）、clang 16 + wasi-libc（C）、Node 22 + `judge/runner/`（JS/TS/Python。Pyodide と sucrase はブラウザと同じ版に固定し、自動テストで一致を確認）。以前より数百MB大きくなっています。`judge/` や `judge/runner/shared/`（ブラウザと共有するコード）を変えたら judge イメージの再ビルドが必要です。
+- メモリの目安：Python を2件同時に実行して約300MB。既定の `mem_limit: 1g`・`JUDGE_MAX_CONCURRENT=2` で足ります。
 
 ### judge のネットワーク遮断
 

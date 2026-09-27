@@ -491,11 +491,10 @@ export function TaskEditorPage() {
   }
 
   const basicInfoDirty = task ? taskFormKey(task) !== savedSnapshotRef.current : false;
-  // Only Java (exam flow) and C (regrade only) actually run through the
-  // judge container — see isRegradeCapable() server-side; there's no
-  // frontend equivalent to import since this page is the only place that
-  // needs it.
-  const judgeRelevant = task ? task.language === 'JAVA' || task.language === 'C' : false;
+  // Per-test time/memory limits only apply to Java: the other languages run
+  // with fixed limits equal to the browser's (judge/runner/shared/limits.js),
+  // in the browser preview and on the judge alike.
+  const showTestCaseLimits = task ? task.language === 'JAVA' : false;
   const anyDirty = basicInfoDirty || dirtyTestCaseIds.size > 0 || solutionDirty;
   useUnsavedGuard(anyDirty);
 
@@ -893,16 +892,14 @@ export function TaskEditorPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {judgeRelevant && (
-              <button
-                onClick={handleRegrade}
-                disabled={regrading}
-                className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover disabled:opacity-50"
-                title="このテストケースで既存の提出を再採点します（Java / C）"
-              >
-                {regrading ? '再採点中...' : '既存の提出を再採点'}
-              </button>
-            )}
+            <button
+              onClick={handleRegrade}
+              disabled={regrading}
+              className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover disabled:opacity-50"
+              title="現在のテストケース・比較設定で既存の提出を judge で再採点します（全言語。judge が必要）"
+            >
+              {regrading ? '再採点中...' : '既存の提出を再採点'}
+            </button>
             <button
               onClick={() => setShowBulk((v) => !v)}
               className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover"
@@ -992,7 +989,7 @@ export function TaskEditorPage() {
                   )
                 }
                 onDirtyChange={(dirty) => handleTestCaseDirtyChange(tc.id, dirty)}
-                showLimits={judgeRelevant}
+                showLimits={showTestCaseLimits}
               />
             </div>
           ))}

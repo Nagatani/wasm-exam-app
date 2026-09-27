@@ -1,4 +1,6 @@
 import { transform } from 'sucrase';
+import { prepareJsSource } from '../../judge/runner/shared/jsPrepare.js';
+import { RUN_TIME_LIMIT_MS } from '../../judge/runner/shared/limits.js';
 
 // JavaScript / TypeScript client-side runner. TS is type-stripped with sucrase
 // (no type-checking — a type error won't fail the judge, only a syntax error
@@ -20,52 +22,14 @@ export interface JsRunResult {
   timedOut: boolean;
 }
 
-const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_TIMEOUT_MS = RUN_TIME_LIMIT_MS.JS;
 
 // Transpile (TS) or syntax-check (JS) once; the result is reused for every
-// test case, so a syntax error is reported before any test runs.
+// test case, so a syntax error is reported before any test runs. The logic is
+// shared with the judge (judge/runner/shared/jsPrepare.js), which runs it with
+// the same sucrase version.
 export function prepareJs(source: string, language: 'JS' | 'TS'): JsPrepareResult {
-  if (language === 'TS') {
-    try {
-      const { code } = transform(source, {
-        transforms: ['typescript'],
-        disableESTransforms: true,
-      });
-      return { ok: true, js: code, error: '' };
-    } catch (err) {
-      return { ok: false, js: '', error: formatError(err) };
-    }
-  }
-
-  try {
-    // Parse without executing — throws SyntaxError on malformed source.
-    new Function(source);
-    return { ok: true, js: source, error: '' };
-  } catch (err) {
-    const message = formatError(err);
-    // V8's SyntaxError carries no line/column, so the editor couldn't mark
-    // it (compileErrors.ts looks for `(line:col)`). Re-parse with sucrase
-    // only to locate the error; `new Function` stays the authority on
-    // whether the code is valid.
-    const position = syntaxErrorPosition(source);
-    return {
-      ok: false,
-      js: '',
-      error: position && !/\(\d+:\d+\)/.test(message) ? `${message} (${position})` : message,
-    };
-  }
-}
-
-// `line:col` of the first syntax error sucrase finds, or null if it parses
-// (sucrase is more lenient than V8 in a few places, e.g. top-level await).
-function syntaxErrorPosition(source: string): string | null {
-  try {
-    transform(source, { transforms: [] });
-    return null;
-  } catch (err) {
-    const m = err instanceof Error ? err.message.match(/\((\d+:\d+)\)/) : null;
-    return m ? m[1] : null;
-  }
+  return prepareJsSource(source, language, transform);
 }
 
 export async function runJsOnce(
@@ -98,10 +62,3 @@ export async function runJsOnce(
   }
 }
 
-function formatError(err: unknown): string {
-  if (err instanceof Error) {
-    // sucrase syntax errors already carry a "(line:col)" location in .message.
-    return err.message;
-  }
-  return String(err);
-}
