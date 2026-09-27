@@ -67,7 +67,7 @@ npm --prefix server install
 cp .env.example .env
 cp server/.env.example server/.env
 
-# 3. ローカル PostgreSQL と Java judge を起動
+# 3. ローカル PostgreSQL と judge（採点・Java 実行）を起動
 docker compose up -d db judge
 
 # 4. DB マイグレーションを適用
@@ -76,7 +76,7 @@ npm --prefix server run prisma:migrate
 
 > **ポート注意**: `docker-compose.yml` はホスト側 **5433番** をPostgreSQLコンテナに、**127.0.0.1:4001** をjudgeコンテナにマッピングしています（本機で稼働中のHomebrew版PostgreSQLが5432番を使うため）。`server/.env` の `DATABASE_URL` は5433、`JUDGE_URL` は4001を指すようになっています。
 >
-> Java問題を使わない場合は `judge` の起動は不要で、`server/.env` の `JUDGE_URL` を空にしておけばJavaは「準備中」表示になります。
+> `judge` は Java の「実行」と、**全言語の本採点**（最終提出・時間切れ自動提出・再採点）に使います。起動せずに `server/.env` の `JUDGE_URL` を空にした場合、Java は「準備中」表示になり、C/JS/TS/Python の採点は生徒のブラウザで実行した結果で行う従来方式になります（確認テストでは judge ありを推奨）。`judge/` を変更したら `docker compose up -d --build judge` で再ビルドしてください。
 
 ## 起動方法
 
@@ -145,7 +145,7 @@ docker exec wasm-exam-app-db-1 psql -U wasm_exam -d wasm_exam \
 | `npm run test:frontend` | フロントエンドの単体テストのみ |
 | `npm run test:integration` | 結合テスト（APIを実際のDBに対して実行。開発用 `db` コンテナが必要。専用の `wasm_exam_test` DBを自動作成し、開発用DBには触れません） |
 | `npm run test:e2e` | ブラウザE2Eテスト（Playwright + Chromium。ログイン〜受験〜最終提出〜成績確認などを実ブラウザで自動操作。`db` コンテナが必要、初回は `npx playwright install chromium`。専用の `wasm_exam_e2e_test` DBを使用。`E2E_WITH_C=1` を付けると clang〈約106MB〉を取得して C の実行も確認） |
-| `npm run test:judge` | judge 経由の結合テスト（Java・Cを実際にコンパイル・実行。`db` と `judge` コンテナが必要。専用の `wasm_exam_judge_test` DBを使用） |
+| `npm run test:judge` | judge 経由の結合テスト（全言語の本採点・再採点、Java の実行などを実際の judge で確認。`db` と `judge` コンテナが必要。専用の `wasm_exam_judge_test` DBを使用） |
 | `npm run preview` | 本番ビルドをローカルでプレビュー |
 
 ### バックエンド（`server/`）
@@ -164,7 +164,7 @@ docker exec wasm-exam-app-db-1 psql -U wasm_exam -d wasm_exam \
 
 | コマンド | 内容 |
 |---|---|
-| `docker compose up -d db judge` | 開発用：PostgreSQLとjudgeを起動 |
+| `docker compose up -d db judge` | 開発用：PostgreSQLとjudgeを起動（judge の CPU 数などは `JUDGE_CPUS` / `JUDGE_MAX_CONCURRENT` / `JUDGE_MEM_LIMIT` で変更可） |
 | `docker compose ps` | コンテナの稼働状況 |
 | `docker compose logs -f judge` | judgeのログ |
 | `docker compose build judge` | `judge/` を変更したときの再ビルド |

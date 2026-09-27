@@ -60,7 +60,7 @@ function ServiceStatus() {
     <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
       <span className={dot(health.db)}>● DB: {word[health.db] ?? health.db}</span>
       <span className={dot(health.judge)}>
-        ● Java judge: {word[health.judge] ?? health.judge}
+        ● judge（採点・Java 実行）: {word[health.judge] ?? health.judge}
       </span>
     </div>
   );

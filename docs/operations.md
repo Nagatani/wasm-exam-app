@@ -53,8 +53,8 @@ npm run build:full                              # dist/ を生成し server/ も
 #    PORT=4000
 #    CORS_ORIGIN=https://exam.example.ac.jp      # フロントを配信するオリジン
 #    NODE_ENV=production
-#    JUDGE_URL=http://localhost:4001             # Java/C を使わないなら空
-#    JUDGE_CONCURRENCY=3
+#    JUDGE_URL=http://localhost:4001             # 本採点・Java 実行用（推奨。空にすると従来方式）
+#    JUDGE_CONCURRENCY=2                         # judge の JUDGE_MAX_CONCURRENT と同じ値に
 #    JUDGE_REQUEST_TIMEOUT_MS=60000
 #    ALLOW_SIGNUP=false                          # 名簿から一括作成で運用するなら（下記「ログイン・アカウントの保護」）
 #    TRUST_PROXY=1                               # リバースプロキシ経由なら
@@ -62,8 +62,8 @@ npm run build:full                              # dist/ を生成し server/ も
 # 4. DB マイグレーションを適用（スキーマ変更なしの適用のみ）
 npm --prefix server run prisma:deploy
 
-# 5. judge コンテナを起動（Java/C を使う場合）
-docker compose up -d judge
+# 5. judge コンテナを起動（本採点・Java 実行用。CPU を増やすなら JUDGE_CPUS 等も指定 →「採点の処理能力」）
+docker compose up -d --build judge
 
 # 6. サーバー起動（pm2 / systemd などで常駐させる）
 npm start
