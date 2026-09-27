@@ -152,7 +152,7 @@ Referrer-Policy: strict-origin-when-cross-origin
 - 最終提出は押した時点で確定（提出時刻もその時点）し、採点は裏で行います（生徒の画面は「採点中」→数秒で結果）。**judge が止まっていても提出は失われません**：「採点中」のまま `GRADING_RETRY_MS`（既定15秒）ごとに再試行し、judge が戻れば自動で採点されます。サーバーを再起動しても、採点中の受験は起動時に再開されます（`GRADING_CONCURRENCY` で同時に採点する受験数を調整、既定は `JUDGE_CONCURRENCY` と同じ3）。
 - `JUDGE_URL` を空にすると judge を使わない従来方式になります：Java の問題は「準備中」表示、C / JS / TS / Python は生徒のブラウザで実行した結果をもとに採点します（時間切れで自動提出された場合、これらの言語の下書きは再実行できず0点）。**確認テストでは judge を使う構成を推奨します。**
 - **サンドボックスはコンテナ自体**です。`docker-compose.yml` で `cap_drop: ALL` / `read_only` / tmpfs作業領域 / `pids_limit` / `mem_limit` / `cpus` / `no-new-privileges` / 非rootユーザーを設定しています。学生コードのコンパイル・実行はこのコンテナ内でのみ行われ、ホストでは一切実行されません。macOSでもLinuxでもDocker上で同一に動きます。
-- **judge イメージの中身**：JDK 24（Java）、clang 16 + wasi-libc（C）、Node 22 + `judge/runner/`（JS/TS/Python。Pyodide と sucrase はブラウザと同じ版に固定し、自動テストで一致を確認）。以前より数百MB大きくなっています。`judge/` や `judge/runner/shared/`（ブラウザと共有するコード）を変えたら judge イメージの再ビルドが必要です。
+- **judge イメージの中身**：JDK 24（Java）、clang 16 + wasi-libc（C）、Node 22 + `judge/runner/`（JS/TS/Python。Pyodide と sucrase はブラウザと同じ版に固定し、自動テストで一致を確認）。Python は、イメージのビルド時に作る「起動直後の Pyodide のメモリスナップショット」から提出ごとに新しいインタープリタを復元します（1回あたり約1.1秒 → 約0.27秒。生徒のコードを動かす前の状態なので、ブラウザでの新規読み込みと同じ状態から始まり、生徒同士の影響もありません）。以前より数百MB大きくなっています。`judge/` や `judge/runner/shared/`（ブラウザと共有するコード）を変えたら judge イメージの再ビルドが必要です。
 - メモリの目安：Python を2件同時に実行して約300MB。既定の `mem_limit: 1g`・`JUDGE_MAX_CONCURRENT=2` で足ります。
 
 ### judge のネットワーク遮断
@@ -168,14 +168,34 @@ Referrer-Policy: strict-origin-when-cross-origin
 方法A（`docker-compose.yml` を host-run `server` と併用する構成）のまま `judge` だけを `internal: true` にすることは**できません**——`server` がホストプロセスである以上、`judge` は必ずホストへポートを公開する必要があり、それ自体が `internal: true` と両立しないためです。この構成のまま遮断したい場合は、代わりにホスト側ファイアウォールで judge コンテナのブリッジ網からの outbound を落とす手があります（例 `iptables -I DOCKER-USER -s <judgeのブリッジsubnet> ! -d <server/db> -j DROP` 相当。コンテナ再作成後も有効で Linux 限定）。
 
 - 負荷制御:
-  - `JUDGE_CONCURRENCY`（`server` 側、既定3）… サーバーが同時にjudgeへ投げる最大数
-  - ユーザーあたり同時1ジョブ（超過リクエストは即429）
-  - `JUDGE_MAX_CONCURRENT`（`judge` コンテナ側、`docker-compose.yml` の環境変数、既定2）… コンテナ内の同時コンパイル・実行数の上限
+  - `JUDGE_CONCURRENCY`（`server` 側、既定2）… サーバーが同時にjudgeへ投げる最大数。**judge 側の `JUDGE_MAX_CONCURRENT` と同じ値にしてください**（方法Bは compose が自動で揃えます）
+  - 生徒の「実行」（Java）・教師の検証／再採点は、裏の採点より**優先して**処理されます（最終提出が殺到しても「実行」が採点待ちの後ろに並ばない）
+  - ユーザーあたり同時1ジョブ（超過リクエストは即429。裏の採点は対象外で、順番待ちになるだけ）
+  - `JUDGE_MAX_CONCURRENT`（`judge` コンテナ側、既定2）… コンテナ内の同時コンパイル・実行数の上限。`JUDGE_CPUS`（既定2.0）・`JUDGE_MEM_LIMIT`（既定1g）とともに compose の環境変数で変更できます（下記「採点の処理能力」）
   - `JUDGE_REQUEST_TIMEOUT_MS`（`server` → judgeの1リクエスト全体のタイムアウト）
 - `judge/` のコード（`Judge.java` / `Dockerfile`）を変更したら、方法Aなら `docker compose build judge && docker compose up -d judge`、方法Bなら `npm run docker:prod` で再ビルド。
 - ログ: 方法A `docker compose logs -f judge` ／ 方法B `docker compose -f docker-compose.prod.yml logs -f judge`
 - ヘルスチェック: 方法A `curl http://localhost:4001/health` → `{"ok":true}`。方法Bはホストから直接は叩けません（`judge` にホスト公開ポートがないため）——`docker compose -f docker-compose.prod.yml exec server node -e "fetch('http://judge:8080/health').then(r=>r.text()).then(console.log)"` のように `server` コンテナ経由で確認してください。
 - スケール注意: `server` 側の同時実行制御（`server/src/lib/executionQueue.ts`）は**単一プロセス前提のインメモリなセマフォ**です。`server` を複数インスタンスで動かす場合、全体の同時実行は「インスタンス数 × `JUDGE_CONCURRENCY`」に増え、かつユーザーあたり同時1ジョブの制限もインスタンスをまたいでは効きません（同じユーザーが別インスタンスに当たれば複数ジョブが同時に通る）。**推奨: `server` は単一インスタンスで運用してください**（このアプリの規模・利用形態——1クラスが同じ時間帯に受験する、というピークの読みやすさ——なら単一インスタンスで十分機能します）。複数インスタンス化がどうしても必要になった場合は、このセマフォをRedis等の外部ストアに置き換える設計変更が前提になります（未実装・具体的な必要が出たら着手）。
+
+## 採点の処理能力（一斉提出への備え）
+
+最終提出は押した時点で確定するため、何人が同時に提出しても提出自体が失敗したり遅れたりすることはありません（100人同時でも提出の応答は最大約0.2秒）。かかるのは「採点中」から結果が出るまでの時間で、これは judge に割り当てた **CPU 数にほぼ比例して短くなります**。
+
+**実測**（2026-09-27、8コアの開発機。生徒100人が 5問〈C・JS・TS・Python・Java 各1問、テストケース各5件〉の試験を同時に最終提出、全員正解）：
+
+| judge の設定 | 全員の採点完了 | 半数の採点完了 | 1秒あたりの採点（問） |
+|---|---|---|---|
+| 2コア・同時2（既定） | 約57秒 | 約33秒 | 約8.8 |
+| 4コア・同時4 | 約35秒 | 約21秒 | 約14.3 |
+| 6コア・同時6 | 約27秒 | 約17秒 | 約18.6 |
+
+- 言語ごとの judge の CPU 消費（テストケース5件の問題1問あたり）の目安：C 約0.1秒、JS/TS 約0.12秒、Java 約0.2秒、Python 約0.45秒。問題数・テストケース数・言語構成に応じて比例します。
+- 目安として、**数十人〜100人規模なら既定（2コア）でも1分前後で全員の採点が終わります**。より早く結果を返したい場合は、サーバーのコア数に余裕があれば judge に多く割り当ててください（例：8コアのサーバーなら judge に4〜6コア）。
+- 変え方（方法A）：`JUDGE_CPUS=4 JUDGE_MAX_CONCURRENT=4 JUDGE_MEM_LIMIT=2g docker compose up -d judge` として、`server/.env` の `JUDGE_CONCURRENCY=4` に揃えてサーバーを再起動。方法B：同じ変数を `docker compose -f docker-compose.prod.yml` の実行時（またはシェル／`.env`）に指定すれば、`server` 側の `JUDGE_CONCURRENCY` も自動で揃います。
+- メモリの目安：同時実行1つあたり最大300MB程度（Python）。`JUDGE_MEM_LIMIT` は「同時実行数 × 0.4GB」程度を目安に。
+- 採点中に受験中の生徒が押した Java の「実行」は優先処理され、上記の混雑中でも約0.5秒で返ることを確認しています。
+- 自分の環境での測定：`server/scripts/loadtest-grading.ts`（使い方はファイル冒頭のコメント）。専用のテスト用DBに対して、指定人数の同時提出を再現し、採点完了までの時間と得点の正しさを確認します。
 
 ## クライアントランタイムの配信・キャッシュ（一斉受験対策）
 

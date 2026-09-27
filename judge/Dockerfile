@@ -16,6 +16,10 @@ WORKDIR /runner
 COPY runner/package.json runner/package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 COPY runner/ ./
+# Pyodide memory snapshot of a freshly booted interpreter (see
+# runner/makeSnapshot.mjs): each Python submission restores it in ~50ms
+# instead of booting Pyodide (~1.1s) — the main grading-throughput win.
+RUN node makeSnapshot.mjs
 
 FROM eclipse-temurin:24-jdk
 

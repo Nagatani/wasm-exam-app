@@ -9,7 +9,6 @@
 // (fresh worker per JS test; one reused Pyodide worker, recreated after a
 // timeout) — mirrors src/runner/* in the browser, mostly via ./shared.
 import { Worker } from 'node:worker_threads';
-import { transform } from 'sucrase';
 import { prepareJsSource } from './shared/jsPrepare.js';
 import { RUN_TIME_LIMIT_MS } from './shared/limits.js';
 
@@ -39,6 +38,8 @@ async function handle({ language, code, tests }) {
 }
 
 async function runJs(language, code, tests) {
+  // Loaded only for JS/TS (~20ms of CPU a Python request doesn't need).
+  const { transform } = await import('sucrase');
   const prepared = prepareJsSource(code, language, transform);
   if (!prepared.ok) return { compile: { ok: false, stderr: prepared.error }, results: [] };
   const limit = RUN_TIME_LIMIT_MS[language];

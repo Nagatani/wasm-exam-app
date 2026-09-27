@@ -23,6 +23,9 @@ playwright-report
 !.env.production.example
 !server/.env.prod.docker.example
 
+# judge: generated at image build time (judge/runner/makeSnapshot.mjs)
+judge/runner/pyodide-snapshot.bin
+
 # Server
 server/dist
 server/node_modules
