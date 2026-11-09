@@ -29,8 +29,8 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "multer": "^2.3.0",
-    "zod": "^3.24.1"
+    "multer": "^2.5.0",
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
