@@ -119,7 +119,7 @@ interface WindowWithMonaco extends Window {
 let monacoPromise: Promise<Monaco> | null = null;
 
 export function loadMonaco(): Promise<Monaco> {
-  const win = window as WindowWithMonaco;
+  const win = window as unknown as WindowWithMonaco;
   if (win.monaco) {
     return Promise.resolve(win.monaco);
   }

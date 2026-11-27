@@ -291,7 +291,10 @@ describe('parseInline — formatting, links, images, and XSS safety', () => {
     assert.deepEqual(parseInline('![pic](javascript:alert(1))'), [
       { type: 'text', value: 'pic' },
     ]);
-    assert.deepEqual(parseInline('![](data:image/svg+xml,<svg onload=alert(1)>)'), []);
+    assert.deepEqual(parseInline('![](data:image/svg+xml,<svg%20onload=alert(1)>)'), []);
+    assert.deepEqual(parseInline('![](data:image/svg+xml,<svg onload=alert(1)>)'), [
+      { type: 'text', value: '![](data:image/svg+xml,<svg onload=alert(1)>)' },
+    ]);
   });
 
   it('treats raw HTML tags strictly as plain text (never parsed as HTML)', () => {

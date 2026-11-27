@@ -71,7 +71,7 @@ body {
 }
 
 /*
- * Minimal typography for react-markdown output (teacher-authored task
+ * Minimal typography for MarkdownBody output (teacher-authored task
  * statements). Deliberately hand-rolled rather than pulling in
  * @tailwindcss/typography — all colors come from the shared --mp-* tokens so
  * it tracks both themes, and the code/quote backgrounds use a translucent

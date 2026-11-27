@@ -22,8 +22,15 @@ export type BlockNode =
   | { type: 'hr' }
   | { type: 'table'; align: TableAlign[]; header: InlineNode[][]; rows: InlineNode[][][] };
 
-const CONTROL_CHAR_RE = /[\u0000-\u001f\u007f]/;
 const ESCAPABLE_PUNCTUATION = new Set('\\`*_{}[]()#+-.!|~<>');
+
+function hasControlChar(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i);
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
+}
 
 /**
  * Validates link/image URLs. Allows only:
@@ -34,7 +41,7 @@ const ESCAPABLE_PUNCTUATION = new Set('\\`*_{}[]()#+-.!|~<>');
  */
 export function sanitizeUrl(raw: string): string | null {
   const trimmed = raw.trim();
-  if (!trimmed || CONTROL_CHAR_RE.test(trimmed)) return null;
+  if (!trimmed || hasControlChar(trimmed)) return null;
 
   if (trimmed.startsWith('/')) {
     if (trimmed.length > 1 && (trimmed[1] === '/' || trimmed[1] === '\\')) {
