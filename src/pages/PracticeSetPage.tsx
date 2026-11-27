@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link } from '../lib/router';
+import { useParams } from '../lib/routerContext';
 import { getPracticeExam } from '../api/practice';
 import { ApiError } from '../api/client';
 import { AppHeader } from '../components/AppHeader';

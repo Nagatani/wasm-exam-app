@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from '../lib/router';
 import { CodeEditor } from '../components/CodeEditor';
 import { UserDrawer } from '../components/UserDrawer';
 import { compileAndRunC, type RunCResult } from '../runner/cRunner';

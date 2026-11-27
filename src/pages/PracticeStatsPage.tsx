@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams } from '../lib/routerContext';
 import { getPracticeHistory, getPracticeStats } from '../api/exams';
 import { ApiError } from '../api/client';
 import type {

@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from '../lib/router';
+import { useNavigate } from '../lib/routerContext';
 import { getSignupStatus, logIn } from '../api/auth';
 import { ApiError } from '../api/client';
 import { useAuth } from '../contexts/useAuth';

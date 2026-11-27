@@ -10,8 +10,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "vitest run && npm --prefix server test",
-    "test:frontend": "vitest run",
+    "test": "npm run test:frontend && npm --prefix server test",
+    "test:frontend": "node --experimental-strip-types --test 'src/**/*.test.ts'",
     "test:integration": "npm --prefix server run test:integration",
     "test:judge": "npm --prefix server run test:judge",
     "preview": "vite preview",
@@ -27,7 +27,6 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-markdown": "^10.1.0",
-    "react-router-dom": "^7.18.1",
     "sucrase": "^3.35.1"
   },
   "devDependencies": {
@@ -40,7 +39,6 @@
     "oxlint": "^1.71.0",
     "tailwindcss": "^4.3.2",
     "typescript": "~6.0.2",
-    "vite": "^8.3.3",
-    "vitest": "^5.0.1"
+    "vite": "^8.3.3"
   }
 }

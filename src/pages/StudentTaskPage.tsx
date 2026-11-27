@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from '../lib/routerContext';
 import ReactMarkdown from 'react-markdown';
 import { CodeEditor } from '../components/CodeEditor';
 import { UserDrawer } from '../components/UserDrawer';

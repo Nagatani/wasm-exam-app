@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from '../lib/router';
 import { useAuth } from '../contexts/useAuth';
 import { BackHeader } from '../components/BackHeader';
 import { ThemeToggle } from '../components/ThemeToggle';

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
 import {
   BACKUP_MAX_AGE_MS,
   clearBackup,
@@ -8,7 +9,7 @@ import {
   practiceBackupKey,
   readBackup,
   writeBackup,
-} from './localBackup';
+} from './localBackup.ts';
 
 function memoryStore() {
   const map = new Map<string, string>();
@@ -28,23 +29,23 @@ describe('localBackup', () => {
   it('round-trips code with its timestamp', () => {
     const s = memoryStore();
     writeBackup('k', 'int main(){}', 1000, s);
-    expect(readBackup('k', 2000, s)).toEqual({ code: 'int main(){}', savedAt: 1000 });
+    assert.deepEqual(readBackup('k', 2000, s), { code: 'int main(){}', savedAt: 1000 });
   });
 
   it('drops and forgets a backup older than the max age', () => {
     const s = memoryStore();
     writeBackup('k', 'x', 0, s);
-    expect(readBackup('k', BACKUP_MAX_AGE_MS + 1, s)).toBeNull();
-    expect(s.map.size).toBe(0);
+    assert.equal(readBackup('k', BACKUP_MAX_AGE_MS + 1, s), null);
+    assert.equal(s.map.size, 0);
   });
 
   it('ignores and removes malformed entries', () => {
     const s = memoryStore();
     s.setItem('wasm-exam-backup:k', '{"code":1}');
-    expect(readBackup('k', 0, s)).toBeNull();
-    expect(s.map.size).toBe(0);
+    assert.equal(readBackup('k', 0, s), null);
+    assert.equal(s.map.size, 0);
     s.setItem('wasm-exam-backup:k', 'not json');
-    expect(readBackup('k', 0, s)).toBeNull();
+    assert.equal(readBackup('k', 0, s), null);
   });
 
   it('clears one key, a key prefix, or everything — but never foreign keys', () => {
@@ -56,24 +57,24 @@ describe('localBackup', () => {
     writeBackup(practiceBackupKey('u1', 't1'), 'd', 0, s);
 
     clearBackup(examBackupKey('u1', 'a1', 't2'), s);
-    expect(readBackup(examBackupKey('u1', 'a1', 't2'), 0, s)).toBeNull();
+    assert.equal(readBackup(examBackupKey('u1', 'a1', 't2'), 0, s), null);
 
     clearBackups(examAttemptBackupPrefix('u1', 'a1'), s);
-    expect(readBackup(examBackupKey('u1', 'a1', 't1'), 0, s)).toBeNull();
-    expect(readBackup(examBackupKey('u1', 'a2', 't1'), 0, s)?.code).toBe('c');
+    assert.equal(readBackup(examBackupKey('u1', 'a1', 't1'), 0, s), null);
+    assert.equal(readBackup(examBackupKey('u1', 'a2', 't1'), 0, s)?.code, 'c');
 
     clearBackups('', s);
-    expect([...s.map.keys()]).toEqual(['wasm-exam-theme']);
+    assert.deepEqual([...s.map.keys()], ['wasm-exam-theme']);
   });
 
   it('keys are scoped per user', () => {
-    expect(examBackupKey('u1', 'a', 't')).not.toBe(examBackupKey('u2', 'a', 't'));
-    expect(practiceBackupKey('u1', 't')).not.toBe(practiceBackupKey('u2', 't'));
+    assert.notEqual(examBackupKey('u1', 'a', 't'), examBackupKey('u2', 'a', 't'));
+    assert.notEqual(practiceBackupKey('u1', 't'), practiceBackupKey('u2', 't'));
   });
 
   it('is a no-op without storage', () => {
-    expect(readBackup('k', 0, null)).toBeNull();
-    expect(() => writeBackup('k', 'x', 0, null)).not.toThrow();
-    expect(() => clearBackups('', null)).not.toThrow();
+    assert.equal(readBackup('k', 0, null), null);
+    assert.doesNotThrow(() => writeBackup('k', 'x', 0, null));
+    assert.doesNotThrow(() => clearBackups('', null));
   });
 });

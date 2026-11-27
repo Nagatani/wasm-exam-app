@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link } from '../lib/router';
+import { useNavigate, useParams } from '../lib/routerContext';
 import ReactMarkdown from 'react-markdown';
 import { CodeEditor } from '../components/CodeEditor';
 import { UserDrawer } from '../components/UserDrawer';

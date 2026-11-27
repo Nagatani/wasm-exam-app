@@ -33,7 +33,9 @@ export function resolvePyodideBaseUrl(configured: string | undefined): string {
   return url.endsWith('/') ? url : `${url}/`;
 }
 
-const PYODIDE_BASE_URL = resolvePyodideBaseUrl(import.meta.env.VITE_PYODIDE_BASE_URL);
+const PYODIDE_BASE_URL = resolvePyodideBaseUrl(
+  import.meta.env ? import.meta.env.VITE_PYODIDE_BASE_URL : undefined,
+);
 
 // First call pulls the Pyodide runtime; later calls are fast.
 const LOAD_TIMEOUT_MS = 90_000;

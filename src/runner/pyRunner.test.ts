@@ -1,15 +1,17 @@
-import { describe, expect, it } from 'vitest';
-import { DEFAULT_PYODIDE_BASE_URL, resolvePyodideBaseUrl } from './pyRunner';
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import { DEFAULT_PYODIDE_BASE_URL, resolvePyodideBaseUrl } from './pyRunner.ts';
 
 describe('resolvePyodideBaseUrl', () => {
   it('defaults to the jsDelivr CDN when unset or blank', () => {
-    expect(resolvePyodideBaseUrl(undefined)).toBe(DEFAULT_PYODIDE_BASE_URL);
-    expect(resolvePyodideBaseUrl('  ')).toBe(DEFAULT_PYODIDE_BASE_URL);
+    assert.equal(resolvePyodideBaseUrl(undefined), DEFAULT_PYODIDE_BASE_URL);
+    assert.equal(resolvePyodideBaseUrl('  '), DEFAULT_PYODIDE_BASE_URL);
   });
 
   it('uses a configured self-hosted location, always with a trailing slash', () => {
-    expect(resolvePyodideBaseUrl('/pyodide/v0.28.0/full')).toBe('/pyodide/v0.28.0/full/');
-    expect(resolvePyodideBaseUrl('https://mirror.example.ac.jp/pyodide/')).toBe(
+    assert.equal(resolvePyodideBaseUrl('/pyodide/v0.28.0/full'), '/pyodide/v0.28.0/full/');
+    assert.equal(
+      resolvePyodideBaseUrl('https://mirror.example.ac.jp/pyodide/'),
       'https://mirror.example.ac.jp/pyodide/',
     );
   });

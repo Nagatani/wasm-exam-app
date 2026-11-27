@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from '../lib/router';
 import { useAuth } from '../contexts/useAuth';
 import { AppHeader } from '../components/AppHeader';
 import { SkeletonRows } from '../components/Skeleton';

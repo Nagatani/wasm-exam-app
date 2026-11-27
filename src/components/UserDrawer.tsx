@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from '../lib/router';
+import { useNavigate } from '../lib/routerContext';
 import { logOut } from '../api/auth';
 import { useAuth } from '../contexts/useAuth';
 import { ThemeToggle } from './ThemeToggle';

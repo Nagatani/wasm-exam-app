@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link } from '../lib/router';
+import { useNavigate, useParams } from '../lib/routerContext';
 import { deleteExam, getExam, getPublishCheck, updateExam, type PublishIssue } from '../api/exams';
 import { createTask, duplicateTask, updateTask } from '../api/tasks';
 import { listCourses } from '../api/courses';
