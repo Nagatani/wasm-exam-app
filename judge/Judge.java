@@ -1,5 +1,3 @@
-import com.google.gson.Gson;
-import com.google.gson.JsonSyntaxException;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
@@ -19,8 +17,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -64,8 +64,6 @@ import java.util.concurrent.TimeUnit;
  * startup, which the browser uses too.
   */
 public final class Judge {
-
-  private static final Gson GSON = new Gson();
 
   private static final int PORT =
       Integer.parseInt(System.getenv().getOrDefault("JUDGE_PORT", "8080"));
@@ -113,19 +111,19 @@ public final class Judge {
     server.createContext("/run", Judge::handleRun);
     server.start();
     System.out.println("judge listening on :" + PORT
-        + " (maxConcurrent=" + MAX_CONCURRENT_RUNS + ", limits=" + GSON.toJson(SHARED) + ")");
+        + " (maxConcurrent=" + MAX_CONCURRENT_RUNS + ", limits=" + serializeSharedLimits(SHARED) + ")");
   }
 
-  // ---- request / response DTOs (Gson-mapped) --------------------------------
+  // ---- request / response DTOs ----------------------------------------------
 
   // runner/shared/limits.js, as JSON (see loadSharedLimits).
-  private static final class SharedLimits {
-    java.util.Map<String, Long> timeLimitMs;
+  static final class SharedLimits {
+    Map<String, Long> timeLimitMs;
     List<String> cFlags;
   }
 
   // The node runner's request (run.mjs) — tests without per-test limits.
-  private static final class NodeRunRequest {
+  static final class NodeRunRequest {
     final String language;
     final String code;
     final List<NodeTest> tests;
@@ -137,7 +135,7 @@ public final class Judge {
     }
   }
 
-  private static final class NodeTest {
+  static final class NodeTest {
     final String id;
     final String stdin;
 
@@ -147,20 +145,20 @@ public final class Judge {
     }
   }
 
-  private static final class RunRequest {
+  static final class RunRequest {
     String language; // "JAVA" (default) / "C" / "JS" / "TS" / "PYTHON"
     String code;
     List<TestSpec> tests;
   }
 
-  private static final class TestSpec {
+  static final class TestSpec {
     String id;
     String stdin;
     long timeLimitMs;
     long memoryLimitMb;
   }
 
-  private static final class CompileInfo {
+  static final class CompileInfo {
     final boolean ok;
     final String stderr;
 
@@ -170,7 +168,7 @@ public final class Judge {
     }
   }
 
-  private static final class TestOutcome {
+  static final class TestOutcome {
     final String id;
     final String stdout;
     final String stderr;
@@ -191,7 +189,7 @@ public final class Judge {
     }
   }
 
-  private static final class RunResponse {
+  static final class RunResponse {
     final CompileInfo compile;
     final List<TestOutcome> results;
 
@@ -218,8 +216,8 @@ public final class Judge {
 
       RunRequest req;
       try {
-        req = GSON.fromJson(new String(body, StandardCharsets.UTF_8), RunRequest.class);
-      } catch (JsonSyntaxException e) {
+        req = parseRunRequest(new String(body, StandardCharsets.UTF_8));
+      } catch (JsonParseException e) {
         writeJson(ex, 400, "{\"error\":\"invalid_json\"}");
         return;
       }
@@ -238,7 +236,7 @@ public final class Judge {
       }
       try {
         RunResponse response = compileAndRun(req);
-        writeJson(ex, 200, GSON.toJson(response));
+        writeJson(ex, 200, serializeRunResponse(response));
       } finally {
         RUN_SLOTS.release();
       }
@@ -246,7 +244,7 @@ public final class Judge {
       Thread.currentThread().interrupt();
       writeJson(ex, 503, "{\"error\":\"interrupted\"}");
     } catch (Exception e) {
-      writeJson(ex, 500, "{\"error\":" + GSON.toJson(String.valueOf(e.getMessage())) + "}");
+      writeJson(ex, 500, "{\"error\":" + Json.quote(String.valueOf(e.getMessage())) + "}");
     }
   }
 
@@ -262,14 +260,14 @@ public final class Judge {
   // Reads runner/shared/limits.js through Node once at startup, so the time
   // limits and C flags have exactly one definition (shared with the browser).
   private static SharedLimits loadSharedLimits() throws IOException, InterruptedException {
-    String script = "import(" + GSON.toJson(RUNNER_DIR.resolve("shared/limits.js").toUri().toString()) + ")"
+    String script = "import(" + Json.quote(RUNNER_DIR.resolve("shared/limits.js").toUri().toString()) + ")"
         + ".then(m => process.stdout.write(JSON.stringify({ timeLimitMs: m.RUN_TIME_LIMIT_MS, cFlags: m.C_COMPILE_FLAGS })))";
     Process p = new ProcessBuilder(NODE, "--input-type=module", "-e", script).redirectErrorStream(true).start();
     String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
     if (!p.waitFor(20, TimeUnit.SECONDS) || p.exitValue() != 0) {
       throw new IllegalStateException("could not read runner/shared/limits.js: " + out);
     }
-    return GSON.fromJson(out, SharedLimits.class);
+    return parseSharedLimits(out);
   }
 
   private static RunResponse compileAndRun(RunRequest req) throws IOException, InterruptedException {
@@ -428,7 +426,8 @@ public final class Judge {
     pb.environment().put("LANG", "C.UTF-8");
     Process process = pb.start();
 
-    byte[] input = GSON.toJson(new NodeRunRequest(language, req.code, tests)).getBytes(StandardCharsets.UTF_8);
+    byte[] input = serializeNodeRunRequest(new NodeRunRequest(language, req.code, tests))
+        .getBytes(StandardCharsets.UTF_8);
     Thread stdinPump = new Thread(() -> {
       try (OutputStream os = process.getOutputStream()) {
         os.write(input);
@@ -458,7 +457,7 @@ public final class Judge {
     if (process.exitValue() != 0) {
       throw new IllegalStateException("runner failed: " + errDrainer.text());
     }
-    RunResponse response = GSON.fromJson(outDrainer.text(), RunResponse.class);
+    RunResponse response = parseRunResponse(outDrainer.text());
     return capStreams(response);
   }
 
@@ -679,6 +678,550 @@ public final class Judge {
     @Override
     public String toString() {
       return sb.toString();
+    }
+  }
+
+  // ---- JSON DTO mapping ---------------------------------------------------
+
+  static RunRequest parseRunRequest(String json) {
+    if (json == null || json.isBlank()) {
+      return null;
+    }
+    Object parsed = Json.parse(json);
+    if (parsed == null) {
+      return null;
+    }
+    Map<String, Object> obj = asObject(parsed, "request");
+    RunRequest req = new RunRequest();
+    req.language = optString(obj, "language");
+    req.code = optString(obj, "code");
+    Object testsRaw = obj.get("tests");
+    if (testsRaw != null) {
+      List<Object> arr = asArray(testsRaw, "tests");
+      req.tests = new ArrayList<>(arr.size());
+      for (Object item : arr) {
+        Map<String, Object> t = asObject(item, "tests[]");
+        TestSpec spec = new TestSpec();
+        spec.id = optString(t, "id");
+        spec.stdin = optString(t, "stdin");
+        spec.timeLimitMs = optLong(t, "timeLimitMs", 0L);
+        spec.memoryLimitMb = optLong(t, "memoryLimitMb", 0L);
+        req.tests.add(spec);
+      }
+    }
+    return req;
+  }
+
+  static SharedLimits parseSharedLimits(String json) {
+    Map<String, Object> obj = asObject(Json.parse(json), "sharedLimits");
+    SharedLimits limits = new SharedLimits();
+    Map<String, Object> tmObj = asObject(obj.get("timeLimitMs"), "timeLimitMs");
+    limits.timeLimitMs = new LinkedHashMap<>();
+    for (Map.Entry<String, Object> entry : tmObj.entrySet()) {
+      limits.timeLimitMs.put(entry.getKey(), asLong(entry.getValue(), "timeLimitMs." + entry.getKey()));
+    }
+    List<Object> flagsArr = asArray(obj.get("cFlags"), "cFlags");
+    limits.cFlags = new ArrayList<>(flagsArr.size());
+    for (Object flag : flagsArr) {
+      limits.cFlags.add(asString(flag, "cFlags[]"));
+    }
+    return limits;
+  }
+
+  static String serializeSharedLimits(SharedLimits limits) {
+    if (limits == null) {
+      return "null";
+    }
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("timeLimitMs", limits.timeLimitMs);
+    m.put("cFlags", limits.cFlags);
+    return Json.stringify(m);
+  }
+
+  static String serializeNodeRunRequest(NodeRunRequest req) {
+    List<Map<String, Object>> tests = new ArrayList<>(req.tests.size());
+    for (NodeTest t : req.tests) {
+      Map<String, Object> tm = new LinkedHashMap<>();
+      tm.put("id", t.id);
+      tm.put("stdin", t.stdin);
+      tests.add(tm);
+    }
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("language", req.language);
+    m.put("code", req.code);
+    m.put("tests", tests);
+    return Json.stringify(m);
+  }
+
+  static String serializeRunResponse(RunResponse resp) {
+    Map<String, Object> compileMap = new LinkedHashMap<>();
+    compileMap.put("ok", resp.compile.ok);
+    compileMap.put("stderr", resp.compile.stderr);
+
+    List<Map<String, Object>> results = new ArrayList<>(resp.results.size());
+    for (TestOutcome o : resp.results) {
+      Map<String, Object> om = new LinkedHashMap<>();
+      om.put("id", o.id);
+      om.put("stdout", o.stdout);
+      om.put("stderr", o.stderr);
+      om.put("exitCode", o.exitCode);
+      om.put("timedOut", o.timedOut);
+      om.put("oom", o.oom);
+      om.put("timeMs", o.timeMs);
+      results.add(om);
+    }
+
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("compile", compileMap);
+    m.put("results", results);
+    return Json.stringify(m);
+  }
+
+  static RunResponse parseRunResponse(String json) {
+    Map<String, Object> obj = asObject(Json.parse(json), "runResponse");
+    Map<String, Object> compileObj = asObject(obj.get("compile"), "compile");
+    CompileInfo compile = new CompileInfo(
+        optBoolean(compileObj, "ok", false),
+        optString(compileObj, "stderr"));
+    List<TestOutcome> results = new ArrayList<>();
+    Object resultsRaw = obj.get("results");
+    if (resultsRaw != null) {
+      for (Object item : asArray(resultsRaw, "results")) {
+        Map<String, Object> om = asObject(item, "results[]");
+        results.add(new TestOutcome(
+            optString(om, "id"),
+            optString(om, "stdout"),
+            optString(om, "stderr"),
+            optNullableInt(om, "exitCode"),
+            optBoolean(om, "timedOut", false),
+            optBoolean(om, "oom", false),
+            optLong(om, "timeMs", 0L)));
+      }
+    }
+    return new RunResponse(compile, results);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> asObject(Object value, String field) {
+    if (value instanceof Map<?, ?> m) {
+      return (Map<String, Object>) m;
+    }
+    throw new JsonParseException("Expected object for " + field);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static List<Object> asArray(Object value, String field) {
+    if (value instanceof List<?> l) {
+      return (List<Object>) l;
+    }
+    throw new JsonParseException("Expected array for " + field);
+  }
+
+  private static String asString(Object value, String field) {
+    if (value instanceof String s) {
+      return s;
+    }
+    throw new JsonParseException("Expected string for " + field);
+  }
+
+  private static String optString(Map<String, Object> obj, String key) {
+    Object v = obj.get(key);
+    if (v == null) {
+      return null;
+    }
+    return asString(v, key);
+  }
+
+  private static long asLong(Object value, String field) {
+    if (value instanceof Long l) {
+      return l;
+    }
+    if (value instanceof Double d) {
+      long l = d.longValue();
+      if (d == (double) l) {
+        return l;
+      }
+    }
+    throw new JsonParseException("Expected integer for " + field);
+  }
+
+  private static long optLong(Map<String, Object> obj, String key, long defaultValue) {
+    Object v = obj.get(key);
+    if (v == null) {
+      return defaultValue;
+    }
+    return asLong(v, key);
+  }
+
+  private static Integer optNullableInt(Map<String, Object> obj, String key) {
+    Object v = obj.get(key);
+    if (v == null) {
+      return null;
+    }
+    long l = asLong(v, key);
+    if (l < Integer.MIN_VALUE || l > Integer.MAX_VALUE) {
+      throw new JsonParseException("Integer out of range for " + key);
+    }
+    return (int) l;
+  }
+
+  private static boolean optBoolean(Map<String, Object> obj, String key, boolean defaultValue) {
+    Object v = obj.get(key);
+    if (v == null) {
+      return defaultValue;
+    }
+    if (v instanceof Boolean b) {
+      return b;
+    }
+    throw new JsonParseException("Expected boolean for " + key);
+  }
+
+  // ---- Minimal RFC 8259 JSON parser & serializer --------------------------
+
+  static final class JsonParseException extends RuntimeException {
+    JsonParseException(String message) {
+      super(message);
+    }
+  }
+
+  static final class Json {
+    private static final int MAX_DEPTH = 64;
+    private static final char[] HEX = "0123456789abcdef".toCharArray();
+
+    private final String src;
+    private final int len;
+    private int pos;
+
+    private Json(String src) {
+      this.src = src;
+      this.len = src.length();
+    }
+
+    static Object parse(String input) {
+      if (input == null) {
+        throw new JsonParseException("Input is null");
+      }
+      Json parser = new Json(input);
+      parser.skipWs();
+      Object value = parser.parseValue(0);
+      parser.skipWs();
+      if (parser.pos != parser.len) {
+        throw new JsonParseException("Unexpected trailing content at index " + parser.pos);
+      }
+      return value;
+    }
+
+    static String quote(String s) {
+      if (s == null) {
+        return "null";
+      }
+      StringBuilder sb = new StringBuilder(s.length() + 2);
+      appendQuoted(sb, s);
+      return sb.toString();
+    }
+
+    static String stringify(Object value) {
+      StringBuilder sb = new StringBuilder();
+      appendValue(sb, value);
+      return sb.toString();
+    }
+
+    private Object parseValue(int depth) {
+      if (depth > MAX_DEPTH) {
+        throw new JsonParseException("Maximum JSON nesting depth exceeded");
+      }
+      if (pos >= len) {
+        throw new JsonParseException("Unexpected end of JSON input");
+      }
+      char c = src.charAt(pos);
+      return switch (c) {
+        case '{' -> parseObject(depth + 1);
+        case '[' -> parseArray(depth + 1);
+        case '"' -> parseString();
+        case 't' -> parseLiteral("true", Boolean.TRUE);
+        case 'f' -> parseLiteral("false", Boolean.FALSE);
+        case 'n' -> parseLiteral("null", null);
+        default -> {
+          if (c == '-' || (c >= '0' && c <= '9')) {
+            yield parseNumber();
+          }
+          throw new JsonParseException("Unexpected character '" + c + "' at index " + pos);
+        }
+      };
+    }
+
+    private Map<String, Object> parseObject(int depth) {
+      pos++; // '{'
+      skipWs();
+      Map<String, Object> map = new LinkedHashMap<>();
+      if (pos < len && src.charAt(pos) == '}') {
+        pos++;
+        return map;
+      }
+      while (true) {
+        skipWs();
+        if (pos >= len || src.charAt(pos) != '"') {
+          throw new JsonParseException("Expected object key string at index " + pos);
+        }
+        String key = parseString();
+        skipWs();
+        if (pos >= len || src.charAt(pos) != ':') {
+          throw new JsonParseException("Expected ':' after object key at index " + pos);
+        }
+        pos++; // ':'
+        skipWs();
+        Object value = parseValue(depth);
+        map.put(key, value);
+        skipWs();
+        if (pos >= len) {
+          throw new JsonParseException("Unterminated object");
+        }
+        char next = src.charAt(pos);
+        if (next == ',') {
+          pos++;
+        } else if (next == '}') {
+          pos++;
+          return map;
+        } else {
+          throw new JsonParseException("Expected ',' or '}' in object at index " + pos);
+        }
+      }
+    }
+
+    private List<Object> parseArray(int depth) {
+      pos++; // '['
+      skipWs();
+      List<Object> list = new ArrayList<>();
+      if (pos < len && src.charAt(pos) == ']') {
+        pos++;
+        return list;
+      }
+      while (true) {
+        skipWs();
+        list.add(parseValue(depth));
+        skipWs();
+        if (pos >= len) {
+          throw new JsonParseException("Unterminated array");
+        }
+        char next = src.charAt(pos);
+        if (next == ',') {
+          pos++;
+        } else if (next == ']') {
+          pos++;
+          return list;
+        } else {
+          throw new JsonParseException("Expected ',' or ']' in array at index " + pos);
+        }
+      }
+    }
+
+    private String parseString() {
+      pos++; // opening '"'
+      StringBuilder sb = new StringBuilder();
+      while (pos < len) {
+        char c = src.charAt(pos++);
+        if (c == '"') {
+          return sb.toString();
+        }
+        if (c < 0x20) {
+          throw new JsonParseException("Unescaped control character in string at index " + (pos - 1));
+        }
+        if (c == '\\') {
+          if (pos >= len) {
+            throw new JsonParseException("Unterminated escape sequence");
+          }
+          char esc = src.charAt(pos++);
+          switch (esc) {
+            case '"' -> sb.append('"');
+            case '\\' -> sb.append('\\');
+            case '/' -> sb.append('/');
+            case 'b' -> sb.append('\b');
+            case 'f' -> sb.append('\f');
+            case 'n' -> sb.append('\n');
+            case 'r' -> sb.append('\r');
+            case 't' -> sb.append('\t');
+            case 'u' -> sb.append((char) parseHex4());
+            default -> throw new JsonParseException("Invalid escape '\\" + esc + "' at index " + (pos - 1));
+          }
+        } else {
+          sb.append(c);
+        }
+      }
+      throw new JsonParseException("Unterminated string");
+    }
+
+    private int parseHex4() {
+      if (pos + 4 > len) {
+        throw new JsonParseException("Incomplete \\uXXXX escape at index " + pos);
+      }
+      int codeUnit = 0;
+      for (int i = 0; i < 4; i++) {
+        char ch = src.charAt(pos++);
+        int digit = Character.digit(ch, 16);
+        if (digit < 0) {
+          throw new JsonParseException("Invalid hex digit '" + ch + "' in \\uXXXX escape");
+        }
+        codeUnit = (codeUnit << 4) | digit;
+      }
+      return codeUnit;
+    }
+
+    private Object parseLiteral(String literal, Object value) {
+      if (!src.startsWith(literal, pos)) {
+        throw new JsonParseException("Unexpected token at index " + pos);
+      }
+      pos += literal.length();
+      return value;
+    }
+
+    private Number parseNumber() {
+      int start = pos;
+      if (src.charAt(pos) == '-') {
+        pos++;
+        if (pos >= len) {
+          throw new JsonParseException("Invalid number at index " + start);
+        }
+      }
+      char first = src.charAt(pos);
+      if (first == '0') {
+        pos++;
+        if (pos < len && isDigit(src.charAt(pos))) {
+          throw new JsonParseException("Leading zero in number at index " + start);
+        }
+      } else if (first >= '1' && first <= '9') {
+        pos++;
+        while (pos < len && isDigit(src.charAt(pos))) {
+          pos++;
+        }
+      } else {
+        throw new JsonParseException("Invalid number at index " + start);
+      }
+
+      boolean isFloat = false;
+      if (pos < len && src.charAt(pos) == '.') {
+        isFloat = true;
+        pos++;
+        if (pos >= len || !isDigit(src.charAt(pos))) {
+          throw new JsonParseException("Invalid fractional number at index " + start);
+        }
+        while (pos < len && isDigit(src.charAt(pos))) {
+          pos++;
+        }
+      }
+      if (pos < len && (src.charAt(pos) == 'e' || src.charAt(pos) == 'E')) {
+        isFloat = true;
+        pos++;
+        if (pos < len && (src.charAt(pos) == '+' || src.charAt(pos) == '-')) {
+          pos++;
+        }
+        if (pos >= len || !isDigit(src.charAt(pos))) {
+          throw new JsonParseException("Invalid exponent in number at index " + start);
+        }
+        while (pos < len && isDigit(src.charAt(pos))) {
+          pos++;
+        }
+      }
+
+      String raw = src.substring(start, pos);
+      try {
+        if (!isFloat) {
+          try {
+            return Long.parseLong(raw);
+          } catch (NumberFormatException ignored) {
+            // Fall through to Double for very large integers.
+          }
+        }
+        double d = Double.parseDouble(raw);
+        if (Double.isNaN(d) || Double.isInfinite(d)) {
+          throw new JsonParseException("Number out of range: " + raw);
+        }
+        return d;
+      } catch (NumberFormatException e) {
+        throw new JsonParseException("Invalid number: " + raw);
+      }
+    }
+
+    private static boolean isDigit(char c) {
+      return c >= '0' && c <= '9';
+    }
+
+    private void skipWs() {
+      while (pos < len) {
+        char c = src.charAt(pos);
+        if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+          pos++;
+        } else {
+          break;
+        }
+      }
+    }
+
+    private static void appendValue(StringBuilder sb, Object value) {
+      if (value == null) {
+        sb.append("null");
+      } else if (value instanceof String s) {
+        appendQuoted(sb, s);
+      } else if (value instanceof Boolean b) {
+        sb.append(b ? "true" : "false");
+      } else if (value instanceof Number n) {
+        if (n instanceof Double d && (d.isNaN() || d.isInfinite())) {
+          throw new IllegalArgumentException("Non-finite double cannot be serialized to JSON");
+        }
+        if (n instanceof Float f && (f.isNaN() || f.isInfinite())) {
+          throw new IllegalArgumentException("Non-finite float cannot be serialized to JSON");
+        }
+        sb.append(n);
+      } else if (value instanceof Map<?, ?> m) {
+        sb.append('{');
+        boolean first = true;
+        for (Map.Entry<?, ?> entry : m.entrySet()) {
+          if (!first) {
+            sb.append(',');
+          }
+          first = false;
+          appendQuoted(sb, String.valueOf(entry.getKey()));
+          sb.append(':');
+          appendValue(sb, entry.getValue());
+        }
+        sb.append('}');
+      } else if (value instanceof List<?> l) {
+        sb.append('[');
+        for (int i = 0; i < l.size(); i++) {
+          if (i > 0) {
+            sb.append(',');
+          }
+          appendValue(sb, l.get(i));
+        }
+        sb.append(']');
+      } else {
+        throw new IllegalArgumentException("Unsupported JSON value type: " + value.getClass().getName());
+      }
+    }
+
+    private static void appendQuoted(StringBuilder sb, String s) {
+      sb.append('"');
+      for (int i = 0; i < s.length(); i++) {
+        char c = s.charAt(i);
+        switch (c) {
+          case '"' -> sb.append("\\\"");
+          case '\\' -> sb.append("\\\\");
+          case '\b' -> sb.append("\\b");
+          case '\f' -> sb.append("\\f");
+          case '\n' -> sb.append("\\n");
+          case '\r' -> sb.append("\\r");
+          case '\t' -> sb.append("\\t");
+          default -> {
+            if (c < 0x20) {
+              sb.append("\\u00");
+              sb.append(HEX[(c >> 4) & 0xF]);
+              sb.append(HEX[c & 0xF]);
+            } else {
+              sb.append(c);
+            }
+          }
+        }
+      }
+      sb.append('"');
     }
   }
 }

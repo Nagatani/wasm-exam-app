@@ -23,9 +23,6 @@ RUN node makeSnapshot.mjs
 
 FROM eclipse-temurin:24-jdk
 
-ARG GSON_VERSION=2.11.0
-ARG GSON_SHA256=57928d6e5a6edeb2abd3770a8f95ba44dce45f3b23b7a9dc2b309c581552a78b
-
 # clang 16 + lld (wasm-ld) + wasi-libc (sysroot) + the wasm32 compiler-rt
 # builtins: the browser's @wasmer/sdk clang is 16.0.0, so this matches its
 # major version and target.
@@ -39,13 +36,8 @@ COPY --from=runner /runner /app/runner
 
 WORKDIR /app
 
-# Gson (JSON (de)serialization for the /run protocol). Fetched at build time
-# only; the running container needs no network for its own operation.
-ADD https://repo1.maven.org/maven2/com/google/code/gson/gson/${GSON_VERSION}/gson-${GSON_VERSION}.jar /app/lib/gson.jar
-RUN echo "${GSON_SHA256}  /app/lib/gson.jar" | sha256sum -c -
-
 COPY Judge.java /app/src/Judge.java
-RUN javac -cp /app/lib/gson.jar -d /app/classes /app/src/Judge.java \
+RUN javac -d /app/classes /app/src/Judge.java \
     && chmod -R a+rX /app
 
 # Unprivileged runtime user (the base image already uses uid 1000); /work is a
@@ -61,5 +53,5 @@ ENV JUDGE_PORT=8080 \
 
 EXPOSE 8080
 
-# JSON on the classpath for the app; the service itself is tiny.
-CMD ["java", "-XX:+UseSerialGC", "-Xmx256m", "-cp", "/app/classes:/app/lib/gson.jar", "Judge"]
+# No external JAR dependencies; the service itself is tiny.
+CMD ["java", "-XX:+UseSerialGC", "-Xmx256m", "-cp", "/app/classes", "Judge"]
