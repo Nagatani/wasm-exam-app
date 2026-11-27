@@ -3,19 +3,17 @@ import { ApiError } from './client';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 // Teacher-only image upload for problem-statement Markdown (TaskEditorPage's
-// "画像を挿入"). Bypasses apiFetch's JSON body — this is a multipart upload,
-// not JSON — mirroring downloadExamResultsCsv's own raw `fetch` for the same
-// reason.
+// "画像を挿入"). Bypasses apiFetch's JSON body — sends raw image bytes with
+// Content-Type set to the file's MIME type — mirroring downloadExamResultsCsv's
+// own raw `fetch` for the same reason.
 export async function uploadTaskImage(file: File): Promise<{ url: string }> {
-  const form = new FormData();
-  form.append('file', file);
-
   let res: Response;
   try {
     res = await fetch(`${API_BASE_URL}/api/uploads`, {
       method: 'POST',
       credentials: 'include',
-      body: form,
+      headers: file.type ? { 'Content-Type': file.type } : undefined,
+      body: file,
     });
   } catch {
     // Same reasoning as apiFetch's own network-failure handling: don't leak

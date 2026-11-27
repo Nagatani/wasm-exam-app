@@ -105,8 +105,27 @@ export class Client {
   delete<T = any>(path: string) {
     return this.request<T>('DELETE', path);
   }
-  upload<T = any>(path: string, form: FormData) {
-    return this.request<T>('POST', path, form);
+  async upload<T = any>(path: string, bytes?: Uint8Array, contentType?: string): Promise<ApiResponse<T>> {
+    const res = await fetch(baseUrl + path, {
+      method: 'POST',
+      headers: {
+        ...(contentType ? { 'content-type': contentType } : {}),
+        ...(this.cookie ? { cookie: this.cookie } : {}),
+      },
+      body: bytes ? Buffer.from(bytes) : undefined,
+    });
+    for (const c of res.headers.getSetCookie()) {
+      const [pair] = c.split(';');
+      this.cookie = pair.endsWith('=') ? '' : pair;
+    }
+    const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(await res.arrayBuffer());
+    let parsed: unknown = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      parsed = null;
+    }
+    return { status: res.status, body: parsed as T, text, headers: res.headers };
   }
 }
 

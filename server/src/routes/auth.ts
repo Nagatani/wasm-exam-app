@@ -1,7 +1,8 @@
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
+import { getCookie } from '../lib/cookies';
+import { hashPassword, verifyPassword } from '../lib/password';
 import {
   SESSION_COOKIE_NAME,
   SESSION_COOKIE_MAX_AGE_MS,
@@ -69,7 +70,7 @@ authRouter.post('/signup', async (req, res) => {
     return;
   }
 
-  const passwordHash = await bcrypt.hash(password, 12);
+  const passwordHash = await hashPassword(password);
 
   // Every signup is STUDENT except the very first account ever created,
   // which becomes TEACHER (2026-09-16, user decision): the first registered
@@ -106,7 +107,7 @@ authRouter.post('/login', async (req, res) => {
   const { studentNumber, password } = parsed.data;
   const ip = req.ip ?? 'unknown';
 
-  // Checked before bcrypt so a locked-out caller can't keep probing.
+  // Checked before password verification so a locked-out caller can't keep probing.
   const waitMs = loginBlockedForMs(studentNumber, ip);
   if (waitMs > 0) {
     const minutes = Math.max(1, Math.ceil(waitMs / 60_000));
@@ -118,7 +119,7 @@ authRouter.post('/login', async (req, res) => {
   }
 
   const user = await prisma.user.findUnique({ where: { studentNumber } });
-  if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+  if (!user || !(await verifyPassword(password, user.passwordHash))) {
     recordLoginFailure(studentNumber, ip);
     res.status(401).json({ error: '学籍番号またはパスワードが正しくありません。' });
     return;
@@ -131,7 +132,7 @@ authRouter.post('/login', async (req, res) => {
 });
 
 authRouter.post('/logout', async (req, res) => {
-  const token = req.cookies?.[SESSION_COOKIE_NAME];
+  const token = getCookie(req, SESSION_COOKIE_NAME);
   if (token) {
     await revokeSessionByToken(token);
   }
@@ -157,16 +158,16 @@ authRouter.post('/change-password', requireAuth, async (req, res) => {
   const { currentPassword, newPassword } = parsed.data;
   const user = req.user!;
 
-  if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+  if (!(await verifyPassword(currentPassword, user.passwordHash))) {
     res.status(401).json({ error: '現在のパスワードが正しくありません。' });
     return;
   }
-  if (await bcrypt.compare(newPassword, user.passwordHash)) {
+  if (await verifyPassword(newPassword, user.passwordHash)) {
     res.status(400).json({ error: '現在のパスワードと異なるパスワードを設定してください。' });
     return;
   }
 
-  const passwordHash = await bcrypt.hash(newPassword, 12);
+  const passwordHash = await hashPassword(newPassword);
   await prisma.user.update({
     where: { id: user.id },
     // Clear the printed-credential fields once the student picks their own.

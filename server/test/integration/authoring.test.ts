@@ -244,15 +244,10 @@ describe('statement image upload', () => {
   const PNG = new Uint8Array([
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
   ]);
-  const form = (bytes: Uint8Array, type: string, name = 'a.png') => {
-    const f = new FormData();
-    f.append('file', new Blob([bytes], { type }), name);
-    return f;
-  };
 
   it('stores an image under a server-chosen name and serves it back byte-identical', async () => {
     const { client: teacher } = await signupTeacher();
-    const res = await teacher.upload('/api/uploads', form(PNG, 'image/png', '../../evil.php'));
+    const res = await teacher.upload('/api/uploads', PNG, 'image/png');
     expect(res.status).toBe(201);
     expect(res.body.url).toMatch(/^\/uploads\/[0-9a-f-]{36}\.png$/);
     const served = await fetch(getBaseUrl() + res.body.url);
@@ -260,12 +255,13 @@ describe('statement image upload', () => {
     expect(new Uint8Array(await served.arrayBuffer())).toEqual(PNG);
   });
 
-  it('rejects non-images, oversized files, a missing file, and non-teachers', async () => {
+  it('rejects non-images, oversized files, an empty body, and non-teachers', async () => {
     const { client: teacher } = await signupTeacher();
-    expect((await teacher.upload('/api/uploads', form(PNG, 'text/plain', 'a.txt'))).status).toBe(400);
-    expect((await teacher.upload('/api/uploads', form(new Uint8Array(5 * 1024 * 1024 + 1), 'image/png'))).status).toBe(400);
-    expect((await teacher.upload('/api/uploads', new FormData())).status).toBe(400);
+    expect((await teacher.upload('/api/uploads', PNG, 'text/plain')).status).toBe(400);
+    expect((await teacher.upload('/api/uploads', new Uint8Array(5 * 1024 * 1024 + 1), 'image/png')).status).toBe(400);
+    expect((await teacher.upload('/api/uploads', new Uint8Array(0), 'image/png')).status).toBe(400);
+    expect((await teacher.upload('/api/uploads')).status).toBe(400);
     const { client: student } = await signup('s001');
-    expect((await student.upload('/api/uploads', form(PNG, 'image/png'))).status).toBe(403);
+    expect((await student.upload('/api/uploads', PNG, 'image/png')).status).toBe(403);
   });
 });

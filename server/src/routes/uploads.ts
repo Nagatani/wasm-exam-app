@@ -1,5 +1,4 @@
-import { Router } from 'express';
-import multer from 'multer';
+import express, { Router } from 'express';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs/promises';
@@ -17,51 +16,50 @@ export const uploadsRouter = Router();
 // (TaskEditorPage's "画像を挿入"), not a general-purpose file host.
 uploadsRouter.use(requireAuth, requireRole('TEACHER'));
 
-const UNSUPPORTED_TYPE = 'unsupported_type';
-
-// memoryStorage (not diskStorage): the file is small (capped at
-// MAX_UPLOAD_BYTES) and this lets fileFilter reject a bad mimetype before
-// anything touches disk — multer's diskStorage would otherwise partially
-// write the file before the filter's rejection unwinds it.
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
-  fileFilter: (_req, file, cb) => {
-    if (file.mimetype in ALLOWED_IMAGE_TYPES) {
-      cb(null, true);
-    } else {
-      cb(new Error(UNSUPPORTED_TYPE));
-    }
-  },
+// Buffers the raw image in memory (capped at MAX_UPLOAD_BYTES) so disallowed
+// MIME types and oversized payloads are rejected before anything touches disk.
+const rawImageParser = express.raw({
+  type: Object.keys(ALLOWED_IMAGE_TYPES),
+  limit: MAX_UPLOAD_BYTES,
 });
 
 uploadsRouter.post('/', (req, res) => {
-  upload.single('file')(req, res, async (err) => {
+  const contentType = req.headers['content-type']?.split(';')[0]?.trim().toLowerCase() ?? '';
+  if (!contentType) {
+    res.status(400).json({ error: '画像ファイルを選択してください。' });
+    return;
+  }
+  const ext = ALLOWED_IMAGE_TYPES[contentType];
+  if (!ext) {
+    res.status(400).json({ error: 'PNG / JPEG / GIF / WebP 画像のみアップロードできます。' });
+    return;
+  }
+
+  rawImageParser(req, res, async (err) => {
     if (err) {
-      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      const bodyErr = err as { type?: string; status?: number };
+      if (bodyErr.type === 'entity.too.large' || bodyErr.status === 413) {
         res
           .status(400)
           .json({ error: `画像は${MAX_UPLOAD_BYTES / (1024 * 1024)}MB以下にしてください。` });
         return;
       }
-      if (err instanceof Error && err.message === UNSUPPORTED_TYPE) {
-        res.status(400).json({ error: 'PNG / JPEG / GIF / WebP 画像のみアップロードできます。' });
-        return;
-      }
       res.status(400).json({ error: 'アップロードに失敗しました。' });
       return;
     }
-    if (!req.file) {
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
       res.status(400).json({ error: '画像ファイルを選択してください。' });
       return;
     }
 
-    const ext = ALLOWED_IMAGE_TYPES[req.file.mimetype];
-    // Server-generated filename — never derived from the client-supplied
-    // original name, so there's no path-traversal or extension-spoofing
-    // surface from it.
+    // Server-generated filename — never derived from any client-supplied
+    // filename, so there's no path-traversal or extension-spoofing surface.
     const filename = `${crypto.randomUUID()}${ext}`;
-    await fs.writeFile(path.join(UPLOADS_DIR, filename), req.file.buffer);
-    res.status(201).json({ url: `${UPLOADS_URL_PREFIX}/${filename}` });
+    try {
+      await fs.writeFile(path.join(UPLOADS_DIR, filename), req.body);
+      res.status(201).json({ url: `${UPLOADS_URL_PREFIX}/${filename}` });
+    } catch {
+      res.status(500).json({ error: 'アップロードに失敗しました。' });
+    }
   });
 });

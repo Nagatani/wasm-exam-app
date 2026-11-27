@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './lib/loadEnv';
 import { createApp } from './app';
 import { startSessionCleanup } from './lib/session';
 import { resumePendingGrading } from './lib/grading';

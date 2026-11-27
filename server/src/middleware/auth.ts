@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { Role, User } from '@prisma/client';
+import { getCookie } from '../lib/cookies';
 import { SESSION_COOKIE_NAME, getUserForSessionToken } from '../lib/session';
 
 declare global {
@@ -12,7 +13,7 @@ declare global {
 }
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const token = req.cookies?.[SESSION_COOKIE_NAME];
+  const token = getCookie(req, SESSION_COOKIE_NAME);
   if (!token) {
     res.status(401).json({ error: 'unauthenticated' });
     return;

@@ -3,8 +3,7 @@
 // mount the same app on an ephemeral port against a separate test database.
 import express, { type Express } from 'express';
 import path from 'node:path';
-import cookieParser from 'cookie-parser';
-import cors from 'cors';
+import { corsMiddleware } from './lib/cors';
 import { CSP_REPORT_PATH, cspMiddleware, cspMode, cspReportHandler } from './lib/csp';
 import { authRouter } from './routes/auth';
 import { adminRouter } from './routes/admin';
@@ -38,7 +37,7 @@ export function createApp(): Express {
     app.set('trust proxy', /^\d+$/.test(TRUST_PROXY) ? Number(TRUST_PROXY) : TRUST_PROXY === 'true' ? true : TRUST_PROXY);
   }
 
-  app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
+  app.use(corsMiddleware({ origin: CORS_ORIGIN, credentials: true }));
   // CSP violation reports arrive as application/csp-report (report-uri), so
   // this route parses that type itself, before the generic JSON parser.
   app.post(
@@ -47,7 +46,6 @@ export function createApp(): Express {
     cspReportHandler,
   );
   app.use(express.json());
-  app.use(cookieParser());
 
   // @wasmer/sdk (the in-browser C sandbox, Phase 3) needs SharedArrayBuffer,
   // which browsers only expose on a cross-origin-isolated page. Vite's dev

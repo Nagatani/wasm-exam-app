@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
+import { hashPassword } from '../lib/password';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { generateInitialPassword } from '../lib/provisioning';
 import { clearLoginFailuresFor } from '../lib/loginRateLimit';
@@ -69,7 +69,7 @@ studentsRouter.post('/bulk', async (req, res) => {
       data: {
         studentNumber: row.studentNumber,
         displayName: row.displayName,
-        passwordHash: await bcrypt.hash(initialPassword, 12),
+        passwordHash: await hashPassword(initialPassword),
         role: 'STUDENT',
         mustChangePassword: true,
         initialPassword,
@@ -134,7 +134,7 @@ studentsRouter.post('/reset-password', async (req, res) => {
   }
 
   const initialPassword = generateInitialPassword();
-  const passwordHash = await bcrypt.hash(initialPassword, 12);
+  const passwordHash = await hashPassword(initialPassword);
   await prisma.$transaction([
     prisma.user.update({
       where: { id: target.id },
