@@ -1,13 +1,16 @@
-import { useEffect, useRef } from 'react';
-import Editor, {
-  type Monaco,
-  type OnMount,
-  type OnChange,
-} from '@monaco-editor/react';
+import { useEffect, useRef, useState } from 'react';
 import { useTheme } from '../contexts/useTheme';
-
-type StandaloneEditor = Parameters<OnMount>[0];
-import { MONACO_DARK_THEME_NAME, MONACO_LIGHT_THEME_NAME, ensureMonokaiProThemes } from '../runner/monacoThemes';
+import {
+  loadMonaco,
+  type Monaco,
+  type MonacoDisposable,
+  type MonacoStandaloneEditor,
+} from '../runner/monacoLoader';
+import {
+  MONACO_DARK_THEME_NAME,
+  MONACO_LIGHT_THEME_NAME,
+  ensureMonokaiProThemes,
+} from '../runner/monacoThemes';
 
 export interface EditorMarker {
   line: number;
@@ -55,6 +58,28 @@ function isModifierOnlyKey(monaco: Monaco, keyCode: number): boolean {
 
 const MARKER_OWNER = 'compile-errors';
 
+function applyMarkers(
+  editor: MonacoStandaloneEditor,
+  monaco: Monaco,
+  markers: EditorMarker[] | undefined,
+) {
+  const model = editor.getModel();
+  if (!model) return;
+  monaco.editor.setModelMarkers(
+    model,
+    MARKER_OWNER,
+    (markers ?? []).map((m) => ({
+      startLineNumber: m.line,
+      startColumn: m.column,
+      endLineNumber: m.line,
+      endColumn: m.endColumn ?? m.column + 1,
+      message: m.message,
+      severity:
+        m.severity === 'warning' ? monaco.MarkerSeverity.Warning : monaco.MarkerSeverity.Error,
+    })),
+  );
+}
+
 export function CodeEditor({
   value,
   onChange,
@@ -67,86 +92,185 @@ export function CodeEditor({
   markers,
 }: CodeEditorProps) {
   const { theme } = useTheme();
-  const editorRef = useRef<StandaloneEditor | null>(null);
+  const themeName = theme === 'dark' ? MONACO_DARK_THEME_NAME : MONACO_LIGHT_THEME_NAME;
+
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const editorRef = useRef<MonacoStandaloneEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
+  const isSyncingFromPropRef = useRef(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const handleMount: OnMount = (editor, monaco) => {
-    editorRef.current = editor;
-    monacoRef.current = monaco;
-    editor.onKeyDown((e) => {
-      if (isModifierOnlyKey(monaco, e.keyCode)) return;
-      onKeystroke?.();
-    });
-    editor.onDidPaste((e) => {
-      const model = editor.getModel();
-      const pastedText = model ? model.getValueInRange(e.range) : '';
-      onPasteText?.(pastedText.length);
-    });
-    if (onCmdEnter) {
-      editor.addAction({
-        id: 'code-editor-cmd-enter',
-        label: 'コンパイル＆テスト実行',
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
-        run: () => onCmdEnter(),
-      });
-    }
-    applyMarkers();
-  };
+  const latestRef = useRef({
+    value,
+    language,
+    themeName,
+    readOnly,
+    markers,
+    onChange,
+    onKeystroke,
+    onPasteText,
+    onCmdEnter,
+  });
 
-  function applyMarkers() {
-    const editor = editorRef.current;
-    const monaco = monacoRef.current;
-    const model = editor?.getModel();
-    if (!editor || !monaco || !model) return;
-    monaco.editor.setModelMarkers(
-      model,
-      MARKER_OWNER,
-      (markers ?? []).map((m) => ({
-        startLineNumber: m.line,
-        startColumn: m.column,
-        endLineNumber: m.line,
-        endColumn: m.endColumn ?? m.column + 1,
-        message: m.message,
-        severity:
-          m.severity === 'warning'
-            ? monaco.MarkerSeverity.Warning
-            : monaco.MarkerSeverity.Error,
-      })),
-    );
-  }
-
-  // Re-apply whenever the marker list changes (and clear on unmount).
   useEffect(() => {
-    applyMarkers();
-    return () => {
-      const model = editorRef.current?.getModel();
-      if (model && monacoRef.current) {
-        monacoRef.current.editor.setModelMarkers(model, MARKER_OWNER, []);
-      }
+    latestRef.current = {
+      value,
+      language,
+      themeName,
+      readOnly,
+      markers,
+      onChange,
+      onKeystroke,
+      onPasteText,
+      onCmdEnter,
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markers]);
+  });
 
-  const handleChange: OnChange = (v) => onChange(v ?? '');
+  useEffect(() => {
+    let cancelled = false;
+    const disposables: MonacoDisposable[] = [];
 
-  return (
-    <div className="overflow-hidden rounded border border-mp-border">
-      <Editor
-        height={height}
-        language={language}
-        theme={theme === 'dark' ? MONACO_DARK_THEME_NAME : MONACO_LIGHT_THEME_NAME}
-        beforeMount={ensureMonokaiProThemes}
-        onMount={handleMount}
-        value={value}
-        onChange={handleChange}
-        options={{
+    loadMonaco()
+      .then((monaco) => {
+        if (cancelled || !containerRef.current) return;
+        ensureMonokaiProThemes(monaco);
+        const latest = latestRef.current;
+
+        const editor = monaco.editor.create(containerRef.current, {
+          value: latest.value,
+          language: latest.language,
+          theme: latest.themeName,
           fontSize: 14,
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
           automaticLayout: true,
-          readOnly,
-        }}
-      />
+          readOnly: latest.readOnly,
+        });
+
+        editorRef.current = editor;
+        monacoRef.current = monaco;
+
+        disposables.push(
+          editor.onDidChangeModelContent(() => {
+            if (isSyncingFromPropRef.current) return;
+            latestRef.current.onChange(editor.getValue());
+          }),
+        );
+
+        disposables.push(
+          editor.onKeyDown((e) => {
+            if (isModifierOnlyKey(monaco, e.keyCode)) return;
+            latestRef.current.onKeystroke?.();
+          }),
+        );
+
+        disposables.push(
+          editor.onDidPaste((e) => {
+            const model = editor.getModel();
+            const pastedText = model ? model.getValueInRange(e.range) : '';
+            latestRef.current.onPasteText?.(pastedText.length);
+          }),
+        );
+
+        if (latest.onCmdEnter) {
+          disposables.push(
+            editor.addAction({
+              id: 'code-editor-cmd-enter',
+              label: 'コンパイル＆テスト実行',
+              keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+              run: () => latestRef.current.onCmdEnter?.(),
+            }),
+          );
+        }
+
+        applyMarkers(editor, monaco, latest.markers);
+        setLoadError(null);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLoadError('エディタの読み込みに失敗しました。ページを再読み込みしてください。');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      for (const d of disposables) d.dispose();
+      disposables.length = 0;
+
+      const editor = editorRef.current;
+      const monaco = monacoRef.current;
+      if (editor) {
+        const model = editor.getModel();
+        if (model && monaco) {
+          monaco.editor.setModelMarkers(model, MARKER_OWNER, []);
+        }
+        editor.dispose();
+        model?.dispose();
+        editorRef.current = null;
+      }
+      monacoRef.current = null;
+    };
+  }, []);
+
+  // Sync controlled `value` into the editor without triggering `onChange` or
+  // moving the cursor when the model already matches. External calls like
+  // `window.monaco.editor.getModels()[0].setValue(code)` (used by E2E) run
+  // with `isSyncingFromPropRef.current === false` and flow through `onChange`.
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || editor.getValue() === value) return;
+    const model = editor.getModel();
+    isSyncingFromPropRef.current = true;
+    try {
+      if (model) model.setValue(value);
+      else editor.setValue(value);
+    } finally {
+      isSyncingFromPropRef.current = false;
+    }
+  }, [value]);
+
+  useEffect(() => {
+    const model = editorRef.current?.getModel();
+    const monaco = monacoRef.current;
+    if (model && monaco) {
+      monaco.editor.setModelLanguage(model, language);
+    }
+  }, [language]);
+
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (monaco) {
+      ensureMonokaiProThemes(monaco);
+      monaco.editor.setTheme(themeName);
+    }
+  }, [themeName]);
+
+  useEffect(() => {
+    editorRef.current?.updateOptions({ readOnly });
+  }, [readOnly]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (editor && monaco) {
+      applyMarkers(editor, monaco, markers);
+    }
+  }, [markers]);
+
+  const heightStyle = typeof height === 'number' ? `${height}px` : height;
+
+  return (
+    <div className="overflow-hidden rounded border border-mp-border">
+      {loadError ? (
+        <div
+          style={{ height: heightStyle }}
+          className="flex items-center justify-center bg-mp-bg p-4 text-sm text-mp-red"
+        >
+          {loadError}
+        </div>
+      ) : (
+        <div ref={containerRef} style={{ height: heightStyle }} />
+      )}
     </div>
   );
 }

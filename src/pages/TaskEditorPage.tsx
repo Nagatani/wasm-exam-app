@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from '../lib/routerContext';
-import ReactMarkdown from 'react-markdown';
+import { MarkdownBody } from '../components/MarkdownBody';
 import {
   getTask,
   updateTask,
@@ -796,7 +796,7 @@ export function TaskEditorPage() {
         {imageUploadError && <p className="mb-1 text-xs text-mp-red">{imageUploadError}</p>}
         {statementView === 'preview' ? (
           <div className="markdown-body mb-3 rounded border border-mp-border bg-mp-bg p-3">
-            <ReactMarkdown>{task.statementMarkdown}</ReactMarkdown>
+            <MarkdownBody>{task.statementMarkdown}</MarkdownBody>
           </div>
         ) : statementView === 'split' ? (
           <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -809,7 +809,7 @@ export function TaskEditorPage() {
               onChange={(e) => setTask({ ...task, statementMarkdown: e.target.value })}
             />
             <div className="markdown-body max-h-[26rem] overflow-y-auto rounded border border-mp-border bg-mp-bg p-3">
-              <ReactMarkdown>{task.statementMarkdown}</ReactMarkdown>
+              <MarkdownBody>{task.statementMarkdown}</MarkdownBody>
             </div>
           </div>
         ) : (

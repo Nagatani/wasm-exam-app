@@ -1,4 +1,4 @@
-import type { Monaco } from '@monaco-editor/react';
+import type { Monaco } from './monacoLoader';
 
 /**
  * Token/UI colors lifted directly from the official "Monokai Pro" and

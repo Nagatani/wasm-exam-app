@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from '../lib/routerContext';
-import ReactMarkdown from 'react-markdown';
+import { MarkdownBody } from '../components/MarkdownBody';
 import { CodeEditor } from '../components/CodeEditor';
 import { UserDrawer } from '../components/UserDrawer';
 import { getStudentExam, getStudentTask, runTask, saveTaskDraft } from '../api/student';
@@ -433,7 +433,7 @@ export function StudentTaskPage() {
         <div className="flex w-full flex-col overflow-y-auto rounded-lg border border-mp-border bg-mp-surface p-4 md:w-1/3">
           <h2 className="mb-2 text-sm font-bold text-mp-muted">問題文</h2>
           <div className="markdown-body mb-4 text-sm">
-            <ReactMarkdown>{task.statementMarkdown}</ReactMarkdown>
+            <MarkdownBody>{task.statementMarkdown}</MarkdownBody>
           </div>
 
           <h2 className="mb-2 text-sm font-bold text-mp-muted">サンプルテストケース</h2>
