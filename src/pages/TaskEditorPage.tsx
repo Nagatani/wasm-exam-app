@@ -62,6 +62,7 @@ import {
   parseJsonCases,
   type BulkTestCase,
 } from '../lib/bulkTestCases';
+import { TASK_TEMPLATES, type TaskTemplate } from '../lib/taskTemplates';
 
 // Lazy: AiAssistPanel pulls in @mlc-ai/web-llm (several MB) via ../ai/
 // aiAssist — only worth fetching once we already know AI作問サポート is
@@ -191,6 +192,12 @@ export function TaskEditorPage() {
   const [aiSolutionOverride, setAiSolutionOverride] = useState<string | null>(null);
   const [aiApplyCounter, setAiApplyCounter] = useState(0);
   const [aiAssistEnabled, setAiAssistEnabledState] = useState(isAiAssistEnabled);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [includeTemplateCases, setIncludeTemplateCases] = useState(true);
+  const [pendingTemplate, setPendingTemplate] = useState<TaskTemplate | null>(null);
+  const [applyingTemplate, setApplyingTemplate] = useState(false);
+  const [templateMsg, setTemplateMsg] = useState<string | null>(null);
+  const [templateError, setTemplateError] = useState<string | null>(null);
 
   useEffect(() => onAiAssistSettingsChanged(() => setAiAssistEnabledState(isAiAssistEnabled())), []);
 
@@ -396,6 +403,55 @@ export function TaskEditorPage() {
 
   function handleApplyAiStarterCode(starterCode: string) {
     setTask((prev) => (prev ? { ...prev, starterCode } : prev));
+  }
+
+  async function applyTaskTemplate(tpl: TaskTemplate) {
+    if (!task || applyingTemplate) return;
+    setApplyingTemplate(true);
+    setTemplateError(null);
+    setTemplateMsg(null);
+    try {
+      setTask((prev) =>
+        prev
+          ? {
+              ...prev,
+              statementMarkdown: tpl.statementMarkdown,
+              starterCode: tpl.starterCodeByLanguage[prev.language],
+              comparisonMode: tpl.comparisonMode,
+              floatTolerance: tpl.floatTolerance ?? prev.floatTolerance,
+            }
+          : prev,
+      );
+      let addedCasesCount = 0;
+      if (includeTemplateCases && tpl.sampleCases.length > 0) {
+        const { testCases } = await bulkCreateTestCases(task.id, tpl.sampleCases);
+        setTask((prev) => (prev ? { ...prev, testCases } : prev));
+        addedCasesCount = tpl.sampleCases.length;
+      }
+      setShowTemplatePicker(false);
+      setTemplateMsg(
+        addedCasesCount > 0
+          ? `テンプレート「${tpl.name}」を適用し、テストケースひな形を ${addedCasesCount} 件追加しました。`
+          : `テンプレート「${tpl.name}」を適用しました。`,
+      );
+    } catch (err) {
+      setTemplateError(
+        err instanceof ApiError ? err.message : 'テンプレートのテストケース追加に失敗しました。',
+      );
+    } finally {
+      setApplyingTemplate(false);
+    }
+  }
+
+  function requestApplyTaskTemplate(tpl: TaskTemplate) {
+    if (!task) return;
+    const hasExisting =
+      task.statementMarkdown.trim() !== '' || !isUntouchedTemplate(task.starterCode ?? '');
+    if (hasExisting) {
+      setPendingTemplate(tpl);
+    } else {
+      void applyTaskTemplate(tpl);
+    }
   }
 
   async function handleAddTestCase() {
@@ -1080,6 +1136,74 @@ export function TaskEditorPage() {
           </p>
         )}
 
+        <div className="mb-3 rounded border border-mp-border bg-mp-bg p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-bold text-mp-muted">
+              定型テンプレートを適用（AI不要・{LANGUAGE_LABEL[task.language]}）
+            </span>
+            {task.statementMarkdown.trim() !== '' && (
+              <button
+                type="button"
+                onClick={() => setShowTemplatePicker((v) => !v)}
+                aria-expanded={showTemplatePicker}
+                className="rounded border border-mp-border bg-mp-surface px-2.5 py-1 text-xs font-semibold hover:bg-mp-surface-hover"
+              >
+                {showTemplatePicker ? 'テンプレート一覧を閉じる' : '定型テンプレートを適用'}
+              </button>
+            )}
+          </div>
+
+          {(task.statementMarkdown.trim() === '' || showTemplatePicker) && (
+            <div className="mt-2">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-mp-muted">
+                  問題文の骨子（【問題】【入力形式】【出力形式】【制約】）と {LANGUAGE_LABEL[task.language]} の入力読み取り済み初期コードを即時挿入します。
+                </p>
+                <label className="flex items-center gap-1.5 text-xs text-mp-muted">
+                  <input
+                    type="checkbox"
+                    checked={includeTemplateCases}
+                    onChange={(e) => setIncludeTemplateCases(e.target.checked)}
+                  />
+                  サンプル・境界値テストケースも追加
+                </label>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {TASK_TEMPLATES.map((tpl) => (
+                  <button
+                    key={tpl.id}
+                    type="button"
+                    disabled={applyingTemplate}
+                    onClick={() => requestApplyTaskTemplate(tpl)}
+                    className="rounded border border-mp-border bg-mp-surface p-2.5 text-left transition-colors hover:border-mp-cyan hover:bg-mp-surface-hover disabled:opacity-50"
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-xs font-bold text-mp-fg">{tpl.name}</span>
+                      {tpl.comparisonMode === 'FLOAT' && (
+                        <span className="rounded bg-mp-cyan/15 px-1.5 py-0.5 text-[10px] font-semibold text-mp-cyan">
+                          FLOAT
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-mp-muted">{tpl.description}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {templateMsg && (
+            <p className="mt-2 text-xs font-semibold text-mp-green" role="status" aria-live="polite">
+              {templateMsg}
+            </p>
+          )}
+          {templateError && (
+            <p className="mt-2 text-xs text-mp-red" role="alert">
+              {templateError}
+            </p>
+          )}
+        </div>
+
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
           <label className="block text-sm text-mp-muted" htmlFor="task-statement">
             問題文（Markdown）
@@ -1249,6 +1373,23 @@ export function TaskEditorPage() {
           void executeRegrade();
         }}
         onCancel={() => setRegradeConfirmOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={pendingTemplate !== null}
+        title="定型テンプレートを適用"
+        message={
+          pendingTemplate
+            ? `テンプレート「${pendingTemplate.name}」を適用すると、現在の問題文・初期テンプレートコード・出力比較設定が上書きされます。よろしいですか？`
+            : ''
+        }
+        confirmLabel="上書きして適用"
+        onConfirm={() => {
+          const tpl = pendingTemplate;
+          setPendingTemplate(null);
+          if (tpl) void applyTaskTemplate(tpl);
+        }}
+        onCancel={() => setPendingTemplate(null)}
       />
 
       <div className="mb-6">
