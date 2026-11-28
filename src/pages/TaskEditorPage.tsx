@@ -5,6 +5,8 @@ import {
   useImperativeHandle,
   useRef,
   useState,
+  type ClipboardEvent,
+  type DragEvent,
   type FormEvent,
   type Ref,
 } from 'react';
@@ -69,6 +71,13 @@ interface SolutionCheckRow {
   timeMs?: number;
 }
 
+const ALLOWED_IMAGE_MIME_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+]);
+
 const inputClass =
   'w-full rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg';
 const codeClass =
@@ -124,6 +133,7 @@ export function TaskEditorPage() {
   const statementTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [imageUploading, setImageUploading] = useState(false);
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+  const [statementDragOver, setStatementDragOver] = useState(false);
   // "解答例でテストケースを検証" results — one row per test case, or an error /
   // compile-failure message.
   const [checking, setChecking] = useState(false);
@@ -438,33 +448,52 @@ export function TaskEditorPage() {
     }
   }
 
-  // Uploads `file` (already filtered to an image type by the <input accept>)
-  // and inserts its Markdown image syntax into statementMarkdown at the
-  // textarea's current cursor position — or at the end if the preview-only
-  // view is active (no textarea mounted to have a cursor in).
-  async function handleInsertImage(file: File) {
-    if (!task) return;
+  // Uploads one or more image files and inserts their Markdown image syntax
+  // into statementMarkdown at the textarea's current cursor/selection position
+  // (or at the end if the preview-only view is active). Uses a functional
+  // setTask update so any edits typed while uploading are never lost.
+  async function handleInsertImages(files: File[]) {
+    if (!task || files.length === 0 || imageUploading) return;
     setImageUploadError(null);
     setImageUploading(true);
+    const textarea = statementTextareaRef.current;
+    const captureCursor = textarea !== null && statementView !== 'preview';
+    const initialStart = captureCursor ? textarea.selectionStart : null;
+    const initialEnd = captureCursor ? textarea.selectionEnd : null;
     try {
-      const { url } = await uploadTaskImage(file);
-      const snippet = `![](${url})`;
-      const textarea = statementTextareaRef.current;
-      if (textarea && statementView !== 'preview') {
-        const start = textarea.selectionStart ?? task.statementMarkdown.length;
-        const end = textarea.selectionEnd ?? start;
-        const next = task.statementMarkdown.slice(0, start) + snippet + task.statementMarkdown.slice(end);
-        setTask({ ...task, statementMarkdown: next });
-        // Wait for React to re-render the textarea with `next` before moving
-        // the cursor — setSelectionRange on the still-old value is a no-op.
+      const snippets: string[] = [];
+      for (const file of files) {
+        const { url } = await uploadTaskImage(file);
+        snippets.push(`![画像](${url})`);
+      }
+      const snippet = snippets.join('\n');
+      if (captureCursor && initialStart !== null && initialEnd !== null) {
+        let nextCursorPos = initialStart + snippet.length;
+        setTask((prev) => {
+          if (!prev) return prev;
+          const start = Math.min(initialStart, prev.statementMarkdown.length);
+          const end = Math.min(Math.max(initialEnd, start), prev.statementMarkdown.length);
+          nextCursorPos = start + snippet.length;
+          return {
+            ...prev,
+            statementMarkdown:
+              prev.statementMarkdown.slice(0, start) + snippet + prev.statementMarkdown.slice(end),
+          };
+        });
+        // Wait for React to re-render the textarea with the updated value
+        // before moving the cursor — setSelectionRange on the old value is a no-op.
         requestAnimationFrame(() => {
-          textarea.focus();
-          const pos = start + snippet.length;
-          textarea.setSelectionRange(pos, pos);
+          const el = statementTextareaRef.current;
+          if (!el) return;
+          el.focus();
+          el.setSelectionRange(nextCursorPos, nextCursorPos);
         });
       } else {
-        const sep = task.statementMarkdown && !task.statementMarkdown.endsWith('\n') ? '\n' : '';
-        setTask({ ...task, statementMarkdown: `${task.statementMarkdown}${sep}${snippet}\n` });
+        setTask((prev) => {
+          if (!prev) return prev;
+          const sep = prev.statementMarkdown && !prev.statementMarkdown.endsWith('\n') ? '\n' : '';
+          return { ...prev, statementMarkdown: `${prev.statementMarkdown}${sep}${snippet}\n` };
+        });
       }
     } catch (err) {
       setImageUploadError(
@@ -473,6 +502,59 @@ export function TaskEditorPage() {
     } finally {
       setImageUploading(false);
     }
+  }
+
+  function handleInsertImage(file: File) {
+    void handleInsertImages([file]);
+  }
+
+  function handleStatementPaste(e: ClipboardEvent<HTMLTextAreaElement>) {
+    const items = e.clipboardData?.items;
+    if (!items || items.length === 0) return;
+    const imageFiles: File[] = [];
+    let hasUnsupportedImage = false;
+    for (const item of Array.from(items)) {
+      if (item.kind !== 'file') continue;
+      if (ALLOWED_IMAGE_MIME_TYPES.has(item.type)) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(file);
+      } else if (item.type.startsWith('image/')) {
+        hasUnsupportedImage = true;
+      }
+    }
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      void handleInsertImages(imageFiles);
+    } else if (hasUnsupportedImage) {
+      e.preventDefault();
+      setImageUploadError('PNG / JPEG / GIF / WebP 画像のみアップロードできます。');
+    }
+  }
+
+  function handleStatementDragOver(e: DragEvent<HTMLTextAreaElement>) {
+    if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!statementDragOver) setStatementDragOver(true);
+  }
+
+  function handleStatementDragLeave() {
+    setStatementDragOver(false);
+  }
+
+  function handleStatementDrop(e: DragEvent<HTMLTextAreaElement>) {
+    setStatementDragOver(false);
+    const droppedFiles = e.dataTransfer?.files;
+    if (!droppedFiles || droppedFiles.length === 0) return;
+    e.preventDefault();
+    const imageFiles = Array.from(droppedFiles).filter((f) =>
+      ALLOWED_IMAGE_MIME_TYPES.has(f.type),
+    );
+    if (imageFiles.length === 0) {
+      setImageUploadError('PNG / JPEG / GIF / WebP 画像のみアップロードできます。');
+      return;
+    }
+    void handleInsertImages(imageFiles);
   }
 
   // Run `code` (the current reference-solution editor content) against every
@@ -977,7 +1059,16 @@ export function TaskEditorPage() {
             </div>
           </div>
         </div>
-        {imageUploadError && <p className="mb-1 text-xs text-mp-red">{imageUploadError}</p>}
+        {imageUploading && (
+          <p className="mb-1 text-xs font-semibold text-mp-cyan" role="status" aria-live="polite">
+            画像をアップロード中...
+          </p>
+        )}
+        {imageUploadError && (
+          <p className="mb-1 text-xs text-mp-red" role="alert">
+            {imageUploadError}
+          </p>
+        )}
         {statementView === 'preview' ? (
           <div className="markdown-body mb-3 rounded border border-mp-border bg-mp-bg p-3">
             <MarkdownBody>{task.statementMarkdown}</MarkdownBody>
@@ -988,9 +1079,13 @@ export function TaskEditorPage() {
               id="task-statement"
               ref={statementTextareaRef}
               rows={16}
-              className={codeClass}
+              className={`${codeClass}${statementDragOver ? ' border-mp-cyan ring-2 ring-mp-cyan/40' : ''}`}
               value={task.statementMarkdown}
               onChange={(e) => setTask({ ...task, statementMarkdown: e.target.value })}
+              onPaste={handleStatementPaste}
+              onDragOver={handleStatementDragOver}
+              onDragLeave={handleStatementDragLeave}
+              onDrop={handleStatementDrop}
             />
             <div className="markdown-body max-h-[26rem] overflow-y-auto rounded border border-mp-border bg-mp-bg p-3">
               <MarkdownBody>{task.statementMarkdown}</MarkdownBody>
@@ -1001,11 +1096,18 @@ export function TaskEditorPage() {
             ref={statementTextareaRef}
             id="task-statement"
             rows={14}
-            className={`mb-3 ${codeClass}`}
+            className={`mb-3 ${codeClass}${statementDragOver ? ' border-mp-cyan ring-2 ring-mp-cyan/40' : ''}`}
             value={task.statementMarkdown}
             onChange={(e) => setTask({ ...task, statementMarkdown: e.target.value })}
+            onPaste={handleStatementPaste}
+            onDragOver={handleStatementDragOver}
+            onDragLeave={handleStatementDragLeave}
+            onDrop={handleStatementDrop}
           />
         )}
+        <p className="mb-3 -mt-2 text-xs text-mp-muted">
+          画像はクリップボードからの貼り付け（Ctrl+V / Cmd+V）やドラッグ＆ドロップでも挿入できます（PNG / JPEG / GIF / WebP）。
+        </p>
 
         <label className="mb-1 block text-sm text-mp-muted">
           初期テンプレートコード（{LANGUAGE_LABEL[task.language]}）
