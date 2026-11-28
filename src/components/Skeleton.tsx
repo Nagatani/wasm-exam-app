@@ -5,7 +5,7 @@
  * The fill uses --mp-border so it reads on both --mp-bg and --mp-surface.
  */
 export function Skeleton({ className = '' }: { className?: string }) {
-  return <div className={`animate-pulse rounded bg-mp-border ${className}`} />;
+  return <div className={`animate-pulse motion-reduce:animate-none rounded bg-mp-border ${className}`} />;
 }
 
 export function SkeletonRows({ rows = 4 }: { rows?: number }) {

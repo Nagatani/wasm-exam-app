@@ -56,7 +56,7 @@ export function LoginPage() {
         </label>
         <input
           id="studentId"
-          className="mb-4 w-full rounded-lg border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg transition focus:border-mp-cyan focus:outline-none"
+          className="mb-4 w-full rounded-lg border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg transition focus:border-mp-cyan"
           value={studentId}
           onChange={(e) => setStudentId(e.target.value)}
           autoComplete="username"

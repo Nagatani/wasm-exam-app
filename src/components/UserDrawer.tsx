@@ -134,7 +134,7 @@ export function UserDrawer({
       <div
         inert={!open}
         aria-hidden={!open}
-        className={`fixed inset-0 z-50 transition-opacity duration-200 ${
+        className={`fixed inset-0 z-50 transition-opacity duration-200 motion-reduce:transition-none ${
           open ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
         }`}
       >
@@ -150,7 +150,7 @@ export function UserDrawer({
           role="dialog"
           aria-modal="true"
           aria-label="メニュー"
-          className={`absolute top-0 right-0 flex h-full w-80 max-w-[85vw] flex-col overflow-y-auto border-l border-mp-border bg-mp-surface p-4 text-mp-fg shadow-xl transition-transform duration-200 ${
+          className={`absolute top-0 right-0 flex h-full w-80 max-w-[85vw] flex-col overflow-y-auto border-l border-mp-border bg-mp-surface p-4 text-mp-fg shadow-xl transition-transform duration-200 motion-reduce:transition-none ${
             open ? 'translate-x-0' : 'translate-x-full'
           }`}
         >

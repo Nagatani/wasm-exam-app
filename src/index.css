@@ -72,6 +72,11 @@ body {
   color: var(--mp-fg);
 }
 
+:focus-visible {
+  outline: 2px solid var(--mp-cyan);
+  outline-offset: 2px;
+}
+
 /* Form control boundaries need >= 3:1 contrast (WCAG 1.4.11); promote
    standard border-mp-border inputs to --mp-border-strong when unfocused. */
 input.border-mp-border:not(:focus),
@@ -251,4 +256,21 @@ textarea.border-mp-border:not(:focus) {
 .mp-progress-indeterminate {
   width: 25%;
   animation: mp-indeterminate 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .mp-progress-indeterminate {
+    width: 100%;
+    animation: none;
+    opacity: 0.65;
+  }
 }
