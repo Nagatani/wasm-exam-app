@@ -50,7 +50,14 @@ import { HelpPopover } from '../components/HelpPopover';
 import { PageSkeleton } from '../components/Skeleton';
 import { confirmLeaveIfDirty, useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { changedOrders, moveItem } from '../lib/reorder';
-import { parseBulkCases } from '../lib/bulkTestCases';
+import {
+  exportCasesToCsv,
+  exportCasesToJson,
+  parseBulkCases,
+  parseCsvTsvCases,
+  parseJsonCases,
+  type BulkTestCase,
+} from '../lib/bulkTestCases';
 
 // Lazy: AiAssistPanel pulls in @mlc-ai/web-llm (several MB) via ../ai/
 // aiAssist — only worth fetching once we already know AI作問サポート is
@@ -441,9 +448,8 @@ export function TaskEditorPage() {
     }
   }
 
-  async function handleBulkImport(text: string) {
+  async function handleBulkImport(cases: BulkTestCase[]) {
     if (!task) return;
-    const cases = parseBulkCases(text);
     if (cases.length === 0) {
       setBulkError('テストケースを読み取れませんでした。書式を確認してください。');
       return;
@@ -1257,6 +1263,8 @@ export function TaskEditorPage() {
           <BulkTestCasePanel
             busy={bulkBusy}
             error={bulkError}
+            existingCases={task.testCases}
+            taskTitle={task.title}
             onImport={handleBulkImport}
           />
         )}
@@ -1366,53 +1374,239 @@ export function TaskEditorPage() {
   );
 }
 
+type BulkFormat = 'standard' | 'csv' | 'json';
+
+function downloadTextFile(filename: string, content: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function BulkTestCasePanel({
   busy,
   error,
+  existingCases,
+  taskTitle,
   onImport,
 }: {
   busy: boolean;
   error: string | null;
-  onImport: (text: string) => void;
+  existingCases: TestCase[];
+  taskTitle: string;
+  onImport: (cases: BulkTestCase[]) => void;
 }) {
+  const [format, setFormat] = useState<BulkFormat>('standard');
   const [text, setText] = useState('');
-  const placeholder = `3\n---\n6\n===\n@sample\n10\n---\n20`;
+
+  const placeholderByFormat: Record<BulkFormat, string> = {
+    standard: `3\n---\n6\n===\n@sample\n10\n---\n20`,
+    csv: `input,expectedOutput,isSample\n1 2,3,true\n10 20,30,false`,
+    json: `[\n  { "input": "1 2", "expectedOutput": "3", "isSample": true },\n  { "input": "10 20", "expectedOutput": "30", "isSample": false }\n]`,
+  };
   const inputOnlyExample = `@sample\n3\n===\n10\n===\n0`;
+
+  let parsedCases: BulkTestCase[] = [];
+  let parseError: string | null = null;
+  if (text.trim() !== '') {
+    try {
+      if (format === 'standard') parsedCases = parseBulkCases(text);
+      else if (format === 'csv') parsedCases = parseCsvTsvCases(text);
+      else parsedCases = parseJsonCases(text);
+    } catch (err) {
+      parseError = err instanceof Error ? err.message : '書式を解析できませんでした。';
+    }
+  }
+  const sampleCount = parsedCases.filter((c) => c.isSample).length;
+  const previewRows = parsedCases.slice(0, 5);
+  const safeBaseName = (taskTitle.trim() || 'test-cases').replace(/[\\/:*?"<>|]/g, '_');
+
+  function handleExportJson() {
+    const content = exportCasesToJson(existingCases);
+    downloadTextFile(`${safeBaseName}-testcases.json`, content, 'application/json;charset=utf-8');
+  }
+
+  function handleExportCsv() {
+    // Prepend UTF-8 BOM so Excel opens Japanese text without mojibake.
+    const content = `\uFEFF${exportCasesToCsv(existingCases)}`;
+    downloadTextFile(`${safeBaseName}-testcases.csv`, content, 'text/csv;charset=utf-8');
+  }
 
   return (
     <div className="mb-3 rounded-lg border border-mp-border bg-mp-surface p-3">
-      <p className="mb-1 text-xs text-mp-muted">
-        複数のテストケースをまとめて追加します。ケースの区切りは <code>===</code> だけの行、
-        入力と期待される出力の区切りは <code>---</code> だけの行。ケースの1行目を{' '}
-        <code>@sample</code> にするとサンプル扱いになります。既存のテストケースの後ろに追加されます。
-      </p>
-      <p className="mb-2 text-xs text-mp-muted">
-        ヒント：<code>---</code> と期待される出力を省略して<strong>入力のみ</strong>を追加し、下の「解答例でテストケースを検証」→「期待値が空のケースのみ反映」で期待値を自動生成できます。
-      </p>
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <FileLoadButton accept=".txt,text/plain" onLoaded={(loaded) => setText(loaded)} />
-        <button
-          type="button"
-          onClick={() => setText(inputOnlyExample)}
-          className="rounded border border-mp-border bg-mp-bg px-2.5 py-1 text-xs hover:bg-mp-surface-hover"
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div
+          role="group"
+          aria-label="一括追加の入力形式"
+          className="flex overflow-hidden rounded border border-mp-border text-xs"
         >
-          入力のみの書式例を挿入
-        </button>
+          {(
+            [
+              ['standard', '標準書式'],
+              ['csv', 'CSV・TSV'],
+              ['json', 'JSON'],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={format === value}
+              onClick={() => setFormat(value)}
+              className={`px-2.5 py-1 font-semibold ${
+                format === value
+                  ? 'bg-mp-cyan text-mp-btn-fg'
+                  : 'bg-mp-bg text-mp-muted hover:bg-mp-surface-hover'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExportJson}
+            disabled={existingCases.length === 0}
+            className="rounded border border-mp-border bg-mp-bg px-2.5 py-1 text-xs font-semibold hover:bg-mp-surface-hover disabled:opacity-50"
+          >
+            テストケースをエクスポート（JSON）
+          </button>
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            disabled={existingCases.length === 0}
+            className="rounded border border-mp-border bg-mp-bg px-2.5 py-1 text-xs font-semibold hover:bg-mp-surface-hover disabled:opacity-50"
+          >
+            テストケースをエクスポート（CSV）
+          </button>
+        </div>
+      </div>
+
+      {format === 'standard' ? (
+        <>
+          <p className="mb-1 text-xs text-mp-muted">
+            複数のテストケースをまとめて追加します。ケースの区切りは <code>===</code> だけの行、
+            入力と期待される出力の区切りは <code>---</code> だけの行。ケースの1行目を{' '}
+            <code>@sample</code> にするとサンプル扱いになります。既存のテストケースの後ろに追加されます。
+          </p>
+          <p className="mb-2 text-xs text-mp-muted">
+            ヒント：<code>---</code> と期待される出力を省略して<strong>入力のみ</strong>を追加し、下の「解答例でテストケースを検証」→「期待値が空のケースのみ反映」で期待値を自動生成できます。
+          </p>
+        </>
+      ) : format === 'csv' ? (
+        <p className="mb-2 text-xs text-mp-muted">
+          スプレッドシートからの貼り付け（TSV）または CSV を読み込めます。列順は{' '}
+          <code>input, expectedOutput, isSample</code>（ヘッダー行は任意）。複数行の値はダブルクォートで囲めます。
+        </p>
+      ) : (
+        <p className="mb-2 text-xs text-mp-muted">
+          <code>{`[{ "input": "...", "expectedOutput": "...", "isSample": true }]`}</code> 形式の JSON
+          配列（または <code>testCases</code> 配列を含むオブジェクト）を読み込めます。
+        </p>
+      )}
+
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <FileLoadButton
+          accept=".txt,.csv,.tsv,.json,text/plain,text/csv,application/json"
+          onLoaded={(loaded) => setText(loaded)}
+        />
+        {format === 'standard' && (
+          <button
+            type="button"
+            onClick={() => setText(inputOnlyExample)}
+            className="rounded border border-mp-border bg-mp-bg px-2.5 py-1 text-xs hover:bg-mp-surface-hover"
+          >
+            入力のみの書式例を挿入
+          </button>
+        )}
       </div>
       <textarea
         rows={8}
+        aria-label="一括追加するテストケースの内容"
         className={codeClass}
-        placeholder={placeholder}
+        placeholder={placeholderByFormat[format]}
         value={text}
         onChange={(e) => setText(e.target.value)}
       />
-      {error && <p className="mt-1 text-sm text-mp-red">{error}</p>}
+
+      {parseError && (
+        <p role="alert" className="mt-1 text-xs text-mp-red">
+          {parseError}
+        </p>
+      )}
+
+      {!parseError && text.trim() !== '' && (
+        <div className="mt-2 rounded border border-mp-border bg-mp-bg p-2.5 text-xs">
+          <p className="mb-1.5 font-semibold text-mp-fg" role="status" aria-live="polite">
+            {parsedCases.length}件を認識（うちサンプル {sampleCount}件）
+          </p>
+          {previewRows.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left font-mono text-xs">
+                <caption className="sr-only">一括追加のプレビュー（先頭5件）</caption>
+                <thead>
+                  <tr className="border-b border-mp-border text-mp-muted">
+                    <th scope="col" className="py-1 pr-2">#</th>
+                    <th scope="col" className="py-1 pr-2">種別</th>
+                    <th scope="col" className="py-1 pr-2">入力</th>
+                    <th scope="col" className="py-1">期待される出力</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewRows.map((c, idx) => (
+                    <tr key={idx} className="border-b border-mp-border/50 align-top">
+                      <td className="py-1 pr-2 text-mp-muted">{idx + 1}</td>
+                      <td className="py-1 pr-2 font-sans">
+                        {c.isSample ? (
+                          <span className="rounded bg-mp-cyan/15 px-1.5 py-0.5 text-mp-cyan">
+                            サンプル
+                          </span>
+                        ) : (
+                          <span className="rounded bg-mp-surface px-1.5 py-0.5 text-mp-muted">
+                            非公開
+                          </span>
+                        )}
+                      </td>
+                      <td className="max-w-xs py-1 pr-2">
+                        <pre className="whitespace-pre-wrap break-words">{c.input || '(空)'}</pre>
+                      </td>
+                      <td className="max-w-xs py-1">
+                        <pre className="whitespace-pre-wrap break-words">
+                          {c.expectedOutput || '(空)'}
+                        </pre>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {parsedCases.length > previewRows.length && (
+                <p className="mt-1 text-mp-muted">
+                  …他 {parsedCases.length - previewRows.length}件
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <p role="alert" className="mt-1 text-sm text-mp-red">
+          {error}
+        </p>
+      )}
       <button
-        onClick={() => onImport(text)}
-        disabled={busy || text.trim() === ''}
+        type="button"
+        onClick={() => onImport(parsedCases)}
+        disabled={busy || Boolean(parseError) || parsedCases.length === 0}
         className="mt-2 rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
       >
-        {busy ? '追加中...' : 'この内容で追加'}
+        {busy ? '追加中...' : `この内容で追加（${parsedCases.length}件）`}
       </button>
     </div>
   );
