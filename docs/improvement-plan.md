@@ -85,7 +85,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
 
 ### 優先度：高
 
-- [ ] **A1. `UserDrawer` 閉鎖時の `ThemeToggle` フォーカス漏れ修正 ＆ モーダル／ドロワーのフォーカストラップ・復帰実装**
+- [x] **A1. `UserDrawer` 閉鎖時の `ThemeToggle` フォーカス漏れ修正 ＆ モーダル／ドロワーのフォーカストラップ・復帰実装**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 1 ／ **工数目安**: 中
   - **対象ファイル**: `src/components/UserDrawer.tsx`（L64-78, L147, L202）、`src/components/ThemeToggle.tsx`（L7）、`src/components/ConfirmDialog.tsx`（L33-46, L52, L59-67）、`src/components/TaskBankPicker.tsx`（L70-82, L134）、新規 `src/hooks/useDialogFocus.ts`
   - **現状の課題・根拠**:
@@ -98,14 +98,14 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     3. `ConfirmDialog` に `aria-describedby="confirm-dialog-message"` を付与し、初期フォーカスを「キャンセル」ボタンへ変更する。
   - **完了条件**: 閉じた `UserDrawer` 内要素に Tab が当たらないこと、全モーダル／ドロワーで Tab が内部循環し閉鎖時に元のトリガーへフォーカスが戻ること、`ConfirmDialog` の初期フォーカスがキャンセルボタンにあることをキーボード操作および E2E で確認できる。
 
-- [ ] **A2. `display: none` の `<input type="file">` 解消によるキーボードファイル選択対応**
+- [x] **A2. `display: none` の `<input type="file">` 解消によるキーボードファイル選択対応**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 1 ／ **工数目安**: 小
   - **対象ファイル**: `src/components/FileLoadButton.tsx`（L49）、`src/components/TaskBankPicker.tsx`（L281）、`src/pages/TaskEditorPage.tsx`（L763）
   - **現状の課題・根拠**: `<label>` 内の `<input type="file" className="hidden">` が `display: none` のため Tab フォーカスが一切当たらず、キーボード／スクリーンリーダーユーザーが「画像を挿入」「JSON インポート」「ファイルから読み込む」を実行できない（WCAG 2.1.1 違反）。
   - **具体的な作業内容**: `className="hidden"` を `className="sr-only"` に変更し、親 `<label>` に `focus-within:outline-2 focus-within:outline-mp-cyan focus-within:outline-offset-2` を付与する（または `<button>` + `inputRef.current?.click()` 方式に統一する）。
   - **完了条件**: 上記 3 箇所すべてで Tab キー移動後に Enter / Space でファイル選択ダイアログを開け、フォーカスリングが視認できること。
 
-- [ ] **A3. Monokai Pro ダーク／ライト両テーマの文字・境界コントラスト改善（WCAG 1.4.3 / 1.4.11）**
+- [x] **A3. Monokai Pro ダーク／ライト両テーマの文字・境界コントラスト改善（WCAG 1.4.3 / 1.4.11）**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 1 ／ **工数目安**: 小〜中
   - **対象ファイル**: `src/index.css`（L10-49）、関連するティントバッジ／バナー（`RestoreBackupBanner.tsx:29`, `UserDrawer.tsx:101`, `StudentTaskPage.tsx:360,398`, `StudentDashboard.tsx:218`, `SampleDiff.tsx:19`, `ChangePasswordPage.tsx:47`, `ExamResultsPage.tsx:673`, `TaskBankPicker.tsx:246`）
   - **現状の課題・根拠**（実測コントラスト比：通常文字基準 4.5:1、非テキスト境界基準 3.0:1）:
@@ -220,7 +220,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
 
 ### 優先度：高
 
-- [ ] **P1. TLE 混入時の judge 60 秒タイムアウトによるリトライ嵐（ポイズンピル問題）解消**
+- [x] **P1. TLE 混入時の judge 60 秒タイムアウトによるリトライ嵐（ポイズンピル問題）解消**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 1 ／ **工数目安**: 小〜中
   - **対象ファイル**: `server/src/lib/judgeClient.ts`、`server/src/lib/grading.ts`、`judge/Judge.java`（整合確認）
   - **現状の課題・根拠**:
@@ -232,7 +232,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     3. `gradeAttempt` で完了済みタスクの判定結果を保持し、5 問目失敗時に 1〜4 問目を再実行しないようにする。
   - **完了条件**: 5 テストケースすべて TLE となる Python 提出が 1 回で正常に `TLE` 確定してリトライ嵐を起こさないこと、およびリトライ上限・バックオフがユニット／judge テストで検証されていること。
 
-- [ ] **P2. 締切一斉時の `maybeSettleAttempt` N+1 重クエリ嵐の解消**
+- [x] **P2. 締切一斉時の `maybeSettleAttempt` N+1 重クエリ嵐の解消**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 1 ／ **工数目安**: 小
   - **対象ファイル**: `server/src/lib/attempts.ts`、`server/src/lib/examResults.ts`
   - **現状の課題・根拠**:
@@ -244,7 +244,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     2. `examResults.ts` に一括判定関数を導入し、`exam` と `ExamTimeExtension` を 1 回だけ取得して期限超過分のみ並列制限付きで `beginGrading()` する。
   - **完了条件**: 100 人一斉締切時の `getExamResults()` クエリ数が定数＋期限超過分の軽量更新のみに収まり、既存の統合テスト・judge テストが全件パスすること。
 
-- [ ] **P3. 教室 NAT 環境でのログイン制限（`LOGIN_MAX_FAILURES_PER_IP=100`）による全員ロックアウト対策**（関連：`P10`）
+- [x] **P3. 教室 NAT 環境でのログイン制限（`LOGIN_MAX_FAILURES_PER_IP=100`）による全員ロックアウト対策**（関連：`P10`）
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 1 ／ **工数目安**: 小
   - **対象ファイル**: `server/src/lib/loginRateLimit.ts`、`server/src/routes/admin.ts`、`src/pages/AdminPage.tsx`、`docs/operations.md`
   - **現状の課題・根拠**:
@@ -255,7 +255,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     2. `loginRateLimit.ts` に `clearIpRateLimit(ip?)` を追加し、`routes/admin.ts` と `AdminPage.tsx` に IP ロック解除エンドポイント／ボタンを追加する。
   - **完了条件**: 教員が `AdminPage` から IP ロックを即時解除でき、統合テストで解除後に再ログイン可能であることを確認できる。
 
-- [ ] **P4. 単一 `judge` コンテナのスループット限界解消とマルチ `judge` プール対応**
+- [x] **P4. 単一 `judge` コンテナのスループット限界解消とマルチ `judge` プール対応**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 1 ／ **工数目安**: 中
   - **対象ファイル**: `server/src/lib/judgeClient.ts`、`server/src/lib/executionQueue.ts`、`docker-compose.prod.yml`、`docs/operations.md`
   - **現状の課題・根拠**:
@@ -266,7 +266,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     2. `docker-compose.prod.yml` と `docs/operations.md` に複数 `judge` 構成例およびサイジング目安（`mem_limit = 0.4g * concurrency + 0.5g`、`pids_limit = 256 * concurrency`）を追加する。
   - **完了条件**: 複数 `JUDGE_URLS` 指定時にジョブが分散され、1 台停止時も残りの judge へフェイルオーバーして採点が継続することをテストで確認できる。
 
-- [ ] **P5. Prisma コネクションプール既定値不足対策・欠落インデックス追加・セッション短期キャッシュ**
+- [x] **P5. Prisma コネクションプール既定値不足対策・欠落インデックス追加・セッション短期キャッシュ**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 1 ／ **工数目安**: 小
   - **対象ファイル**: `server/prisma/schema.prisma`（＋マイグレーション）、`server/src/lib/session.ts`、`server/src/routes/students.ts`、`server/.env.prod.docker.example`、`docs/operations.md`
   - **現状の課題・根拠**:
@@ -344,7 +344,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
 
 ### 優先度：高
 
-- [ ] **T1. `TaskEditorPage` の「すべて保存」ワンクリック化 ＆ `Cmd/Ctrl+S` ショートカット**
+- [x] **T1. `TaskEditorPage` の「すべて保存」ワンクリック化 ＆ `Cmd/Ctrl+S` ショートカット**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 1 ／ **工数目安**: 中
   - **対象ファイル**: `src/pages/TaskEditorPage.tsx`（L416, L526-533）、`src/components/TestCaseRow.tsx`、`SolutionEditor`
   - **現状の課題・根拠**: 基本情報・テストケース（行ごと）・解答例コードの 3 セクションが独立保存で、sticky バナーは未保存箇所を一覧表示するのみ。各行までスクロールして個別保存する必要があり保存漏れ・手戻りが起きやすい。また `TestCaseRow` が未保存のまま「解答例でテストケースを検証」を押すと DB 保存済みの古いテストケースで検証されてしまう（L416）。
@@ -354,7 +354,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     3. 「解答例でテストケースを検証」実行時に未保存テストケースがある場合は注意表示または自動保存オプションを提示する。
   - **完了条件**: 複数セクションを同時編集後に 1 クリックまたは `Cmd/Ctrl+S` で全保存でき、部分失敗時に失敗箇所のみ未保存状態で残ること。
 
-- [ ] **T2. 解答例からの期待値一括生成・一括上書き ＆ `SampleDiff` 差分・実行時間（`timeMs`）表示**
+- [x] **T2. 解答例からの期待値一括生成・一括上書き ＆ `SampleDiff` 差分・実行時間（`timeMs`）表示**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 1 ／ **工数目安**: 小〜中
   - **対象ファイル**: `src/pages/TaskEditorPage.tsx`（`SolutionCheckPanel` L1067-1152、`BulkTestCasePanel`）、`src/components/SampleDiff.tsx`、`src/lib/bulkTestCases.ts`、`server/src/routes/tasks.ts`（L235 参照）
   - **現状の課題・根拠**:
@@ -367,7 +367,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     3. 不一致詳細に `SampleDiff` を再利用し、各行に実行時間（`timeMs`）を表示する（Java の `timeLimitMs` 調整にも活用）。
   - **完了条件**: 入力のみ一括登録した複数テストケースの期待値を解答例実行から一括反映でき、不一致箇所が `SampleDiff` と `timeMs` 付きで表示されること。
 
-- [ ] **T3. 試験全体の「全問題の解答例を一括検証」＆ `publish-check` 強化**
+- [x] **T3. 試験全体の「全問題の解答例を一括検証」＆ `publish-check` 強化**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 1 ／ **工数目安**: 中
   - **対象ファイル**: `server/src/routes/exams.ts`（L236-316）、`src/pages/ExamDetailPage.tsx`、`src/api/exams.ts`
   - **現状の課題・根拠**:
@@ -385,7 +385,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
   - **具体的な作業内容**: `TaskEditorPage` / `ExamDetailPage` に **「生徒画面プレビュー」** ボタンを追加し、既存の `TaskDetail` をそのまま渡す読み取り専用モーダル（または `/teacher/exams/:examId/tasks/:taskId/preview` ルート）で、`StudentTaskPage` 相当のレイアウト（問題文 Markdown＋サンプル一覧＋初期テンプレート入り Monaco＋お試し実行）を DB への受験記録を一切作らずに確認可能にする。
   - **完了条件**: DRAFT 状態の試験・問題で生徒画面相当のレイアウトとコードお試し実行が動作し、`ExamAttempt` / `Submission` レコードが一切作成されないこと。
 
-- [ ] **T5. Markdown エディタでのクリップボード画像貼り付け（`onPaste`）・ドラッグ＆ドロップ対応・サンプル挿入**
+- [x] **T5. Markdown エディタでのクリップボード画像貼り付け（`onPaste`）・ドラッグ＆ドロップ対応・サンプル挿入**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 1 ／ **工数目安**: 小
   - **対象ファイル**: `src/pages/TaskEditorPage.tsx`（L758-824）
   - **現状の課題・根拠**: スクリーンショットや図をコピーして問題文 `<textarea>` に直接ペースト・ドロップできず、毎回ファイル保存→「画像を挿入」が必要。
@@ -456,7 +456,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
 
 ### 4-1. 基盤・UX（モデル選択・ランタイム管理・対話体験）
 
-- [ ] **L1. 共有エンジンマネージャへの分離とアイドル解放・ストリーミング・中断対応**
+- [x] **L1. 共有エンジンマネージャへの分離とアイドル解放・ストリーミング・中断対応**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 1 ／ **工数目安**: 中
   - **対象ファイル**: 新規 `src/ai/webllmEngine.ts`、新規 `src/ai/aiRuntimeSettings.ts`、`src/ai/aiAssist.ts`（L63, L167）、`src/ai/aiHint.ts`（L2, L98）、`src/components/AiAssistSettings.tsx`、`src/components/AiHintSettings.tsx`、`src/components/HintPanel.tsx`、`src/components/AiAssistPanel.tsx`
   - **現状の課題・根拠**:
@@ -469,7 +469,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     3. `webllmEngine.ts` は既存の `React.lazy` 境界からのみ import し、メインバンドル汚染ゼロを維持する。
   - **完了条件**: ビルド出力のメインチャンクに `@mlc-ai/web-llm` が含まれないこと、生成のストリーミング表示・途中中断・アイドル自動アンロードが動作すること。
 
-- [ ] **L2. 段階的モデルプリセット選択（1.5B / 3B / 7B）＋ WebGPU・空き容量・キャッシュ診断**
+- [x] **L2. 段階的モデルプリセット選択（1.5B / 3B / 7B）＋ WebGPU・空き容量・キャッシュ診断**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 1 ／ **工数目安**: 中
   - **対象ファイル**: `src/ai/webllmEngine.ts`、`src/ai/aiRuntimeSettings.ts`、`src/ai/aiAssist.ts`（L17, L19-21）、`src/components/AiAssistSettings.tsx`（L112-115）、`src/components/AiHintSettings.tsx`（L112-115）
   - **現状の課題・根拠**:
@@ -545,7 +545,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
 
 ### 4-4. 運用・配信（CSP・学内ミラー・構造化出力の信頼性）
 
-- [ ] **L9. CSP `enforce` 実機検証と学内モデルミラー設定（`VITE_WEBLLM_MODEL_BASE_URL`）**（関連：`P9`）
+- [x] **L9. CSP `enforce` 実機検証と学内モデルミラー設定（`VITE_WEBLLM_MODEL_BASE_URL`）**（関連：`P9`）
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 1 ／ **工数目安**: 小〜中
   - **対象ファイル**: `src/ai/webllmEngine.ts`、`server/src/lib/csp.ts`（L21-23）、`docs/operations.md`（L156）、`docs/roadmap.md`（L12）
   - **現状の課題・根拠**:
