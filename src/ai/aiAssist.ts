@@ -1,111 +1,12 @@
+import type { InitProgressReport } from '@mlc-ai/web-llm';
 import {
-  CreateWebWorkerMLCEngine,
-  deleteModelAllInfoInCache,
-  prebuiltAppConfig,
-  type InitProgressReport,
-  type MLCEngineInterface,
-} from '@mlc-ai/web-llm';
+  beginWebLlmGeneration,
+  endWebLlmGeneration,
+  GenerationAbortedError,
+  loadWebLlmEngine,
+} from './webllmEngine';
 import type { Language } from '../types/exam';
 import { LANGUAGE_LABEL } from '../lib/language';
-
-// A single small, coder-tuned model — a deliberate choice over letting the
-// teacher pick from WebLLM's full catalog: this app doesn't need every
-// model, just one with a reasonable balance of download size vs. Japanese
-// instruction-following quality for generating problem statements, test
-// case inputs, and reference solutions. See docs/roadmap.md for the
-// reasoning; revisit only if this one proves too weak/heavy in practice.
-export const AI_ASSIST_MODEL_ID = 'Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC';
-
-export function isWebGpuSupported(): boolean {
-  return typeof navigator !== 'undefined' && 'gpu' in navigator;
-}
-
-// The model record's own `vram_required_MB` as a rough stand-in for the
-// download size a teacher should expect — WebLLM doesn't separately expose
-// "bytes on the wire", and VRAM footprint of a q4-quantized model tracks its
-// on-disk/cache size closely enough for a "about how big" caption.
-export function aiAssistModelSizeLabel(): string {
-  const record = prebuiltAppConfig.model_list.find((m) => m.model_id === AI_ASSIST_MODEL_ID);
-  if (!record?.vram_required_MB) return '数GB程度';
-  return `約${(record.vram_required_MB / 1024).toFixed(1)}GB`;
-}
-
-export type AiAssistState = 'idle' | 'loading' | 'ready' | 'error';
-let state: AiAssistState = 'idle';
-let enginePromise: Promise<MLCEngineInterface> | null = null;
-
-export function aiAssistState(): AiAssistState {
-  return state;
-}
-
-const LOAD_FAILURE_MESSAGE =
-  'AIモデルの読み込みに失敗しました。ネットワーク環境を確認するか、しばらくしてから再度お試しください。';
-
-// Downloads (first call only — memoized like cRunner.ts's clang promise) and
-// initializes the model in a dedicated worker. Never called automatically:
-// unlike the C/Python runtimes every student implicitly needs, this is a
-// multi-hundred-MB-to-multi-GB download only a teacher who opted in (see
-// aiAssistSettings.ts) should ever trigger.
-export function loadAiAssistModel(
-  onProgress?: (report: InitProgressReport) => void,
-): Promise<MLCEngineInterface> {
-  if (!enginePromise) {
-    if (!isWebGpuSupported()) {
-      state = 'error';
-      return Promise.reject(
-        new Error('このブラウザはAI作問サポート（WebGPU）に対応していません。'),
-      );
-    }
-    state = 'loading';
-    const worker = new Worker(new URL('./aiAssist.worker.ts', import.meta.url), {
-      type: 'module',
-    });
-    enginePromise = CreateWebWorkerMLCEngine(worker, AI_ASSIST_MODEL_ID, {
-      initProgressCallback: onProgress,
-    }).then(
-      (engine) => {
-        state = 'ready';
-        return engine;
-      },
-      (err) => {
-        state = 'error';
-        enginePromise = null;
-        console.error('AI assist model load failed:', err);
-        throw new Error(LOAD_FAILURE_MESSAGE);
-      },
-    );
-  }
-  return enginePromise;
-}
-
-// navigator.storage.estimate() is a browser-wide figure (every origin's
-// cached data, not just this model), but it's the only thing the platform
-// exposes without hand-rolling a Cache/IndexedDB walk — good enough for a
-// "here's roughly how much this browser is using" caption. `null` when the
-// API isn't available (e.g. private browsing in some browsers).
-export async function estimateStorageUsageBytes(): Promise<number | null> {
-  if (!navigator.storage?.estimate) return null;
-  const { usage } = await navigator.storage.estimate();
-  return usage ?? null;
-}
-
-// Unloads the live engine (if any) and deletes every cache entry WebLLM
-// wrote for this model (weights, wasm, tokenizer/config) — the counterpart
-// to the "モデルを削除してオフにする" button on SettingsPage. Resets local
-// state so the next loadAiAssistModel() call re-downloads from scratch.
-export async function clearAiAssistCache(): Promise<void> {
-  if (enginePromise) {
-    try {
-      const engine = await enginePromise;
-      await engine.unload();
-    } catch {
-      /* the engine may have failed to load in the first place — clear regardless */
-    }
-  }
-  await deleteModelAllInfoInCache(AI_ASSIST_MODEL_ID);
-  enginePromise = null;
-  state = 'idle';
-}
 
 export interface AiTaskDraftInput {
   language: Language;
@@ -118,6 +19,11 @@ export interface AiTaskDraft {
   starterCode: string;
   solutionCode: string;
   testCaseInputs: string[];
+}
+
+export interface GenerateTaskDraftOptions {
+  onProgress?: (report: InitProgressReport) => void;
+  signal?: AbortSignal;
 }
 
 const DRAFT_JSON_SCHEMA = JSON.stringify({
@@ -150,8 +56,20 @@ function isAiTaskDraft(v: unknown): v is AiTaskDraft {
 // *that* as the expected output, the same way the teacher's own "解答例で
 // テストケースを検証" already validates hand-written cases against a
 // solution (see SolutionCheckPanel in TaskEditorPage.tsx).
-export async function generateTaskDraft(input: AiTaskDraftInput): Promise<AiTaskDraft> {
-  const engine = await loadAiAssistModel();
+export async function generateTaskDraft(
+  input: AiTaskDraftInput,
+  options?: GenerateTaskDraftOptions,
+): Promise<AiTaskDraft> {
+  const signal = options?.signal;
+  if (signal?.aborted) {
+    throw new GenerationAbortedError();
+  }
+
+  const engine = await loadWebLlmEngine(options?.onProgress);
+  if (signal?.aborted) {
+    throw new GenerationAbortedError();
+  }
+
   const languageLabel = LANGUAGE_LABEL[input.language];
 
   const system = `あなたはプログラミング演習の問題作成を手伝うアシスタントです。教師の指示に基づき、${languageLabel}で解く1つのプログラミング課題の下書きを作成してください。
@@ -164,14 +82,24 @@ export async function generateTaskDraft(input: AiTaskDraftInput): Promise<AiTask
 - solutionCode: 上記の問題を実際に解く、完全に動作する正しい${languageLabel}のコード。標準入力から読み取り、標準出力に結果を書き、そのままコンパイル・実行できること。
 - testCaseInputs: ちょうど${input.testCaseCount}件の標準入力の値（文字列の配列）。境界値を含む多様なケースにすること。期待される出力はここに含めないこと（別の手段で求めるため）。`;
 
-  const completion = await engine.chat.completions.create({
-    messages: [
-      { role: 'system', content: system },
-      { role: 'user', content: input.prompt },
-    ],
-    response_format: { type: 'json_object', schema: DRAFT_JSON_SCHEMA },
-    temperature: 0.7,
-  });
+  beginWebLlmGeneration();
+  let completion;
+  try {
+    completion = await engine.chat.completions.create({
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: input.prompt },
+      ],
+      response_format: { type: 'json_object', schema: DRAFT_JSON_SCHEMA },
+      temperature: 0.7,
+    });
+  } finally {
+    endWebLlmGeneration();
+  }
+
+  if (signal?.aborted || completion.choices[0]?.finish_reason === 'abort') {
+    throw new GenerationAbortedError();
+  }
 
   const content = completion.choices[0]?.message?.content ?? '';
   let parsed: unknown;

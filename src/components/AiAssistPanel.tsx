@@ -1,5 +1,11 @@
-import { useState } from 'react';
-import { aiAssistState, generateTaskDraft, loadAiAssistModel } from '../ai/aiAssist';
+import { useRef, useState } from 'react';
+import { generateTaskDraft } from '../ai/aiAssist';
+import {
+  getWebLlmState,
+  interruptGenerate,
+  isGenerationAbortedError,
+  loadWebLlmEngine,
+} from '../ai/webllmEngine';
 import { isServerExec, LANGUAGE_LABEL } from '../lib/language';
 import { runClientSide } from '../runner/clientRunner';
 import { checkSolution } from '../api/tasks';
@@ -67,25 +73,44 @@ export function AiAssistPanel({
   const [phase, setPhase] = useState<Phase>('idle');
   const [progressText, setProgressText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [abortedMessage, setAbortedMessage] = useState<string | null>(null);
   const [draft, setDraft] = useState<GeneratedDraft | null>(null);
   const [applying, setApplying] = useState(false);
   const [confirmOverwrite, setConfirmOverwrite] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const serverExec = isServerExec(language);
   const busy = phase === 'loading-model' || phase === 'generating' || phase === 'verifying';
+  const canAbort = phase === 'loading-model' || phase === 'generating';
+
+  function handleAbort() {
+    abortControllerRef.current?.abort();
+    interruptGenerate();
+  }
 
   async function handleGenerate() {
     if (prompt.trim() === '') return;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     setError(null);
+    setAbortedMessage(null);
     setDraft(null);
     try {
-      if (aiAssistState() !== 'ready') {
+      if (getWebLlmState() !== 'ready') {
         setPhase('loading-model');
-        await loadAiAssistModel((report) => setProgressText(report.text));
+        await loadWebLlmEngine((report) => setProgressText(report.text));
+      }
+      if (controller.signal.aborted) {
+        setAbortedMessage('下書きの生成を中断しました。');
+        setPhase('idle');
+        return;
       }
       setPhase('generating');
       setProgressText('生成しています...');
-      const generated = await generateTaskDraft({ language, prompt, testCaseCount });
+      const generated = await generateTaskDraft(
+        { language, prompt, testCaseCount },
+        { signal: controller.signal },
+      );
 
       setPhase('verifying');
       setProgressText('解答例を実行してテストケースの期待値を求めています...');
@@ -134,9 +159,17 @@ export function AiAssistPanel({
       });
       setPhase('ready');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'AIでの下書き生成に失敗しました。');
-      setPhase('error');
+      if (isGenerationAbortedError(err)) {
+        setAbortedMessage('下書きの生成を中断しました。');
+        setPhase('idle');
+      } else {
+        setError(err instanceof Error ? err.message : 'AIでの下書き生成に失敗しました。');
+        setPhase('error');
+      }
     } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
       setProgressText('');
     }
   }
@@ -207,17 +240,29 @@ export function AiAssistPanel({
               disabled={busy}
               className="w-16 rounded border border-mp-border bg-mp-bg px-2 py-1 text-sm text-mp-fg"
             />
-            <button
-              type="button"
-              onClick={() => void handleGenerate()}
-              disabled={busy || prompt.trim() === ''}
-              className="ml-auto rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
-            >
-              {busy ? '生成中...' : '生成する'}
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              {canAbort && (
+                <button
+                  type="button"
+                  onClick={handleAbort}
+                  className="rounded border border-mp-red/50 bg-mp-bg px-3 py-1.5 text-sm font-bold text-mp-red hover:bg-mp-red hover:text-mp-btn-fg"
+                >
+                  中断
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => void handleGenerate()}
+                disabled={busy || prompt.trim() === ''}
+                className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
+              >
+                {busy ? '生成中...' : '生成する'}
+              </button>
+            </div>
           </div>
 
           {busy && progressText && <p className="mb-2 text-xs text-mp-muted">{progressText}</p>}
+          {abortedMessage && <p className="mb-2 text-xs text-mp-muted">{abortedMessage}</p>}
           {error && <p className="mb-2 text-sm text-mp-red">{error}</p>}
 
           {draft && phase === 'ready' && (
@@ -288,7 +333,7 @@ export function AiAssistPanel({
 }
 
 // Default export so TaskEditorPage can `React.lazy()` this — it (and
-// @mlc-ai/web-llm underneath it, via ../ai/aiAssist) is several MB of JS
-// that shouldn't load just from opening the task editor if the teacher
-// never touches AI assist.
+// @mlc-ai/web-llm underneath it, via ../ai/aiAssist / ../ai/webllmEngine) is
+// several MB of JS that shouldn't load just from opening the task editor if
+// the teacher never touches AI assist.
 export default AiAssistPanel;

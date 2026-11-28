@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { generateHint, HINT_STAGE_LABEL, type HintStage } from '../ai/aiHint';
+import { interruptGenerate, isGenerationAbortedError } from '../ai/webllmEngine';
 import type { PracticeTask } from '../types/practice';
 import type { JudgeVerdict } from '../types/student';
 
@@ -40,8 +41,11 @@ export function HintPanel({
   const [unlockedStage, setUnlockedStage] = useState<0 | 1 | 2 | 3>(0);
   const [hints, setHints] = useState<Partial<Record<HintStage, string>>>({});
   const [loadingStage, setLoadingStage] = useState<HintStage | null>(null);
+  const [streamingText, setStreamingText] = useState('');
   const [progressText, setProgressText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [abortedMessage, setAbortedMessage] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const hasFailedRun = verdict !== null && verdict.overallStatus !== 'AC';
   const busy = loadingStage !== null;
@@ -51,10 +55,19 @@ export function HintPanel({
     return unlockedStage >= stage - 1;
   }
 
+  function handleAbort() {
+    abortControllerRef.current?.abort();
+    interruptGenerate();
+  }
+
   async function handleGenerate(stage: HintStage) {
     if (!verdict) return;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     setError(null);
+    setAbortedMessage(null);
     setLoadingStage(stage);
+    setStreamingText('');
     setProgressText('');
     try {
       const text = await generateHint(
@@ -66,14 +79,29 @@ export function HintPanel({
           verdict,
           compileStderr,
         },
-        (report) => setProgressText(report.text),
+        {
+          onProgress: (report) => setProgressText(report.text),
+          onDelta: (textSoFar) => {
+            setProgressText('');
+            setStreamingText(textSoFar);
+          },
+          signal: controller.signal,
+        },
       );
       setHints((prev) => ({ ...prev, [stage]: text }));
       setUnlockedStage((prev) => (prev < stage ? stage : prev) as 0 | 1 | 2 | 3);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'ヒントの生成に失敗しました。');
+      if (isGenerationAbortedError(err)) {
+        setAbortedMessage('ヒントの生成を中断しました。');
+      } else {
+        setError(err instanceof Error ? err.message : 'ヒントの生成に失敗しました。');
+      }
     } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
       setLoadingStage(null);
+      setStreamingText('');
       setProgressText('');
     }
   }
@@ -90,21 +118,39 @@ export function HintPanel({
         {visibleStages.map((stage) => {
           const available = isStageAvailable(stage);
           const revealed = hints[stage] !== undefined;
+          const isCurrentLoading = loadingStage === stage;
           return (
             <div key={stage}>
               {!revealed && (
-                <button
-                  type="button"
-                  onClick={() => void handleGenerate(stage)}
-                  disabled={!available || busy}
-                  title={!available ? '前の段階のヒントを先に確認してください。' : undefined}
-                  className="w-full rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-left text-xs font-bold hover:bg-mp-surface-hover disabled:opacity-40"
-                >
-                  {loadingStage === stage ? '生成中...' : HINT_STAGE_LABEL[stage]}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleGenerate(stage)}
+                    disabled={!available || busy}
+                    title={!available ? '前の段階のヒントを先に確認してください。' : undefined}
+                    className="flex-1 rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-left text-xs font-bold hover:bg-mp-surface-hover disabled:opacity-40"
+                  >
+                    {isCurrentLoading ? '生成中...' : HINT_STAGE_LABEL[stage]}
+                  </button>
+                  {isCurrentLoading && (
+                    <button
+                      type="button"
+                      onClick={handleAbort}
+                      className="rounded border border-mp-red/50 bg-mp-surface px-2.5 py-1.5 text-xs font-bold text-mp-red hover:bg-mp-red hover:text-mp-btn-fg"
+                    >
+                      中断
+                    </button>
+                  )}
+                </div>
               )}
-              {loadingStage === stage && progressText && (
+              {isCurrentLoading && progressText && (
                 <p className="mt-1 text-xs text-mp-muted">{progressText}</p>
+              )}
+              {isCurrentLoading && streamingText && (
+                <div className="mt-1 rounded border border-mp-cyan/30 bg-mp-cyan/5 p-2 text-xs">
+                  <p className="mb-1 font-bold text-mp-cyan">{HINT_STAGE_LABEL[stage]}（生成中）</p>
+                  <p className="whitespace-pre-wrap text-mp-fg">{streamingText}</p>
+                </div>
               )}
               {revealed && (
                 <div className="rounded border border-mp-cyan/30 bg-mp-cyan/5 p-2 text-xs">
@@ -116,13 +162,14 @@ export function HintPanel({
           );
         })}
       </div>
+      {abortedMessage && <p className="mt-2 text-xs text-mp-muted">{abortedMessage}</p>}
       {error && <p className="mt-2 text-xs text-mp-red">{error}</p>}
     </div>
   );
 }
 
 // Default export so PracticeTaskPage can `React.lazy()` this — it (and
-// @mlc-ai/web-llm underneath it, via ../ai/aiHint → ../ai/aiAssist) is
+// @mlc-ai/web-llm underneath it, via ../ai/aiHint → ../ai/webllmEngine) is
 // several MB of JS that shouldn't land in the shared main bundle just from
 // opening a practice task page.
 export default HintPanel;

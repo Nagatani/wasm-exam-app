@@ -1,5 +1,10 @@
-import type { InitProgressReport } from '@mlc-ai/web-llm';
-import { loadAiAssistModel } from './aiAssist';
+import type { InitProgressReport, MLCEngineInterface } from '@mlc-ai/web-llm';
+import {
+  beginWebLlmGeneration,
+  endWebLlmGeneration,
+  GenerationAbortedError,
+  loadWebLlmEngine,
+} from './webllmEngine';
 import type { JudgeVerdict } from '../types/student';
 import {
   buildStageContext,
@@ -11,12 +16,20 @@ import { LANGUAGE_LABEL } from '../lib/language';
 
 export { HINT_STAGE_LABEL, type HintContext, type HintStage } from './aiHintContext';
 
-// Staged, non-revealing hints for practice-mode tasks — reuses the same
-// downloaded model/engine as ../ai/aiAssist.ts's authoring assist
-// (loadAiAssistModel is memoized module-wide, so this never triggers a
-// second download/worker). Unlike aiAssist.ts's JSON-schema-constrained
-// draft generation, a hint is just a short paragraph of prose, so this asks
-// for plain text.
+export interface GenerateHintOptions {
+  onProgress?: (report: InitProgressReport) => void;
+  /**
+   * Called as streamed tokens arrive with the accumulated hint text so far.
+   * Called with `''` if an attempt is rejected by the code-leak guard and
+   * retried.
+   */
+  onDelta?: (textSoFar: string) => void;
+  signal?: AbortSignal;
+}
+
+// Staged, non-revealing hints for practice-mode tasks — uses the shared
+// WebLLM engine manager (./webllmEngine.ts) so the downloaded model and
+// worker are reused across features without coupling to aiAssist.ts.
 
 // 実測での知見（2026-09-19、実際にモデルを走らせて確認）:
 // - ステージ1は「抽象的な着眼点だけ」と指示しても、具体的な仕組み名（「最後の要素を
@@ -64,11 +77,17 @@ function buildRetryNudge(attempt: number): string {
 }
 
 async function requestHintOnce(
-  engine: Awaited<ReturnType<typeof loadAiAssistModel>>,
+  engine: MLCEngineInterface,
   stage: HintStage,
   ctx: HintContext,
   attempt: number,
+  options?: GenerateHintOptions,
 ): Promise<string> {
+  const signal = options?.signal;
+  if (signal?.aborted) {
+    throw new GenerationAbortedError();
+  }
+
   const languageLabel = LANGUAGE_LABEL[ctx.language];
   const stageContext = buildStageContext(stage, ctx);
   // A CE at stage 1 has no useful "approach" to point at yet beyond "it
@@ -93,9 +112,12 @@ ${ctx.code || '(まだ何も書かれていません)'}
 
 【${stageContext}】`;
 
-  let completion;
+  let accumulated = '';
+  let abortedByEngine = false;
+
+  beginWebLlmGeneration();
   try {
-    completion = await engine.chat.completions.create({
+    const stream = await engine.chat.completions.create({
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user },
@@ -106,12 +128,38 @@ ${ctx.code || '(まだ何も書かれていません)'}
       // wander into forbidden territory (see NO_CODE_RULE above).
       temperature: 0.4,
       max_tokens: 300,
+      stream: true,
     });
-  } catch {
-    throw new Error(GENERATE_FAILURE_MESSAGE);
+
+    for await (const chunk of stream) {
+      if (signal?.aborted) {
+        abortedByEngine = true;
+        break;
+      }
+      const choice = chunk.choices[0];
+      const delta = choice?.delta?.content;
+      if (delta) {
+        accumulated += delta;
+        options?.onDelta?.(accumulated);
+      }
+      if (choice?.finish_reason === 'abort') {
+        abortedByEngine = true;
+      }
+    }
+  } catch (err) {
+    if (signal?.aborted) {
+      throw new GenerationAbortedError();
+    }
+    throw new Error(GENERATE_FAILURE_MESSAGE, { cause: err });
+  } finally {
+    endWebLlmGeneration();
   }
 
-  const content = completion.choices[0]?.message?.content?.trim();
+  if (abortedByEngine || signal?.aborted) {
+    throw new GenerationAbortedError();
+  }
+
+  const content = accumulated.trim();
   if (!content) {
     throw new Error(GENERATE_FAILURE_MESSAGE);
   }
@@ -124,17 +172,27 @@ ${ctx.code || '(まだ何も書かれていません)'}
 export async function generateHint(
   stage: HintStage,
   ctx: HintContext,
-  onProgress?: (report: InitProgressReport) => void,
+  options?: GenerateHintOptions,
 ): Promise<string> {
-  // loadAiAssistModel() already throws a friendly Japanese message on
-  // failure (see aiAssist.ts) — let it propagate as-is.
-  const engine = await loadAiAssistModel(onProgress);
+  if (options?.signal?.aborted) {
+    throw new GenerationAbortedError();
+  }
+
+  // loadWebLlmEngine() already throws a friendly Japanese message on failure —
+  // let it propagate as-is.
+  const engine = await loadWebLlmEngine(options?.onProgress);
 
   let lastError: unknown;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      options?.onDelta?.('');
+    }
     try {
-      return await requestHintOnce(engine, stage, ctx, attempt);
+      return await requestHintOnce(engine, stage, ctx, attempt, options);
     } catch (err) {
+      if (err instanceof GenerationAbortedError) {
+        throw err;
+      }
       lastError = err;
       // Only worth retrying when the *content itself* was rejected — a
       // model/network failure (GENERATE_FAILURE_MESSAGE) won't be fixed by
