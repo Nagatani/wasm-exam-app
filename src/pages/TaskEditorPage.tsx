@@ -1,4 +1,13 @@
-import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type FormEvent,
+  type Ref,
+} from 'react';
 import { useNavigate, useParams } from '../lib/routerContext';
 import { MarkdownBody } from '../components/MarkdownBody';
 import {
@@ -16,7 +25,7 @@ import {
 import { getTaskBankTags } from '../api/taskBank';
 import { ApiError } from '../api/client';
 import { uploadTaskImage } from '../api/uploads';
-import type { ComparisonMode, Language, TaskDetail } from '../types/exam';
+import type { ComparisonMode, Language, TaskDetail, TestCase } from '../types/exam';
 import { COMPARISON_MODE_LABEL, compareOutput } from '../lib/compareOutput';
 import {
   ALL_LANGUAGES,
@@ -29,7 +38,7 @@ import {
 import { runClientSide } from '../runner/clientRunner';
 import type { AiAssistApplyDraft } from '../components/AiAssistPanel';
 import { isAiAssistEnabled, onAiAssistSettingsChanged } from '../ai/aiAssistSettings';
-import { TestCaseRow } from '../components/TestCaseRow';
+import { TestCaseRow, type TestCaseRowHandle } from '../components/TestCaseRow';
 import { CodeEditor } from '../components/CodeEditor';
 import { BackHeader } from '../components/BackHeader';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -135,6 +144,12 @@ export function TaskEditorPage() {
   // notice a missed "保存" click on a section they've scrolled away from.
   const [dirtyTestCaseIds, setDirtyTestCaseIds] = useState<Set<string>>(new Set());
   const [solutionDirty, setSolutionDirty] = useState(false);
+  const [savingAll, setSavingAll] = useState(false);
+  const [saveAllError, setSaveAllError] = useState<string | null>(null);
+  const [saveAllFlash, setSaveAllFlash] = useState(false);
+  const testCaseRefs = useRef<Map<string, TestCaseRowHandle>>(new Map());
+  const solutionEditorRef = useRef<SolutionEditorHandle | null>(null);
+  const saveAllRef = useRef<() => void>(() => {});
   // Task-bank fields. `tagsText` is the raw comma-separated input the teacher
   // is typing — kept separate from `task.tags` (the parsed array actually
   // saved) so an in-progress "abc, " doesn't get silently collapsed mid-edit.
@@ -206,8 +221,7 @@ export function TaskEditorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
 
-  async function handleSave(e: FormEvent) {
-    e.preventDefault();
+  async function saveBasicInfo() {
     if (!task) return;
     setSaving(true);
     setError(null);
@@ -237,10 +251,70 @@ export function TaskEditorPage() {
       setTimeout(() => setSavedFlash(false), 2000);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '保存に失敗しました。');
+      throw err;
     } finally {
       setSaving(false);
     }
   }
+
+  function handleSave(e: FormEvent) {
+    e.preventDefault();
+    void saveBasicInfo().catch(() => {});
+  }
+
+  async function handleSaveAll() {
+    if (!task || savingAll) return;
+    const jobs: { label: string; run: () => Promise<unknown> }[] = [];
+    if (basicInfoDirty) {
+      jobs.push({ label: '基本情報', run: () => saveBasicInfo() });
+    }
+    task.testCases.forEach((tc, i) => {
+      if (!dirtyTestCaseIds.has(tc.id)) return;
+      const handle = testCaseRefs.current.get(tc.id);
+      if (handle) {
+        jobs.push({ label: `テストケース ${i + 1}`, run: () => handle.save() });
+      }
+    });
+    if (solutionDirty && solutionEditorRef.current) {
+      const handle = solutionEditorRef.current;
+      jobs.push({ label: '解答例コード', run: () => handle.save() });
+    }
+    if (jobs.length === 0) return;
+
+    setSavingAll(true);
+    setSaveAllError(null);
+    try {
+      const results = await Promise.allSettled(jobs.map((j) => j.run()));
+      const failed = jobs
+        .filter((_, idx) => results[idx].status === 'rejected')
+        .map((j) => j.label);
+      if (failed.length > 0) {
+        setSaveAllError(`一部の保存に失敗しました：${failed.join('、')}`);
+      } else {
+        setSaveAllFlash(true);
+        setTimeout(() => setSaveAllFlash(false), 2000);
+      }
+    } finally {
+      setSavingAll(false);
+    }
+  }
+
+  useEffect(() => {
+    saveAllRef.current = () => {
+      void handleSaveAll();
+    };
+  });
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        saveAllRef.current();
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   async function handleDelete() {
     if (!task) return;
@@ -408,12 +482,45 @@ export function TaskEditorPage() {
     setCheckError(null);
     setCheckRows(null);
     try {
+      // Auto-save any dirty test cases before verifying so stale DB test cases
+      // are never silently checked (Java reads from DB; client-side uses the
+      // freshly saved rows below).
+      let testCasesToRun = task.testCases;
+      if (dirtyTestCaseIds.size > 0) {
+        const dirtyEntries = task.testCases
+          .map((tc, i) => ({
+            tc,
+            label: `テストケース ${i + 1}`,
+            handle: testCaseRefs.current.get(tc.id),
+          }))
+          .filter((entry) => dirtyTestCaseIds.has(entry.tc.id) && entry.handle);
+        const results = await Promise.allSettled(dirtyEntries.map((e) => e.handle!.save()));
+        const failedLabels: string[] = [];
+        const updatedById = new Map<string, TestCase>();
+        results.forEach((res, idx) => {
+          if (res.status === 'rejected') {
+            failedLabels.push(dirtyEntries[idx].label);
+          } else if (res.value) {
+            updatedById.set(res.value.id, res.value);
+          }
+        });
+        if (failedLabels.length > 0) {
+          setCheckError(
+            `未保存のテストケースの保存に失敗したため検証を中止しました：${failedLabels.join('、')}`,
+          );
+          return;
+        }
+        if (updatedById.size > 0) {
+          testCasesToRun = task.testCases.map((tc) => updatedById.get(tc.id) ?? tc);
+        }
+      }
+
       const run = isServerExec(task.language)
         ? await checkSolution(task.id, code)
         : await runClientSide(
             task.language,
             code,
-            task.testCases.map((tc) => ({ id: tc.id, input: tc.input })),
+            testCasesToRun.map((tc) => ({ id: tc.id, input: tc.input })),
             () => {},
           );
       if (run.compileFailed) {
@@ -421,7 +528,7 @@ export function TaskEditorPage() {
         return;
       }
       setCheckRows(
-        task.testCases.map((tc, i) => {
+        testCasesToRun.map((tc, i) => {
           const outcome = run.outcomes.find((o) => o.testCaseId === tc.id);
           if (!outcome) {
             return {
@@ -498,6 +605,10 @@ export function TaskEditorPage() {
   const anyDirty = basicInfoDirty || dirtyTestCaseIds.size > 0 || solutionDirty;
   useUnsavedGuard(anyDirty);
 
+  useEffect(() => {
+    if (!anyDirty) setSaveAllError(null);
+  }, [anyDirty]);
+
   const unsavedSections: string[] = [];
   if (basicInfoDirty) unsavedSections.push('基本情報');
   if (dirtyTestCaseIds.size > 0) unsavedSections.push(`テストケース（${dirtyTestCaseIds.size}件）`);
@@ -526,9 +637,31 @@ export function TaskEditorPage() {
       {/* This page has 3 independently-saved sections (below); this banner is
           the one place that shows every unsaved one at once, so a save click
           in one section is never mistaken for saving another. */}
-      {unsavedSections.length > 0 && (
-        <div className="sticky top-0 z-20 mb-4 rounded border border-mp-orange bg-mp-bg px-3 py-2 text-sm font-bold text-mp-orange shadow-sm">
-          ● 未保存の変更があります： {unsavedSections.join('、')}
+      {(unsavedSections.length > 0 || saveAllError || saveAllFlash) && (
+        <div
+          className={`sticky top-0 z-20 mb-4 rounded border bg-mp-bg px-3 py-2 text-sm shadow-sm ${
+            unsavedSections.length > 0 || saveAllError ? 'border-mp-orange' : 'border-mp-green'
+          }`}
+        >
+          {unsavedSections.length > 0 ? (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-bold text-mp-orange">
+                ● 未保存の変更があります： {unsavedSections.join('、')}
+              </span>
+              <button
+                type="button"
+                onClick={() => void handleSaveAll()}
+                disabled={savingAll}
+                title="すべての未保存セクションを一括保存します (Ctrl+S / Cmd+S)"
+                className="rounded bg-mp-cyan px-3 py-1 text-xs font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
+              >
+                {savingAll ? 'すべて保存中...' : 'すべて保存'}
+              </button>
+            </div>
+          ) : saveAllFlash ? (
+            <span className="font-bold text-mp-green">✓ すべての変更を保存しました</span>
+          ) : null}
+          {saveAllError && <p className="mt-1 text-xs text-mp-red">{saveAllError}</p>}
         </div>
       )}
 
@@ -832,6 +965,7 @@ export function TaskEditorPage() {
             onChange={(v) => setTask({ ...task, starterCode: v })}
             language={MONACO_LANGUAGE[task.language]}
             height={220}
+            onCmdS={() => saveAllRef.current()}
           />
         </div>
 
@@ -972,6 +1106,10 @@ export function TaskEditorPage() {
                 <span>テストケース {i + 1}</span>
               </div>
               <TestCaseRow
+                ref={(handle) => {
+                  if (handle) testCaseRefs.current.set(tc.id, handle);
+                  else testCaseRefs.current.delete(tc.id);
+                }}
                 testCase={tc}
                 onUpdated={(updated) =>
                   setTask((prev) =>
@@ -997,6 +1135,7 @@ export function TaskEditorPage() {
       </div>
 
       <SolutionEditor
+        ref={solutionEditorRef}
         key={`${task.id}-${task.language}-${aiApplyCounter}`}
         taskId={task.id}
         language={task.language}
@@ -1004,8 +1143,10 @@ export function TaskEditorPage() {
         initialSavedCode={findSolution(task, task.language)}
         canCheck={task.testCases.length > 0}
         checking={checking}
+        dirtyTestCaseCount={dirtyTestCaseIds.size}
         onRunCheck={runSolutionCheck}
         onDirtyChange={setSolutionDirty}
+        onCmdS={() => saveAllRef.current()}
       />
 
       {(checkRows || checkError) && (
@@ -1155,19 +1296,27 @@ function findSolution(task: TaskDetail, language: Language): string {
   return task.solutions.find((s) => s.language === language)?.code ?? '';
 }
 
+interface SolutionEditorHandle {
+  save: () => Promise<void>;
+}
+
 // The teacher-only reference solution for this task's language, with its own
 // "解答例を保存" button — saved separately from the task metadata form. Also
 // drives "解答例でテストケースを検証" (results are rendered by the parent).
 function SolutionEditor({
+  ref,
   taskId,
   language,
   initialCode,
   initialSavedCode,
   canCheck,
   checking,
+  dirtyTestCaseCount,
   onRunCheck,
   onDirtyChange,
+  onCmdS,
 }: {
+  ref?: Ref<SolutionEditorHandle>;
   taskId: string;
   language: Language;
   initialCode: string;
@@ -1179,8 +1328,10 @@ function SolutionEditor({
   initialSavedCode?: string;
   canCheck: boolean;
   checking: boolean;
+  dirtyTestCaseCount: number;
   onRunCheck: (code: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onCmdS?: () => void;
 }) {
   const [code, setCode] = useState(initialCode);
   // Tracked separately from `initialCode` (a prop that only changes on a full
@@ -1189,6 +1340,7 @@ function SolutionEditor({
   const [savedCode, setSavedCode] = useState(initialSavedCode ?? initialCode);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const dirty = code !== savedCode;
 
@@ -1201,16 +1353,29 @@ function SolutionEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleSave() {
+  async function saveSolution() {
+    if (!dirty) return;
     setSaving(true);
+    setSaveError(null);
     try {
       await upsertSolution(taskId, language, code);
       setSavedCode(code);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : '解答例の保存に失敗しました。');
+      throw err;
     } finally {
       setSaving(false);
     }
+  }
+
+  useImperativeHandle(ref, () => ({
+    save: saveSolution,
+  }));
+
+  function handleSave() {
+    void saveSolution().catch(() => {});
   }
 
   const trimmed = code.trim();
@@ -1226,8 +1391,10 @@ function SolutionEditor({
           onChange={setCode}
           language={MONACO_LANGUAGE[language]}
           height={220}
+          onCmdS={onCmdS}
         />
       </div>
+      {saveError && <p className="mb-2 text-xs text-mp-red">{saveError}</p>}
       <div className="flex flex-wrap items-center gap-2">
         {dirty && <span className="text-xs font-bold text-mp-orange">● 未保存</span>}
         <button
@@ -1251,6 +1418,11 @@ function SolutionEditor({
         >
           {checking ? '検証中...' : '解答例でテストケースを検証'}
         </button>
+        {dirtyTestCaseCount > 0 && (
+          <span className="text-xs text-mp-orange">
+            ※ 未保存のテストケース（{dirtyTestCaseCount}件）は検証時に自動保存されます
+          </span>
+        )}
       </div>
     </div>
   );

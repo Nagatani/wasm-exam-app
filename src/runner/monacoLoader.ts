@@ -92,6 +92,7 @@ export interface Monaco {
     Meta: number;
     CapsLock: number;
     Enter: number;
+    KeyS: number;
   };
   KeyMod: {
     CtrlCmd: number;

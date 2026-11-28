@@ -1,6 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useImperativeHandle, useState, type Ref } from 'react';
 import { updateTestCase, deleteTestCase } from '../api/tasks';
+import { ApiError } from '../api/client';
 import type { TestCase } from '../types/exam';
+
+export interface TestCaseRowHandle {
+  // Persists this row if dirty and resolves with the updated TestCase, or
+  // returns null if already clean. Rejects on API error so callers like
+  // "すべて保存" (Promise.allSettled) can report partial failures.
+  save: () => Promise<TestCase | null>;
+}
 
 const fieldClass =
   'w-full rounded border border-mp-border bg-mp-bg px-2 py-1 font-mono text-sm text-mp-fg';
@@ -14,6 +22,7 @@ const MEMORY_LIMIT_MIN_MB = 16;
 const MEMORY_LIMIT_MAX_MB = 512;
 
 interface TestCaseRowProps {
+  ref?: Ref<TestCaseRowHandle>;
   testCase: TestCase;
   onUpdated: (testCase: TestCase) => void;
   onDeleted: (id: string) => void;
@@ -31,6 +40,7 @@ interface TestCaseRowProps {
 }
 
 export function TestCaseRow({
+  ref,
   testCase,
   onUpdated,
   onDeleted,
@@ -43,6 +53,7 @@ export function TestCaseRow({
   const [timeLimitMs, setTimeLimitMs] = useState(testCase.timeLimitMs);
   const [memoryLimitMb, setMemoryLimitMb] = useState(testCase.memoryLimitMb);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const dirty =
     input !== testCase.input ||
@@ -62,8 +73,10 @@ export function TestCaseRow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleSave() {
+  async function saveRow(): Promise<TestCase | null> {
+    if (!dirty) return null;
     setSaving(true);
+    setSaveError(null);
     try {
       const { testCase: updated } = await updateTestCase(testCase.id, {
         input,
@@ -73,9 +86,21 @@ export function TestCaseRow({
         memoryLimitMb,
       });
       onUpdated(updated);
+      return updated;
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : '保存に失敗しました。');
+      throw err;
     } finally {
       setSaving(false);
     }
+  }
+
+  useImperativeHandle(ref, () => ({
+    save: saveRow,
+  }));
+
+  function handleSave() {
+    void saveRow().catch(() => {});
   }
 
   async function handleDelete() {
@@ -183,6 +208,7 @@ export function TestCaseRow({
           </button>
         </div>
       </div>
+      {saveError && <p className="mt-2 text-xs text-mp-red">{saveError}</p>}
     </div>
   );
 }

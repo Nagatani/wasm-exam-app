@@ -38,6 +38,9 @@ interface CodeEditorProps {
   // the callback must stay valid for the editor's lifetime (wrap a ref if it
   // needs to see fresh state).
   onCmdEnter?: () => void;
+  // Bound to Ctrl/Cmd+S inside the editor. Registered once on mount; reads the
+  // latest callback through `latestRef`.
+  onCmdS?: () => void;
   // Squiggly diagnostics to overlay (e.g. parsed compile-error locations).
   // Replaces any previously set ones each render; pass [] to clear.
   markers?: EditorMarker[];
@@ -89,6 +92,7 @@ export function CodeEditor({
   onKeystroke,
   onPasteText,
   onCmdEnter,
+  onCmdS,
   markers,
 }: CodeEditorProps) {
   const { theme } = useTheme();
@@ -110,6 +114,7 @@ export function CodeEditor({
     onKeystroke,
     onPasteText,
     onCmdEnter,
+    onCmdS,
   });
 
   useEffect(() => {
@@ -123,6 +128,7 @@ export function CodeEditor({
       onKeystroke,
       onPasteText,
       onCmdEnter,
+      onCmdS,
     };
   });
 
@@ -179,6 +185,17 @@ export function CodeEditor({
               label: 'コンパイル＆テスト実行',
               keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
               run: () => latestRef.current.onCmdEnter?.(),
+            }),
+          );
+        }
+
+        if (latest.onCmdS) {
+          disposables.push(
+            editor.addAction({
+              id: 'code-editor-cmd-s',
+              label: 'すべて保存',
+              keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
+              run: () => latestRef.current.onCmdS?.(),
             }),
           );
         }
