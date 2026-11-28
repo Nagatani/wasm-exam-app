@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type AnchorHTMLAttributes,
   type MouseEvent,
@@ -72,9 +73,12 @@ export function BrowserRouter({ children }: { children: ReactNode }) {
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
 }
 
+const APP_TITLE = 'プログラミング演習システム';
+
 export interface RouteProps {
   path: string;
   element: ReactNode;
+  title?: string;
 }
 
 export function Route(_props: RouteProps): null {
@@ -100,15 +104,49 @@ function collectRouteElements(children: ReactNode): ReactElement<RouteProps>[] {
 export function Routes({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const routes = collectRouteElements(children);
+  const prevPathnameRef = useRef(pathname);
+  const [announcement, setAnnouncement] = useState('');
+
+  let matchedRoute: ReactElement<RouteProps> | null = null;
+  let matchedParams: Record<string, string> | null = null;
 
   for (const route of routes) {
     const params = matchPath(route.props.path, pathname);
     if (params !== null) {
-      return <ParamsContext.Provider value={params}>{route.props.element}</ParamsContext.Provider>;
+      matchedRoute = route;
+      matchedParams = params;
+      break;
     }
   }
 
-  return null;
+  const pageTitle = matchedRoute?.props.title;
+
+  useEffect(() => {
+    document.title = pageTitle ? `${pageTitle} | ${APP_TITLE}` : APP_TITLE;
+  }, [pageTitle]);
+
+  useEffect(() => {
+    if (prevPathnameRef.current === pathname) return;
+    prevPathnameRef.current = pathname;
+    setAnnouncement(pageTitle ? `${pageTitle}ページに移動しました` : 'ページを移動しました');
+    const raf = requestAnimationFrame(() => {
+      document.getElementById('main-content')?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [pathname, pageTitle]);
+
+  return (
+    <>
+      <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {announcement}
+      </div>
+      {matchedRoute && matchedParams ? (
+        <ParamsContext.Provider value={matchedParams}>
+          {matchedRoute.props.element}
+        </ParamsContext.Provider>
+      ) : null}
+    </>
+  );
 }
 
 export interface LinkProps extends Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'href'> {

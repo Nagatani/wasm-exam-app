@@ -17,11 +17,17 @@ export function BackHeader({
   beforeNavigate?: () => Promise<boolean>;
 }) {
   return (
-    <div className="mb-4 flex items-center justify-between gap-3">
+    <header className="mb-4 flex items-center justify-between gap-3">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-mp-cyan focus:px-3 focus:py-2 focus:text-sm focus:font-bold focus:text-mp-btn-fg"
+      >
+        本文へスキップ
+      </a>
       <Link to={to} className="inline-block text-sm font-semibold text-mp-cyan hover:underline">
         ← {label}
       </Link>
       <UserDrawer beforeNavigate={beforeNavigate} />
-    </div>
+    </header>
   );
 }

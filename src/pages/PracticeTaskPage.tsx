@@ -294,6 +294,12 @@ export function PracticeTaskPage() {
   return (
     <div className="flex min-h-screen flex-col bg-mp-bg text-mp-fg">
       <header className="flex flex-col gap-2 border-b border-mp-border bg-mp-surface px-4 py-2">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-mp-cyan focus:px-3 focus:py-2 focus:text-sm focus:font-bold focus:text-mp-btn-fg"
+        >
+          本文へスキップ
+        </a>
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-sm font-bold text-mp-cyan">
             演習 {task.order + 1}: {task.title}（{task.points}点）
@@ -348,7 +354,11 @@ export function PracticeTaskPage() {
         />
       )}
 
-      <main className="flex flex-1 flex-col gap-4 overflow-hidden p-4 md:flex-row">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex flex-1 flex-col gap-4 overflow-hidden p-4 outline-none md:flex-row"
+      >
         {/* 左カラム: 問題文 + サンプルテストケース */}
         <div className="flex w-full flex-col overflow-y-auto rounded-lg border border-mp-border bg-mp-surface p-4 md:w-1/3">
           <h2 className="mb-2 text-sm font-bold text-mp-muted">問題文</h2>

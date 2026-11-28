@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route } from './lib/router';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -29,6 +29,14 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ de
 const PracticeStatsPage = lazy(() => import('./pages/PracticeStatsPage').then((m) => ({ default: m.PracticeStatsPage })));
 const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })));
 
+function MainLandmark({ children }: { children: ReactNode }) {
+  return (
+    <main id="main-content" tabIndex={-1} className="outline-none">
+      {children}
+    </main>
+  );
+}
+
 function App() {
   return (
     <ThemeProvider>
@@ -36,42 +44,71 @@ function App() {
         <AuthProvider>
           <Suspense fallback={<PageSkeleton />}>
           <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
+          <Route
+            path="/login"
+            title="ログイン"
+            element={
+              <MainLandmark>
+                <LoginPage />
+              </MainLandmark>
+            }
+          />
+          <Route
+            path="/signup"
+            title="新規登録"
+            element={
+              <MainLandmark>
+                <SignupPage />
+              </MainLandmark>
+            }
+          />
           <Route
             path="/change-password"
+            title="パスワードの変更"
             element={
               <ProtectedRoute allowPasswordChangePending>
-                <ChangePasswordPage />
+                <MainLandmark>
+                  <ChangePasswordPage />
+                </MainLandmark>
               </ProtectedRoute>
             }
           />
           <Route
             path="/settings"
+            title="設定"
             element={
               <ProtectedRoute>
-                <SettingsPage />
+                <MainLandmark>
+                  <SettingsPage />
+                </MainLandmark>
               </ProtectedRoute>
             }
           />
           <Route
             path="/"
+            title="ホーム"
             element={
               <ProtectedRoute>
-                <RoleHome />
+                <MainLandmark>
+                  <RoleHome />
+                </MainLandmark>
               </ProtectedRoute>
             }
           />
           <Route
             path="/student"
+            title="生徒ダッシュボード"
             element={
               <ProtectedRoute role="STUDENT">
-                <StudentDashboard />
+                <MainLandmark>
+                  <StudentDashboard />
+                </MainLandmark>
               </ProtectedRoute>
             }
           />
           <Route
             path="/student/exams/:examId/tasks/:taskId"
+            title="試験問題"
             element={
               <ProtectedRoute role="STUDENT">
                 <StudentTaskPage />
@@ -80,22 +117,29 @@ function App() {
           />
           <Route
             path="/student/exams/:examId/finished"
+            title="試験結果・提出確認"
             element={
               <ProtectedRoute role="STUDENT">
-                <StudentExamFinishedPage />
+                <MainLandmark>
+                  <StudentExamFinishedPage />
+                </MainLandmark>
               </ProtectedRoute>
             }
           />
           <Route
             path="/student/practice/exams/:examId"
+            title="演習セット"
             element={
               <ProtectedRoute role="STUDENT">
-                <PracticeSetPage />
+                <MainLandmark>
+                  <PracticeSetPage />
+                </MainLandmark>
               </ProtectedRoute>
             }
           />
           <Route
             path="/student/practice/exams/:examId/tasks/:taskId"
+            title="演習問題"
             element={
               <ProtectedRoute role="STUDENT">
                 <PracticeTaskPage />
@@ -104,65 +148,89 @@ function App() {
           />
           <Route
             path="/teacher"
+            title="教師ダッシュボード"
             element={
               <ProtectedRoute role="TEACHER">
-                <TeacherDashboard />
+                <MainLandmark>
+                  <TeacherDashboard />
+                </MainLandmark>
               </ProtectedRoute>
             }
           />
           <Route
             path="/teacher/exams/:examId"
+            title="試験詳細"
             element={
               <ProtectedRoute role="TEACHER">
-                <ExamDetailPage />
+                <MainLandmark>
+                  <ExamDetailPage />
+                </MainLandmark>
               </ProtectedRoute>
             }
           />
           <Route
             path="/teacher/exams/:examId/tasks/:taskId"
+            title="問題編集"
             element={
               <ProtectedRoute role="TEACHER">
-                <TaskEditorPage />
+                <MainLandmark>
+                  <TaskEditorPage />
+                </MainLandmark>
               </ProtectedRoute>
             }
           />
           <Route
             path="/teacher/exams/:examId/results"
+            title="成績一覧"
             element={
               <ProtectedRoute role="TEACHER">
-                <ExamResultsPage />
+                <MainLandmark>
+                  <ExamResultsPage />
+                </MainLandmark>
               </ProtectedRoute>
             }
           />
           <Route
             path="/teacher/exams/:examId/practice-stats"
+            title="演習の状況"
             element={
               <ProtectedRoute role="TEACHER">
-                <PracticeStatsPage />
+                <MainLandmark>
+                  <PracticeStatsPage />
+                </MainLandmark>
               </ProtectedRoute>
             }
           />
           <Route
             path="/teacher/courses"
+            title="クラス管理"
             element={
               <ProtectedRoute role="TEACHER">
-                <CoursesPage />
+                <MainLandmark>
+                  <CoursesPage />
+                </MainLandmark>
               </ProtectedRoute>
             }
           />
           <Route
             path="/teacher/admin"
+            title="管理者メニュー"
             element={
               <ProtectedRoute role="TEACHER">
-                <AdminPage />
+                <MainLandmark>
+                  <AdminPage />
+                </MainLandmark>
               </ProtectedRoute>
             }
           />
           <Route
             path="/teacher/sandbox"
+            title="サンドボックス"
             element={
               <ProtectedRoute role="TEACHER">
-                <SandboxPage />
+                <MainLandmark>
+                  <SandboxPage />
+                </MainLandmark>
               </ProtectedRoute>
             }
           />

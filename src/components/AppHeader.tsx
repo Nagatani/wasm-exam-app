@@ -10,6 +10,12 @@ import { UserDrawer } from './UserDrawer';
 export function AppHeader({ title, actions }: { title: string; actions?: ReactNode }) {
   return (
     <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-mp-cyan focus:px-3 focus:py-2 focus:text-sm focus:font-bold focus:text-mp-btn-fg"
+      >
+        本文へスキップ
+      </a>
       <h1 className="text-xl font-bold text-mp-cyan">{title}</h1>
       <div className="flex items-center gap-2">
         {actions}
