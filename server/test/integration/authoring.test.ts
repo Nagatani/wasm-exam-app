@@ -59,13 +59,40 @@ describe('task bank', () => {
     expect(titles(await t2.get('/api/task-bank?scope=public'))).toEqual(['配列の合計']);
   });
 
-  it('filters by title substring (case-insensitive), language and tags (match-any)', async () => {
-    const { t1 } = await setup();
+  it('filters by title or statement substring (case-insensitive), language and tags (match-any)', async () => {
+    const { t1, e1 } = await setup();
+    await t1.patch(`/api/tasks/${e1.tasks[1].id}`, {
+      statementMarkdown: '入力された文字列を逆順に出力せよ。キーワード: palindrome',
+    });
     expect(titles(await t1.get(`/api/task-bank?q=${encodeURIComponent('合計')}`))).toEqual(['配列の合計']);
+    expect(titles(await t1.get('/api/task-bank?q=PALINDROME'))).toEqual(['文字列の反転']);
     expect(titles(await t1.get('/api/task-bank?language=python'))).toEqual(['文字列の反転']);
     expect(titles(await t1.get(`/api/task-bank?tags=${encodeURIComponent('文字列,ループ')}`))).toEqual(
       ['文字列の反転', '配列の合計'].sort(),
     );
+  });
+
+  it('supports sort=title and sort=points and returns statementPreview without full statementMarkdown', async () => {
+    const { t1 } = await twoTeachers();
+    const e = await createExam(t1, {
+      publish: false,
+      tasks: [
+        { title: 'B問題', language: 'C', points: 10 },
+        { title: 'A問題', language: 'C', points: 50 },
+        { title: 'C問題', language: 'C', points: 30 },
+      ],
+    });
+    await t1.patch(`/api/tasks/${e.tasks[0].id}`, { statementMarkdown: '  行1\n行2  ' });
+
+    const byTitle = (await t1.get('/api/task-bank?sort=title')).body.tasks;
+    expect(byTitle.map((t: { title: string }) => t.title)).toEqual(['A問題', 'B問題', 'C問題']);
+
+    const byPoints = (await t1.get('/api/task-bank?sort=points')).body.tasks;
+    expect(byPoints.map((t: { points: number }) => t.points)).toEqual([50, 30, 10]);
+
+    const bRow = byTitle.find((t: { title: string }) => t.title === 'B問題');
+    expect(bRow.statementPreview).toBe('行1 行2');
+    expect(bRow).not.toHaveProperty('statementMarkdown');
   });
 
   it('never returns statement, test cases or solutions — only summary rows', async () => {

@@ -118,6 +118,7 @@ export interface TaskDetail {
 export interface TaskBankEntry {
   id: string;
   title: string;
+  statementPreview: string;
   language: Language;
   points: number;
   tags: string[];
@@ -133,6 +134,7 @@ export interface TaskBankEntry {
 }
 
 export type TaskBankScope = 'all' | 'mine' | 'public';
+export type TaskBankSort = 'newest' | 'title' | 'points';
 
 export type SubmissionOverallStatus = 'AC' | 'WA' | 'CE' | 'TLE' | 'MLE';
 

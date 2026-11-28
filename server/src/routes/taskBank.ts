@@ -23,12 +23,20 @@ function parseTags(raw: unknown): string[] {
     .filter(Boolean);
 }
 
+function makeStatementPreview(markdown: string): string {
+  const normalized = markdown.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= 160) return normalized;
+  return `${normalized.slice(0, 160)}…`;
+}
+
 taskBankRouter.get('/', async (req, res) => {
   const userId = req.user!.id;
   const scope = req.query.scope === 'mine' || req.query.scope === 'public' ? req.query.scope : 'all';
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   const language = typeof req.query.language === 'string' ? parseLanguageParam(req.query.language) : null;
   const tags = parseTags(req.query.tags);
+  const sort =
+    req.query.sort === 'title' || req.query.sort === 'points' ? req.query.sort : 'newest';
 
   const visibility: Prisma.TaskWhereInput =
     scope === 'mine'
@@ -40,15 +48,29 @@ taskBankRouter.get('/', async (req, res) => {
   const where: Prisma.TaskWhereInput = {
     AND: [
       visibility,
-      q ? { title: { contains: q, mode: 'insensitive' } } : {},
+      q
+        ? {
+            OR: [
+              { title: { contains: q, mode: 'insensitive' } },
+              { statementMarkdown: { contains: q, mode: 'insensitive' } },
+            ],
+          }
+        : {},
       language ? { language } : {},
       tags.length > 0 ? { tags: { hasSome: tags } } : {},
     ],
   };
 
+  const orderBy: Prisma.TaskOrderByWithRelationInput[] =
+    sort === 'title'
+      ? [{ title: 'asc' }, { createdAt: 'desc' }]
+      : sort === 'points'
+        ? [{ points: 'desc' }, { createdAt: 'desc' }]
+        : [{ createdAt: 'desc' }];
+
   const tasks = await prisma.task.findMany({
     where,
-    orderBy: { createdAt: 'desc' },
+    orderBy,
     take: 200,
     include: {
       exam: { select: { id: true, title: true, createdById: true, createdBy: { select: { displayName: true } } } },
@@ -60,6 +82,7 @@ taskBankRouter.get('/', async (req, res) => {
     tasks: tasks.map((t) => ({
       id: t.id,
       title: t.title,
+      statementPreview: makeStatementPreview(t.statementMarkdown),
       language: t.language,
       points: t.points,
       tags: t.tags,
