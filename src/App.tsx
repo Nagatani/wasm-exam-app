@@ -18,6 +18,7 @@ const StudentDashboard = lazy(() => import('./pages/StudentDashboard').then((m) 
 const TeacherDashboard = lazy(() => import('./pages/TeacherDashboard').then((m) => ({ default: m.TeacherDashboard })));
 const ExamDetailPage = lazy(() => import('./pages/ExamDetailPage').then((m) => ({ default: m.ExamDetailPage })));
 const TaskEditorPage = lazy(() => import('./pages/TaskEditorPage').then((m) => ({ default: m.TaskEditorPage })));
+const TaskPreviewPage = lazy(() => import('./pages/TaskPreviewPage').then((m) => ({ default: m.TaskPreviewPage })));
 const SandboxPage = lazy(() => import('./pages/SandboxPage').then((m) => ({ default: m.SandboxPage })));
 const StudentTaskPage = lazy(() => import('./pages/StudentTaskPage').then((m) => ({ default: m.StudentTaskPage })));
 const StudentExamFinishedPage = lazy(() => import('./pages/StudentExamFinishedPage').then((m) => ({ default: m.StudentExamFinishedPage })));
@@ -176,6 +177,15 @@ function App() {
                 <MainLandmark>
                   <TaskEditorPage />
                 </MainLandmark>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/teacher/tasks/:taskId/preview"
+            title="生徒画面プレビュー"
+            element={
+              <ProtectedRoute role="TEACHER">
+                <TaskPreviewPage />
               </ProtectedRoute>
             }
           />

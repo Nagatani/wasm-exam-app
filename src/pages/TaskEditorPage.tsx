@@ -780,6 +780,21 @@ export function TaskEditorPage() {
         beforeNavigate={confirmLeaveIfDirty(anyDirty)}
       />
 
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-xl font-bold">{task.title || '問題編集'}</h1>
+        <button
+          type="button"
+          onClick={async () => {
+            if (await confirmLeaveIfDirty(anyDirty)()) {
+              navigate(`/teacher/tasks/${task.id}/preview`);
+            }
+          }}
+          className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold text-mp-cyan hover:bg-mp-surface-hover"
+        >
+          生徒画面でプレビュー
+        </button>
+      </div>
+
       {/* This page has 3 independently-saved sections (below); this banner is
           the one place that shows every unsaved one at once, so a save click
           in one section is never mistaken for saving another. */}
