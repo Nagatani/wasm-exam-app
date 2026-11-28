@@ -265,12 +265,12 @@ export function TaskBankPicker({ examId, onClose, onAdded }: TaskBankPickerProps
         </div>
 
         <div className="mt-3 border-t border-mp-border pt-3">
-          <label className="cursor-pointer text-sm font-bold text-mp-cyan hover:opacity-80">
+          <label className="inline-block cursor-pointer rounded text-sm font-bold text-mp-cyan hover:opacity-80 focus-within:outline-2 focus-within:outline-mp-cyan focus-within:outline-offset-2">
             {importing ? 'インポート中...' : 'JSONファイルからインポート'}
             <input
               type="file"
               accept="application/json"
-              className="hidden"
+              className="sr-only"
               disabled={importing}
               onChange={(e) => {
                 const file = e.target.files?.[0];

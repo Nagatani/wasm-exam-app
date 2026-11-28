@@ -755,12 +755,12 @@ export function TaskEditorPage() {
             問題文（Markdown）
           </label>
           <div className="flex items-center gap-2">
-            <label className="cursor-pointer rounded border border-mp-border bg-mp-surface px-2 py-0.5 text-xs font-semibold hover:bg-mp-surface-hover">
+            <label className="cursor-pointer rounded border border-mp-border bg-mp-surface px-2 py-0.5 text-xs font-semibold hover:bg-mp-surface-hover focus-within:outline-2 focus-within:outline-mp-cyan focus-within:outline-offset-2">
               {imageUploading ? 'アップロード中...' : '画像を挿入'}
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/gif,image/webp"
-                className="hidden"
+                className="sr-only"
                 disabled={imageUploading}
                 onChange={(e) => {
                   const file = e.target.files?.[0];

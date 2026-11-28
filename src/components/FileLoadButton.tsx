@@ -41,12 +41,12 @@ export function FileLoadButton({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <label className="cursor-pointer rounded border border-mp-border bg-mp-bg px-2 py-1 text-xs font-semibold hover:bg-mp-surface-hover">
+      <label className="cursor-pointer rounded border border-mp-border bg-mp-bg px-2 py-1 text-xs font-semibold hover:bg-mp-surface-hover focus-within:outline-2 focus-within:outline-mp-cyan focus-within:outline-offset-2">
         {label}
         <input
           type="file"
           accept={accept}
-          className="hidden"
+          className="sr-only"
           onChange={(e) => {
             const file = e.target.files?.[0];
             e.target.value = '';
