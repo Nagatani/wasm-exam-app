@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from '../lib/routerContext';
 import {
   deleteStudentExamResults,
@@ -20,6 +20,9 @@ import { BackHeader } from '../components/BackHeader';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PageSkeleton } from '../components/Skeleton';
 import { statusGlyph } from '../lib/status';
+import { isAiAssistEnabled, onAiAssistSettingsChanged } from '../ai/aiAssistSettings';
+
+const AiMisconceptionPanel = lazy(() => import('../components/AiMisconceptionPanel'));
 
 const STATUS_COLOR: Record<SubmissionOverallStatus, string> = {
   AC: 'text-mp-green',
@@ -89,9 +92,16 @@ export function ExamResultsPage() {
   const [query, setQuery] = useState('');
   const [rowFilter, setRowFilter] = useState<RowFilter>('all');
   const [sort, setSort] = useState<SortState | null>(null);
+  const [aiAssistEnabled, setAiAssistEnabled] = useState(() => isAiAssistEnabled());
   // Only show the full-page loading state on the very first fetch — a
   // post-revert refresh should update the table in place, not blank it.
   const hasLoadedOnceRef = useRef(false);
+
+  useEffect(() => {
+    return onAiAssistSettingsChanged(() => {
+      setAiAssistEnabled(isAiAssistEnabled());
+    });
+  }, []);
 
   const loadResults = useCallback(() => {
     if (!examId) return;
@@ -300,6 +310,16 @@ export function ExamResultsPage() {
                 </div>
               </div>
             </div>
+          )}
+
+          {aiAssistEnabled && results.tasks.length > 0 && (
+            <Suspense fallback={null}>
+              <AiMisconceptionPanel
+                examId={examId!}
+                tasks={results.tasks}
+                students={results.students}
+              />
+            </Suspense>
           )}
 
           <div className="mb-3 flex flex-wrap items-center gap-2">
