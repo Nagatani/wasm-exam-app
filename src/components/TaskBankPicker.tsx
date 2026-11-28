@@ -4,6 +4,7 @@ import { duplicateTask, importTasksIntoExam } from '../api/tasks';
 import { ApiError } from '../api/client';
 import { ALL_LANGUAGES, LANGUAGE_LABEL } from '../lib/language';
 import type { Language, TaskBankEntry, TaskBankScope } from '../types/exam';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 
 interface TaskBankPickerProps {
   examId: string;
@@ -38,6 +39,7 @@ export function TaskBankPicker({ examId, onClose, onAdded }: TaskBankPickerProps
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   async function search() {
@@ -67,19 +69,7 @@ export function TaskBankPicker({ examId, onClose, onAdded }: TaskBankPickerProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKeyDown);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    closeButtonRef.current?.focus();
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [onClose]);
+  useDialogFocus(true, dialogRef, onClose, closeButtonRef);
 
   function handleSearchSubmit(e: FormEvent) {
     e.preventDefault();
@@ -133,11 +123,13 @@ export function TaskBankPicker({ examId, onClose, onAdded }: TaskBankPickerProps
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
         type="button"
+        tabIndex={-1}
         aria-label="閉じる"
         onClick={onClose}
         className="absolute inset-0 bg-black/40"
       />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="問題バンクから追加"

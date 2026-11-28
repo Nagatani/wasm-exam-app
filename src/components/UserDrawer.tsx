@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { NavLink } from '../lib/router';
 import { useNavigate } from '../lib/routerContext';
 import { logOut } from '../api/auth';
 import { useAuth } from '../contexts/useAuth';
 import { ThemeToggle } from './ThemeToggle';
 import { clearBackups } from '../lib/localBackup';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 
 const ROLE_LABEL: Record<'STUDENT' | 'TEACHER', string> = {
   STUDENT: '学生',
@@ -59,23 +60,10 @@ export function UserDrawer({
   const { profile, refresh } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('keydown', onKeyDown);
-    // Stop the page behind the drawer from scrolling while it's open.
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    closeButtonRef.current?.focus();
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [open]);
+  useDialogFocus(open, dialogRef, () => setOpen(false), closeButtonRef);
 
   if (!profile) return null;
 
@@ -94,7 +82,6 @@ export function UserDrawer({
     await refresh();
   }
 
-  const tab = open ? 0 : -1;
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `block rounded px-3 py-2 text-sm ${
       isActive
@@ -110,7 +97,6 @@ export function UserDrawer({
             <NavLink
               to={item.to}
               end={item.end}
-              tabIndex={tab}
               onClick={(e) => {
                 e.preventDefault();
                 void go(item.to);
@@ -142,8 +128,11 @@ export function UserDrawer({
       </button>
 
       {/* Always mounted (not conditionally rendered) so the open/close
-          transition can actually animate instead of popping in and out. */}
+          transition can actually animate instead of popping in and out.
+          HTML `inert` removes every descendant (including ThemeToggle) from
+          the tab order and accessibility tree while closed. */}
       <div
+        inert={!open}
         aria-hidden={!open}
         className={`fixed inset-0 z-50 transition-opacity duration-200 ${
           open ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
@@ -152,11 +141,12 @@ export function UserDrawer({
         <button
           type="button"
           aria-label="メニューを閉じる"
-          tabIndex={tab}
+          tabIndex={-1}
           onClick={() => setOpen(false)}
           className="absolute inset-0 bg-black/40"
         />
         <div
+          ref={dialogRef}
           role="dialog"
           aria-modal="true"
           aria-label="メニュー"
@@ -169,7 +159,6 @@ export function UserDrawer({
             <button
               ref={closeButtonRef}
               type="button"
-              tabIndex={tab}
               onClick={() => setOpen(false)}
               aria-label="閉じる"
               className="rounded px-2 py-1 text-mp-muted hover:bg-mp-surface-hover hover:text-mp-fg"
@@ -207,7 +196,6 @@ export function UserDrawer({
           <div className="mt-auto pt-4">
             <button
               type="button"
-              tabIndex={tab}
               onClick={handleLogout}
               className="w-full rounded border border-mp-border bg-mp-bg px-3 py-2 text-sm font-bold hover:bg-mp-surface-hover"
             >

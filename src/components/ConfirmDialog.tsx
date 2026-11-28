@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -28,22 +29,10 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  const confirmButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel();
-    };
-    document.addEventListener('keydown', onKeyDown);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    confirmButtonRef.current?.focus();
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [open, onCancel]);
+  useDialogFocus(open, dialogRef, onCancel, cancelButtonRef);
 
   if (!open) return null;
 
@@ -51,22 +40,28 @@ export function ConfirmDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
         type="button"
+        tabIndex={-1}
         aria-label="キャンセル"
         onClick={onCancel}
         className="absolute inset-0 bg-black/40"
       />
       <div
+        ref={dialogRef}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
+        aria-describedby="confirm-dialog-message"
         className="relative w-full max-w-sm rounded-lg border border-mp-border bg-mp-surface p-4 shadow-xl"
       >
         <h2 id="confirm-dialog-title" className="mb-2 text-sm font-bold text-mp-fg">
           {title}
         </h2>
-        <p className="mb-4 text-sm text-mp-muted">{message}</p>
+        <p id="confirm-dialog-message" className="mb-4 text-sm text-mp-muted">
+          {message}
+        </p>
         <div className="flex items-center justify-end gap-2">
           <button
+            ref={cancelButtonRef}
             type="button"
             onClick={onCancel}
             className="rounded border border-mp-border bg-mp-bg px-3 py-1.5 text-sm hover:bg-mp-surface-hover"
@@ -74,7 +69,6 @@ export function ConfirmDialog({
             {cancelLabel}
           </button>
           <button
-            ref={confirmButtonRef}
             type="button"
             onClick={onConfirm}
             className="rounded bg-mp-red px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90"
