@@ -16,3 +16,10 @@ export function promoteToTeacher(targetStudentNumber: string) {
     body: JSON.stringify({ targetStudentNumber }),
   });
 }
+
+export function clearIpLockout(ip?: string) {
+  return apiFetch<{ cleared: number }>('/api/admin/clear-ip-lockout', {
+    method: 'POST',
+    body: JSON.stringify(ip ? { ip } : {}),
+  });
+}

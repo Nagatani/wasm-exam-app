@@ -30,7 +30,7 @@ function intEnv(name: string, fallback: number): number {
 function limits() {
   return {
     perAccount: intEnv('LOGIN_MAX_FAILURES', 10),
-    perIp: intEnv('LOGIN_MAX_FAILURES_PER_IP', 100),
+    perIp: intEnv('LOGIN_MAX_FAILURES_PER_IP', 300),
     windowMs: intEnv('LOGIN_LOCKOUT_MINUTES', 15) * 60_000,
   };
 }
@@ -79,6 +79,23 @@ export function clearLoginFailuresFor(studentNumber: string): void {
   for (const key of buckets.keys()) {
     if (key.startsWith(prefix)) buckets.delete(key);
   }
+}
+
+// Lift per-IP lockout(s) — e.g. when a NAT'd classroom trips the shared IP cap
+// during initial password login. If `ip` is provided, clears only that IP; if
+// omitted, clears all IP entries. Returns the number of cleared entries.
+export function clearIpRateLimit(ip?: string): number {
+  if (ip !== undefined) {
+    return buckets.delete(ipKey(ip)) ? 1 : 0;
+  }
+  let cleared = 0;
+  for (const key of buckets.keys()) {
+    if (key.startsWith('ip:')) {
+      buckets.delete(key);
+      cleared += 1;
+    }
+  }
+  return cleared;
 }
 
 function sweep(now: number): void {

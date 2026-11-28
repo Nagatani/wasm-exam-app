@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma';
 import { toPublicUser } from '../lib/publicUser';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { isJudgeConfigured, judgeHealthy } from '../lib/judgeClient';
+import { clearIpRateLimit } from '../lib/loginRateLimit';
 
 export const adminRouter = Router();
 
@@ -54,5 +55,27 @@ adminRouter.post(
     });
 
     res.json({ user: toPublicUser(updated) });
+  },
+);
+
+const clearIpLockoutSchema = z.object({
+  ip: z.string().trim().min(1).optional(),
+});
+
+// Teacher escape hatch when a shared classroom NAT IP trips the per-IP login
+// rate limit. Omit `ip` to clear all IP lockout entries.
+adminRouter.post(
+  '/clear-ip-lockout',
+  requireAuth,
+  requireRole('TEACHER'),
+  (req, res) => {
+    const parsed = clearIpLockoutSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: 'ip の指定が不正です。' });
+      return;
+    }
+
+    const cleared = clearIpRateLimit(parsed.data.ip);
+    res.json({ cleared });
   },
 );

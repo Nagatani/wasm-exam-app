@@ -2,7 +2,12 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from '../lib/router';
 import { BackHeader } from '../components/BackHeader';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { getServiceHealth, promoteToTeacher, type ServiceHealth } from '../api/admin';
+import {
+  clearIpLockout,
+  getServiceHealth,
+  promoteToTeacher,
+  type ServiceHealth,
+} from '../api/admin';
 import { forceLogoutStudent, resetStudentPassword } from '../api/students';
 import { ApiError } from '../api/client';
 
@@ -264,6 +269,87 @@ function ResetPassword() {
   );
 }
 
+function ClearIpLockout() {
+  const [ipInput, setIpInput] = useState('');
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<Message>(null);
+
+  const trimmedIp = ipInput.trim();
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setConfirmOpen(true);
+  }
+
+  async function confirm() {
+    const targetIp = trimmedIp || undefined;
+    setConfirmOpen(false);
+    setSubmitting(true);
+    setMessage(null);
+    try {
+      const { cleared } = await clearIpLockout(targetIp);
+      setMessage({
+        ok: true,
+        text: targetIp
+          ? cleared > 0
+            ? `${targetIp} のログインロックを解除しました。`
+            : `${targetIp} はロックされていませんでした。`
+          : cleared > 0
+            ? `${cleared}件の IP ログインロックを解除しました。`
+            : '現在ロックされている IP はありませんでした。',
+      });
+      if (targetIp && cleared > 0) setIpInput('');
+    } catch (err) {
+      setMessage({
+        ok: false,
+        text: err instanceof ApiError ? err.message : 'IP ロックの解除に失敗しました。',
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <>
+      <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2">
+        <div>
+          <label className="mb-1 block text-xs text-mp-muted" htmlFor="clear-ip-input">
+            IP アドレス（任意・空欄で全件）
+          </label>
+          <input
+            id="clear-ip-input"
+            className="rounded border border-mp-border bg-mp-bg px-3 py-1.5 text-sm text-mp-fg"
+            placeholder="例: 203.0.113.10"
+            value={ipInput}
+            onChange={(e) => setIpInput(e.target.value)}
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
+        >
+          {submitting ? '処理中...' : 'IP ロックを解除'}
+        </button>
+      </form>
+      <MessageLine message={message} />
+      <ConfirmDialog
+        open={confirmOpen}
+        title="IP ログインロックの解除"
+        message={
+          trimmedIp
+            ? `IP アドレス ${trimmedIp} のログイン制限カウントをリセットします。よろしいですか？`
+            : 'すべての IP アドレスのログイン制限カウントをリセットします（アカウント単位のロックは維持されます）。よろしいですか？'
+        }
+        confirmLabel="解除する"
+        onConfirm={confirm}
+        onCancel={() => setConfirmOpen(false)}
+      />
+    </>
+  );
+}
+
 /**
  * Teacher-only admin tools, reached from the hamburger drawer (UserDrawer).
  * Previously a collapsed "▶ 管理者メニュー" block at the bottom of
@@ -292,6 +378,13 @@ export function AdminPage() {
           description="パスワードは変えずに、生徒をログイン中のすべての端末からログアウトさせます（共用PCでのログアウト忘れなど）。教員アカウントは対象外です。"
         >
           <ForceLogout />
+        </Section>
+
+        <Section
+          title="IP ログインロックの解除"
+          description="同じ教室ネットワーク（NAT）からのログイン失敗が集中してロック（429）された場合に解除します。IP アドレスを空欄にするとすべての IP ロックを解除します。"
+        >
+          <ClearIpLockout />
         </Section>
 
         <Section
