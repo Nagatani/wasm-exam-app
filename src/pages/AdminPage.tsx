@@ -73,12 +73,84 @@ function ServiceStatus() {
       </p>
     );
   if (!health) return <p className="text-sm text-mp-muted">確認中...</p>;
+  const metrics = health.metrics;
   return (
-    <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
-      <span className={dot(health.db)}>● DB: {word[health.db] ?? health.db}</span>
-      <span className={dot(health.judge)}>
-        ● judge（採点・Java 実行）: {word[health.judge] ?? health.judge}
-      </span>
+    <div className="space-y-3 text-sm">
+      <div className="flex flex-wrap gap-x-6 gap-y-1">
+        <span className={dot(health.db)}>
+          <span aria-hidden="true">●</span> DB: {word[health.db] ?? health.db}
+        </span>
+        <span className={dot(health.judge)}>
+          <span aria-hidden="true">●</span> judge（採点・Java 実行）:{' '}
+          {word[health.judge] ?? health.judge}
+          {health.judgePool && health.judgePool.total > 0 && (
+            <span className="ml-1 text-xs text-mp-muted">
+              ({health.judgePool.healthy}/{health.judgePool.total})
+            </span>
+          )}
+        </span>
+      </div>
+
+      {metrics && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded border border-mp-border bg-mp-bg p-3">
+            <h3 className="text-xs font-bold text-mp-muted">実行キュー（judge スロット）</h3>
+            <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+              <dt className="text-mp-muted">実行中 / 上限</dt>
+              <dd className="text-right font-mono font-bold">
+                {metrics.execution.active} / {metrics.execution.concurrency}
+              </dd>
+              <dt className="text-mp-muted">プレビュー待ち</dt>
+              <dd className="text-right font-mono">{metrics.execution.interactiveWaiting}</dd>
+              <dt className="text-mp-muted">採点・再採点待ち</dt>
+              <dd className="text-right font-mono">{metrics.execution.backgroundWaiting}</dd>
+            </dl>
+          </div>
+
+          <div className="rounded border border-mp-border bg-mp-bg p-3">
+            <h3 className="text-xs font-bold text-mp-muted">本採点キュー</h3>
+            <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+              <dt className="text-mp-muted">採点中 / 上限</dt>
+              <dd className="text-right font-mono font-bold">
+                {metrics.grading.running} / {metrics.grading.concurrency}
+              </dd>
+              <dt className="text-mp-muted">待機中</dt>
+              <dd className="text-right font-mono">{metrics.grading.queued}</dd>
+              <dt className="text-mp-muted">リトライ待ち</dt>
+              <dd
+                className={`text-right font-mono ${metrics.grading.retrying > 0 ? 'font-bold text-mp-yellow' : ''}`}
+              >
+                {metrics.grading.retrying}
+              </dd>
+            </dl>
+          </div>
+        </div>
+      )}
+
+      {metrics && metrics.judgePool.length > 0 && (
+        <div className="rounded border border-mp-border bg-mp-bg p-3">
+          <h3 className="text-xs font-bold text-mp-muted">judge プール詳細</h3>
+          <ul className="mt-1.5 space-y-1 text-xs">
+            {metrics.judgePool.map((node) => (
+              <li key={node.url} className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-mono">
+                  <span
+                    aria-hidden="true"
+                    className={node.healthy ? 'mr-1.5 text-mp-green' : 'mr-1.5 text-mp-red'}
+                  >
+                    ●
+                  </span>
+                  {node.url}
+                </span>
+                <span className="text-mp-muted">
+                  {node.healthy ? '正常' : '異常'} ・ 実行中{' '}
+                  <span className="font-mono text-mp-fg">{node.inFlight}</span> 件
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

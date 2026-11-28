@@ -53,6 +53,13 @@ export interface JudgeSlotOptions {
   waitTimeoutMs?: number;
 }
 
+export interface ExecutionQueueStats {
+  active: number;
+  interactiveWaiting: number;
+  backgroundWaiting: number;
+  concurrency: number;
+}
+
 let active = 0;
 // Two waiting lines: interactive work (a student's "実行", a teacher's
 // check-solution) is always served before background work (grading / regrade),
@@ -61,6 +68,15 @@ let active = 0;
 const interactiveWaiters: Array<() => void> = [];
 const backgroundWaiters: Array<() => void> = [];
 const usersInFlight = new Set<string>();
+
+export function getExecutionQueueStats(): ExecutionQueueStats {
+  return {
+    active,
+    interactiveWaiting: interactiveWaiters.length,
+    backgroundWaiting: backgroundWaiters.length,
+    concurrency: GLOBAL_LIMIT,
+  };
+}
 
 function acquireInteractiveSlot(options?: JudgeSlotOptions): Promise<void> {
   const signal = options?.signal;

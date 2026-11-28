@@ -26,6 +26,7 @@ import {
   computeRetryDelayMs,
   enqueueGrading,
   getGradingQueuePosition,
+  getGradingQueueStats,
   gradeAttempt,
   resetGradingQueue,
   waitForGradingIdle,
@@ -233,5 +234,68 @@ describe('getGradingQueuePosition', () => {
 
     expect(getGradingQueuePosition('a5')).toBeNull();
     expect(getGradingQueuePosition('a6')).toBeNull();
+  });
+
+  it('reports live running, queued, and retrying counts via getGradingQueueStats', async () => {
+    expect(getGradingQueueStats()).toEqual({
+      running: 0,
+      queued: 0,
+      retrying: 0,
+      concurrency: 4,
+    });
+
+    const resolvers = new Map<string, () => void>();
+    mockFindUnique.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        new Promise((resolve) => {
+          resolvers.set(where.id, () => resolve(null));
+        }),
+    );
+
+    for (const id of ['s1', 's2', 's3', 's4', 's5']) enqueueGrading(id);
+    expect(getGradingQueueStats()).toEqual({
+      running: 4,
+      queued: 1,
+      retrying: 0,
+      concurrency: 4,
+    });
+
+    for (const id of ['s1', 's2', 's3', 's4']) resolvers.get(id)?.();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(getGradingQueueStats()).toEqual({
+      running: 1,
+      queued: 0,
+      retrying: 0,
+      concurrency: 4,
+    });
+
+    resolvers.get('s5')?.();
+    await waitForGradingIdle();
+
+    expect(getGradingQueueStats()).toEqual({
+      running: 0,
+      queued: 0,
+      retrying: 0,
+      concurrency: 4,
+    });
+  });
+
+  it('counts attempts waiting on retry backoff in retrying', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      mockFindUnique.mockRejectedValueOnce(new Error('transient db error'));
+      enqueueGrading('retry-1');
+      await waitForGradingIdle();
+
+      expect(getGradingQueueStats()).toEqual({
+        running: 0,
+        queued: 0,
+        retrying: 1,
+        concurrency: 4,
+      });
+    } finally {
+      errorSpy.mockRestore();
+      resetGradingQueue();
+    }
   });
 });

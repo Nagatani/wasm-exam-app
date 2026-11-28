@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  getExecutionQueueStats,
   QueueAbortedError,
   QueueRejectedError,
   QueueTimeoutError,
@@ -110,5 +111,37 @@ describe('executionQueue', () => {
     await expect(
       withJudgeSlot('student-abort', async () => 'never', { signal: preAborted.signal }),
     ).rejects.toBeInstanceOf(QueueAbortedError);
+  });
+
+  it('reports live execution queue stats via getExecutionQueueStats', async () => {
+    expect(getExecutionQueueStats()).toEqual({
+      active: 0,
+      interactiveWaiting: 0,
+      backgroundWaiting: 0,
+      concurrency: 2,
+    });
+
+    const hold = [deferred(), deferred()];
+    const busy = hold.map((d) => withJudgeCapacity(() => d.promise));
+    const bgWait = withJudgeCapacity(async () => 'bg');
+    const iaWait = withJudgeSlot('student-stats', async () => 'ia');
+    await Promise.resolve();
+
+    expect(getExecutionQueueStats()).toEqual({
+      active: 2,
+      interactiveWaiting: 1,
+      backgroundWaiting: 1,
+      concurrency: 2,
+    });
+
+    hold.forEach((d) => d.resolve());
+    await Promise.all([...busy, bgWait, iaWait]);
+
+    expect(getExecutionQueueStats()).toEqual({
+      active: 0,
+      interactiveWaiting: 0,
+      backgroundWaiting: 0,
+      concurrency: 2,
+    });
   });
 });

@@ -3,13 +3,16 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { toPublicUser } from '../lib/publicUser';
 import { requireAuth, requireRole } from '../middleware/auth';
-import { checkJudgeHealth } from '../lib/judgeClient';
+import { checkJudgeHealth, getJudgePoolSnapshot } from '../lib/judgeClient';
+import { getExecutionQueueStats } from '../lib/executionQueue';
+import { getGradingQueueStats } from '../lib/grading';
 import { clearIpRateLimit } from '../lib/loginRateLimit';
 import { invalidateSessionCacheForUser } from '../lib/session';
 
 export const adminRouter = Router();
 
-// Quick liveness of the backing services, for the teacher dashboard.
+// Quick liveness and operational metrics of the backing services, for the
+// teacher admin dashboard.
 adminRouter.get('/service-health', requireAuth, requireRole('TEACHER'), async (_req, res) => {
   let db: 'ok' | 'error' = 'ok';
   try {
@@ -29,6 +32,15 @@ adminRouter.get('/service-health', requireAuth, requireRole('TEACHER'), async (_
     judgePool: {
       healthy: judgeHealth.healthyCount,
       total: judgeHealth.totalCount,
+    },
+    metrics: {
+      execution: getExecutionQueueStats(),
+      grading: getGradingQueueStats(),
+      judgePool: getJudgePoolSnapshot().map(({ url, inFlight, healthy }) => ({
+        url,
+        inFlight,
+        healthy,
+      })),
     },
   });
 });

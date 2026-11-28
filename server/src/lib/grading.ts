@@ -179,6 +179,22 @@ let idleWaiters: Array<() => void> = [];
 const retryTimers = new Set<ReturnType<typeof setTimeout>>();
 const retryCountByAttempt = new Map<string, number>();
 
+export interface GradingQueueStats {
+  running: number;
+  queued: number;
+  retrying: number;
+  concurrency: number;
+}
+
+export function getGradingQueueStats(): GradingQueueStats {
+  return {
+    running,
+    queued: order.length,
+    retrying: retryTimers.size,
+    concurrency: CONCURRENCY,
+  };
+}
+
 /**
  * Returns the attempt's current position in the in-process grading queue:
  * - `position: 0` when the attempt is actively being graded right now
