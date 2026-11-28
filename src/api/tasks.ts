@@ -112,7 +112,12 @@ export function deleteSolution(taskId: string, language: Language) {
 export interface SolutionCheckResponse {
   compileFailed: boolean;
   compileStderr: string;
-  outcomes: { testCaseId: string; stage: 'success' | 'runtime_error'; stdout: string }[];
+  outcomes: {
+    testCaseId: string;
+    stage: 'success' | 'runtime_error';
+    stdout: string;
+    timeMs?: number;
+  }[];
 }
 
 // Java only (server-side judge). With `inputs`, runs against those ad-hoc

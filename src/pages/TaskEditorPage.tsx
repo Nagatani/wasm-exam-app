@@ -39,6 +39,7 @@ import { runClientSide } from '../runner/clientRunner';
 import type { AiAssistApplyDraft } from '../components/AiAssistPanel';
 import { isAiAssistEnabled, onAiAssistSettingsChanged } from '../ai/aiAssistSettings';
 import { TestCaseRow, type TestCaseRowHandle } from '../components/TestCaseRow';
+import { SampleDiff } from '../components/SampleDiff';
 import { CodeEditor } from '../components/CodeEditor';
 import { BackHeader } from '../components/BackHeader';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -65,6 +66,7 @@ interface SolutionCheckRow {
   expected: string;
   actual: string | null;
   status: SolutionCheckStatus;
+  timeMs?: number;
 }
 
 const inputClass =
@@ -127,6 +129,7 @@ export function TaskEditorPage() {
   const [checking, setChecking] = useState(false);
   const [checkRows, setCheckRows] = useState<SolutionCheckRow[] | null>(null);
   const [checkError, setCheckError] = useState<string | null>(null);
+  const [applyingBulk, setApplyingBulk] = useState(false);
   // Snapshot (taskFormKey) of the last server-persisted state of the main
   // form, so an "unsaved changes" hint can be shown while the current fields
   // differ from it.
@@ -548,6 +551,7 @@ export function TaskEditorPage() {
               expected: tc.expectedOutput,
               actual: outcome.stdout,
               status: outcome.stage === 'tle' || outcome.stage === 'mle' ? 'timeout' : 'error',
+              timeMs: outcome.timeMs,
             };
           }
           const status: SolutionCheckStatus = compareOutput(
@@ -565,6 +569,7 @@ export function TaskEditorPage() {
             expected: tc.expectedOutput,
             actual: outcome.stdout,
             status,
+            timeMs: outcome.timeMs,
           };
         }),
       );
@@ -594,6 +599,52 @@ export function TaskEditorPage() {
       );
     } catch (err) {
       setCheckError(err instanceof ApiError ? err.message : '期待値の更新に失敗しました。');
+    }
+  }
+
+  // Bulk-apply actual outputs as expectedOutput for multiple mismatched cases.
+  async function applyBulkActualAsExpected(targets: { testCaseId: string; actual: string }[]) {
+    if (targets.length === 0 || applyingBulk) return;
+    setApplyingBulk(true);
+    setCheckError(null);
+    try {
+      const results = await Promise.allSettled(
+        targets.map((t) => updateTestCase(t.testCaseId, { expectedOutput: t.actual })),
+      );
+      const updatedById = new Map<string, TestCase>();
+      let failedCount = 0;
+      for (const res of results) {
+        if (res.status === 'fulfilled') {
+          updatedById.set(res.value.testCase.id, res.value.testCase);
+        } else {
+          failedCount += 1;
+        }
+      }
+      if (updatedById.size > 0) {
+        setTask((prev) =>
+          prev
+            ? {
+                ...prev,
+                testCases: prev.testCases.map((t) => updatedById.get(t.id) ?? t),
+              }
+            : prev,
+        );
+        setCheckRows((prev) =>
+          prev
+            ? prev.map((r) => {
+                const updated = updatedById.get(r.testCaseId);
+                return updated
+                  ? { ...r, expected: updated.expectedOutput, status: 'match' }
+                  : r;
+              })
+            : prev,
+        );
+      }
+      if (failedCount > 0) {
+        setCheckError(`${failedCount} 件の期待値更新に失敗しました。`);
+      }
+    } finally {
+      setApplyingBulk(false);
     }
   }
 
@@ -1153,7 +1204,9 @@ export function TaskEditorPage() {
         <SolutionCheckPanel
           rows={checkRows}
           error={checkError}
+          applyingBulk={applyingBulk}
           onApply={applyActualAsExpected}
+          onApplyBulk={applyBulkActualAsExpected}
           onDismiss={() => {
             setCheckRows(null);
             setCheckError(null);
@@ -1175,16 +1228,27 @@ function BulkTestCasePanel({
 }) {
   const [text, setText] = useState('');
   const placeholder = `3\n---\n6\n===\n@sample\n10\n---\n20`;
+  const inputOnlyExample = `@sample\n3\n===\n10\n===\n0`;
 
   return (
     <div className="mb-3 rounded-lg border border-mp-border bg-mp-surface p-3">
-      <p className="mb-2 text-xs text-mp-muted">
+      <p className="mb-1 text-xs text-mp-muted">
         複数のテストケースをまとめて追加します。ケースの区切りは <code>===</code> だけの行、
         入力と期待される出力の区切りは <code>---</code> だけの行。ケースの1行目を{' '}
         <code>@sample</code> にするとサンプル扱いになります。既存のテストケースの後ろに追加されます。
       </p>
-      <div className="mb-2">
+      <p className="mb-2 text-xs text-mp-muted">
+        ヒント：<code>---</code> と期待される出力を省略して<strong>入力のみ</strong>を追加し、下の「解答例でテストケースを検証」→「期待値が空のケースのみ反映」で期待値を自動生成できます。
+      </p>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
         <FileLoadButton accept=".txt,text/plain" onLoaded={(loaded) => setText(loaded)} />
+        <button
+          type="button"
+          onClick={() => setText(inputOnlyExample)}
+          className="rounded border border-mp-border bg-mp-bg px-2.5 py-1 text-xs hover:bg-mp-surface-hover"
+        >
+          入力のみの書式例を挿入
+        </button>
       </div>
       <textarea
         rows={8}
@@ -1208,12 +1272,16 @@ function BulkTestCasePanel({
 function SolutionCheckPanel({
   rows,
   error,
+  applyingBulk,
   onApply,
+  onApplyBulk,
   onDismiss,
 }: {
   rows: SolutionCheckRow[] | null;
   error: string | null;
+  applyingBulk: boolean;
   onApply: (testCaseId: string, actual: string) => void;
+  onApplyBulk: (targets: { testCaseId: string; actual: string }[]) => void;
   onDismiss: () => void;
 }) {
   const STATUS_META: Record<SolutionCheckStatus, { label: string; cls: string }> = {
@@ -1224,6 +1292,15 @@ function SolutionCheckPanel({
     missing: { label: '出力なし', cls: 'text-mp-muted' },
   };
   const mismatchCount = rows?.filter((r) => r.status !== 'match').length ?? 0;
+  const mismatchTargets = (rows ?? [])
+    .filter((r): r is SolutionCheckRow & { actual: string } => r.status === 'mismatch' && r.actual !== null)
+    .map((r) => ({ testCaseId: r.testCaseId, actual: r.actual }));
+  const emptyExpectedTargets = (rows ?? [])
+    .filter(
+      (r): r is SolutionCheckRow & { actual: string } =>
+        r.status === 'mismatch' && r.actual !== null && r.expected.trim() === '',
+    )
+    .map((r) => ({ testCaseId: r.testCaseId, actual: r.actual }));
 
   return (
     <div className="mb-6 rounded-lg border border-mp-border bg-mp-surface p-4">
@@ -1237,28 +1314,66 @@ function SolutionCheckPanel({
         </button>
       </div>
 
-      {error ? (
-        <pre className="whitespace-pre-wrap rounded bg-mp-bg p-3 text-xs text-mp-red">{error}</pre>
-      ) : rows && rows.length > 0 ? (
+      {error && (
+        <pre className="mb-3 whitespace-pre-wrap rounded bg-mp-bg p-3 text-xs text-mp-red">
+          {error}
+        </pre>
+      )}
+      {rows && rows.length > 0 ? (
         <>
-          <p className="mb-3 text-xs text-mp-muted">
+          <p className="mb-2 text-xs text-mp-muted">
             {mismatchCount === 0
               ? 'すべてのテストケースで期待される出力と一致しました。'
               : `${mismatchCount} 件が期待される出力と一致していません。解答例が正しいことを確認できたら、「実際の出力を期待値にする」で期待される出力を上書きできます。`}
           </p>
+          {(mismatchTargets.length > 0 || emptyExpectedTargets.length > 0) && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {emptyExpectedTargets.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onApplyBulk(emptyExpectedTargets)}
+                  disabled={applyingBulk}
+                  className="rounded bg-mp-cyan px-3 py-1.5 text-xs font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
+                >
+                  {applyingBulk
+                    ? '反映中...'
+                    : `期待値が空のケースのみ反映（${emptyExpectedTargets.length}件）`}
+                </button>
+              )}
+              {mismatchTargets.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onApplyBulk(mismatchTargets)}
+                  disabled={applyingBulk}
+                  className="rounded border border-mp-border bg-mp-surface-hover px-3 py-1.5 text-xs font-bold hover:opacity-90 disabled:opacity-50"
+                >
+                  {applyingBulk
+                    ? '上書き中...'
+                    : `不一致の期待値をすべて上書き（${mismatchTargets.length}件）`}
+                </button>
+              )}
+            </div>
+          )}
           <div className="space-y-2">
             {rows.map((r) => {
               const meta = STATUS_META[r.status];
               return (
                 <div key={r.testCaseId} className="rounded border border-mp-border bg-mp-bg p-2.5 text-xs">
-                  <div className="mb-1 flex items-center justify-between">
+                  <div className="mb-1 flex items-center justify-between gap-2">
                     <span className="font-semibold">
                       {r.label}
                       {r.isSample ? '（サンプル）' : ''}
                     </span>
-                    <span className={`font-bold ${meta.cls}`}>{meta.label}</span>
+                    <div className="flex items-center gap-2">
+                      {r.timeMs !== undefined && (
+                        <span className="font-mono text-mp-muted">{r.timeMs} ms</span>
+                      )}
+                      <span className={`font-bold ${meta.cls}`}>{meta.label}</span>
+                    </div>
                   </div>
-                  {r.status !== 'match' && (
+                  {r.status === 'mismatch' && r.actual !== null ? (
+                    <SampleDiff expected={r.expected} actual={r.actual} actualLabel="解答例の出力" />
+                  ) : r.status !== 'match' ? (
                     <div className="grid grid-cols-1 gap-2 font-mono md:grid-cols-2">
                       <div>
                         <p className="text-mp-muted">期待される出力</p>
@@ -1271,11 +1386,12 @@ function SolutionCheckPanel({
                         </pre>
                       </div>
                     </div>
-                  )}
+                  ) : null}
                   {(r.status === 'mismatch' || r.status === 'error') && r.actual !== null && (
                     <button
                       onClick={() => onApply(r.testCaseId, r.actual as string)}
-                      className="mt-2 rounded border border-mp-border bg-mp-surface-hover px-2 py-1 text-xs hover:opacity-90"
+                      disabled={applyingBulk}
+                      className="mt-2 rounded border border-mp-border bg-mp-surface-hover px-2 py-1 text-xs hover:opacity-90 disabled:opacity-50"
                     >
                       実際の出力を期待値にする
                     </button>
@@ -1285,9 +1401,9 @@ function SolutionCheckPanel({
             })}
           </div>
         </>
-      ) : (
+      ) : !error ? (
         <p className="text-xs text-mp-muted">テストケースがありません。</p>
-      )}
+      ) : null}
     </div>
   );
 }

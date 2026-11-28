@@ -7,6 +7,7 @@
 interface SampleDiffProps {
   expected: string;
   actual: string;
+  actualLabel?: string;
 }
 
 // Render a line, making trailing spaces/tabs visible.
@@ -52,7 +53,11 @@ function Column({
   );
 }
 
-export function SampleDiff({ expected, actual }: SampleDiffProps) {
+export function SampleDiff({
+  expected,
+  actual,
+  actualLabel = 'あなたの出力',
+}: SampleDiffProps) {
   const expectedLines = expected.split('\n');
   const actualLines = actual.split('\n');
   const lineCountDiffers = expectedLines.length !== actualLines.length;
@@ -66,7 +71,7 @@ export function SampleDiff({ expected, actual }: SampleDiffProps) {
       )}
       <div className="space-y-1.5">
         <Column label="期待される出力" lines={expectedLines} otherLines={actualLines} />
-        <Column label="あなたの出力" lines={actualLines} otherLines={expectedLines} />
+        <Column label={actualLabel} lines={actualLines} otherLines={expectedLines} />
       </div>
       <p className="text-mp-muted">※ 先頭・末尾の空白だけの違いは判定では無視されます。</p>
     </div>
