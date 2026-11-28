@@ -442,7 +442,14 @@ examsRouter.get('/:examId', async (req, res) => {
     include: {
       tasks: {
         orderBy: { order: 'asc' },
-        select: { id: true, order: true, title: true, points: true },
+        select: {
+          id: true,
+          order: true,
+          title: true,
+          points: true,
+          language: true,
+          _count: { select: { testCases: true, solutions: true } },
+        },
       },
     },
   });

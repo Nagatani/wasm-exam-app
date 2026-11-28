@@ -625,7 +625,12 @@ export function ExamDetailPage() {
       )}
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-bold">問題一覧</h2>
+        <div className="flex items-baseline gap-3">
+          <h2 className="text-lg font-bold">問題一覧</h2>
+          <span className="text-sm font-semibold text-mp-muted">
+            合計 {exam.tasks.reduce((sum, t) => sum + t.points, 0)} 点
+          </span>
+        </div>
         <div className="flex flex-wrap gap-2">
           {exam.tasks.length > 0 && (
             <button
@@ -814,11 +819,28 @@ export function ExamDetailPage() {
                 </div>
                 <Link
                   to={`/teacher/exams/${exam.id}/tasks/${task.id}`}
-                  className="flex flex-1 items-center justify-between gap-2"
+                  className="flex flex-1 flex-wrap items-center justify-between gap-2"
                 >
-                  <span>
-                    {task.order + 1}. {task.title}
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>
+                      {task.order + 1}. {task.title}
+                    </span>
+                    <span className="rounded border border-mp-border bg-mp-bg px-1.5 py-0.5 text-xs text-mp-muted">
+                      {LANGUAGE_LABEL[task.language]}
+                    </span>
+                    <span className="text-xs text-mp-muted">
+                      テスト {task._count.testCases} 件
+                    </span>
+                    {task._count.solutions > 0 ? (
+                      <span className="rounded bg-mp-green/10 px-1.5 py-0.5 text-xs font-semibold text-mp-green">
+                        解答例あり
+                      </span>
+                    ) : (
+                      <span className="rounded border border-mp-border px-1.5 py-0.5 text-xs text-mp-muted">
+                        解答例なし
+                      </span>
+                    )}
+                  </div>
                   <span className="text-sm text-mp-muted">{task.points}点</span>
                 </Link>
                 <button

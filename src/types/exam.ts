@@ -24,6 +24,11 @@ export interface TaskSummary {
   order: number;
   title: string;
   points: number;
+  language: Language;
+  _count: {
+    testCases: number;
+    solutions: number;
+  };
 }
 
 export type ComparisonMode =
