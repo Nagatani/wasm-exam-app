@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { toPublicUser } from '../lib/publicUser';
 import { requireAuth, requireRole } from '../middleware/auth';
-import { isJudgeConfigured, judgeHealthy } from '../lib/judgeClient';
+import { checkJudgeHealth } from '../lib/judgeClient';
 import { clearIpRateLimit } from '../lib/loginRateLimit';
 
 export const adminRouter = Router();
@@ -16,12 +16,20 @@ adminRouter.get('/service-health', requireAuth, requireRole('TEACHER'), async (_
   } catch {
     db = 'error';
   }
-  const judge: 'ok' | 'error' | 'disabled' = !isJudgeConfigured()
+  const judgeHealth = await checkJudgeHealth();
+  const judge: 'ok' | 'error' | 'disabled' = !judgeHealth.configured
     ? 'disabled'
-    : (await judgeHealthy())
+    : judgeHealth.ok
       ? 'ok'
       : 'error';
-  res.json({ db, judge });
+  res.json({
+    db,
+    judge,
+    judgePool: {
+      healthy: judgeHealth.healthyCount,
+      total: judgeHealth.totalCount,
+    },
+  });
 });
 
 const promoteSchema = z.object({

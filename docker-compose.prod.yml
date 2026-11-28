@@ -70,9 +70,18 @@ services:
       # published port — keep this in sync if you ever rename the service
       # above. Anything set for JUDGE_URL in server/.env.prod.docker is
       # overridden by this.
+      # For horizontal scaling (multiple judge containers on `internal`), set
+      # JUDGE_URLS as a comma-separated list (e.g.
+      # JUDGE_URLS=http://judge:8080,http://judge-2:8080) and set
+      # JUDGE_CONCURRENCY to the sum of all judges' JUDGE_MAX_CONCURRENT.
+      # Sizing rule of thumb per judge container:
+      #   mem_limit ≈ 0.4g * JUDGE_MAX_CONCURRENT + 0.5g
+      #   pids_limit ≈ 256 * JUDGE_MAX_CONCURRENT
       JUDGE_URL: http://judge:8080
-      # Same value as the judge's JUDGE_MAX_CONCURRENT (above) — always in step.
-      JUDGE_CONCURRENCY: ${JUDGE_MAX_CONCURRENT:-2}
+      JUDGE_URLS: ${JUDGE_URLS:-}
+      # Same value as the judge's JUDGE_MAX_CONCURRENT (or total across all
+      # judges when using JUDGE_URLS) — always in step.
+      JUDGE_CONCURRENCY: ${JUDGE_CONCURRENCY:-${JUDGE_MAX_CONCURRENT:-2}}
     ports:
       - '4000:4000'
     volumes:
