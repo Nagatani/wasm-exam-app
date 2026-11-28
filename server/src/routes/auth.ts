@@ -163,7 +163,9 @@ authRouter.post('/change-password', requireAuth, async (req, res) => {
     res.status(401).json({ error: '現在のパスワードが正しくありません。' });
     return;
   }
-  if (await verifyPassword(newPassword, user.passwordHash)) {
+  // Since currentPassword already matched user.passwordHash, comparing strings
+  // directly avoids a redundant second scrypt invocation.
+  if (currentPassword === newPassword) {
     res.status(400).json({ error: '現在のパスワードと異なるパスワードを設定してください。' });
     return;
   }

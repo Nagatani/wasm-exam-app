@@ -82,6 +82,9 @@ services:
       # Same value as the judge's JUDGE_MAX_CONCURRENT (or total across all
       # judges when using JUDGE_URLS) — always in step.
       JUDGE_CONCURRENCY: ${JUDGE_CONCURRENCY:-${JUDGE_MAX_CONCURRENT:-2}}
+      # Libuv threadpool size for concurrent scrypt password hashing during
+      # classroom login/password-change rushes (overridable via env).
+      UV_THREADPOOL_SIZE: ${UV_THREADPOOL_SIZE:-16}
     ports:
       - '4000:4000'
     volumes:

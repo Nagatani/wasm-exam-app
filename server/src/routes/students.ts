@@ -29,6 +29,27 @@ const bulkSchema = z.object({
   courseId: z.string().nullable().optional(),
 });
 
+const BULK_HASH_CONCURRENCY = 6;
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const idx = nextIndex++;
+      if (idx >= items.length) return;
+      results[idx] = await fn(items[idx]!);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 // Bulk-provision student accounts from a roster. Each new account gets a random
 // initial password (returned once here, and re-viewable via the course roster
 // until the student changes it) and `mustChangePassword`. Existing
@@ -54,9 +75,9 @@ studentsRouter.post('/bulk', async (req, res) => {
   });
   const existingByNumber = new Map(existing.map((u) => [u.studentNumber, u.id]));
 
-  const created: { studentNumber: string; displayName: string; initialPassword: string }[] = [];
   const skipped: string[] = [];
   const targetUserIds: string[] = [];
+  const toCreate: { studentNumber: string; displayName: string; initialPassword: string }[] = [];
 
   for (const row of rows) {
     const existingId = existingByNumber.get(row.studentNumber);
@@ -65,25 +86,43 @@ studentsRouter.post('/bulk', async (req, res) => {
       targetUserIds.push(existingId);
       continue;
     }
-    const initialPassword = generateInitialPassword();
-    const user = await prisma.user.create({
-      data: {
-        studentNumber: row.studentNumber,
-        displayName: row.displayName,
-        passwordHash: await hashPassword(initialPassword),
-        role: 'STUDENT',
-        mustChangePassword: true,
-        initialPassword,
-      },
-      select: { id: true },
-    });
-    targetUserIds.push(user.id);
-    created.push({
+    toCreate.push({
       studentNumber: row.studentNumber,
       displayName: row.displayName,
-      initialPassword,
+      initialPassword: generateInitialPassword(),
     });
   }
+
+  const prepared = await mapWithConcurrency(
+    toCreate,
+    BULK_HASH_CONCURRENCY,
+    async (entry) => ({
+      ...entry,
+      passwordHash: await hashPassword(entry.initialPassword),
+    }),
+  );
+
+  if (prepared.length > 0) {
+    await prisma.user.createMany({
+      data: prepared.map((p) => ({
+        studentNumber: p.studentNumber,
+        displayName: p.displayName,
+        passwordHash: p.passwordHash,
+        role: 'STUDENT',
+        mustChangePassword: true,
+        initialPassword: p.initialPassword,
+      })),
+    });
+    if (parsed.data.courseId) {
+      const inserted = await prisma.user.findMany({
+        where: { studentNumber: { in: prepared.map((p) => p.studentNumber) } },
+        select: { id: true },
+      });
+      for (const u of inserted) targetUserIds.push(u.id);
+    }
+  }
+
+  const created = toCreate;
 
   let enrolled = 0;
   const courseId = parsed.data.courseId;

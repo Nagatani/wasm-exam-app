@@ -52,6 +52,9 @@ FROM node:22.12-alpine AS runtime
 RUN apk add --no-cache openssl
 WORKDIR /app
 ENV NODE_ENV=production
+# Increase libuv threadpool for concurrent scrypt password hashing (login /
+# first-time password change rushes) without starving fs/DNS operations.
+ENV UV_THREADPOOL_SIZE=16
 # Production-only deps, installed fresh here (not copied from server-build)
 # so devDependencies (tsx, typescript, prisma CLI, @types/*) never reach the
 # image.
