@@ -670,7 +670,7 @@ function StudentResultRowGroup({
                         {cell?.pasteCount !== null && cell?.pasteCount !== undefined && cell.pasteCount > 0 && (
                           <span
                             title={`打鍵数: ${cell.keystrokeCount} / 貼り付け回数: ${cell.pasteCount} / 貼り付け文字数: ${cell.pastedCharCount}`}
-                            className="ml-1 rounded bg-mp-orange/20 px-1 text-xs font-bold text-mp-orange"
+                            className="ml-1 rounded border border-mp-orange/40 bg-mp-orange/15 px-1 text-xs font-bold text-mp-fg"
                           >
                             📋{cell.pasteCount}
                           </span>

@@ -395,7 +395,7 @@ export function StudentTaskPage() {
                     isCurrent
                       ? 'bg-mp-cyan text-mp-btn-fg'
                       : isDrafted
-                        ? 'bg-mp-green/20 text-mp-green hover:bg-mp-green/30'
+                        ? 'bg-mp-green/10 text-mp-green hover:bg-mp-green/15'
                         : 'border border-mp-border text-mp-muted hover:bg-mp-surface-hover'
                   }`}
                 >

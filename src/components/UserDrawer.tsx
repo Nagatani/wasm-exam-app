@@ -85,7 +85,7 @@ export function UserDrawer({
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `block rounded px-3 py-2 text-sm ${
       isActive
-        ? 'bg-mp-cyan/15 font-bold text-mp-cyan'
+        ? 'bg-mp-cyan/10 font-bold text-mp-cyan'
         : 'text-mp-fg hover:bg-mp-surface-hover'
     }`;
 

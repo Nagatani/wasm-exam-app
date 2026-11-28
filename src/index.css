@@ -12,39 +12,40 @@
   --mp-surface: #403e41;
   --mp-surface-hover: #524f53;
   --mp-border: #5b595c;
-  --mp-muted: #939293;
+  --mp-border-strong: #8f8d91;
+  --mp-muted: #c4c2c4;
   --mp-fg: #fcfcfa;
-  /* Dark-theme accents are pastel/light (straight from Monokai Pro), so
-     near-black text reads best on top of a solid accent fill. */
+  /* Dark-theme accents are pastel/light (straight from Monokai Pro, with red
+     and purple nudged slightly lighter so normal text clears WCAG AA 4.5:1
+     even on --mp-surface), so near-black text reads best on top of a solid
+     accent fill. */
   --mp-btn-fg: #19181a;
-  --mp-red: #ff6188;
+  --mp-red: #ff85a3;
   --mp-orange: #fc9867;
   --mp-yellow: #ffd866;
   --mp-green: #a9dc76;
   --mp-cyan: #78dce8;
-  --mp-purple: #ab9df2;
+  --mp-purple: #b0a3f4;
 }
 
 [data-theme='light'] {
   --mp-bg: #fefaf9;
-  --mp-surface: #ede7e5;
-  --mp-surface-hover: #e0dad9;
+  --mp-surface: #f3eeec;
+  --mp-surface-hover: #e5dfdd;
   --mp-border: #d3cdcc;
-  --mp-muted: #706b6e;
+  --mp-border-strong: #8b8588;
+  --mp-muted: #5b5659;
   --mp-fg: #29242a;
   /* Light-theme accents are deliberately deeper than Monokai Pro Light's own
-     editor syntax colors (kept faithfully in runner/monacoThemes.ts) — a
-     straight reuse of those mid-tone hues as solid button fills reads flat
-     against a near-white page and gives poor contrast with any single text
-     color. Darkening ~20% (same hue/saturation) lets every button here use
-     white text confidently, so light mode doesn't just look like dark mode's
-     colors on a lighter page. */
+     editor syntax colors (kept faithfully in runner/monacoThemes.ts) — deepened
+     so every accent clears WCAG AA 4.5:1 on both --mp-bg and --mp-surface while
+     white button text (--mp-btn-fg) also stays well above 4.5:1. */
   --mp-btn-fg: #ffffff;
-  --mp-red: #cc2154;
-  --mp-orange: #c0471c;
-  --mp-yellow: #a36208;
-  --mp-green: #1e7e54;
-  --mp-cyan: #167086;
+  --mp-red: #be1a4b;
+  --mp-orange: #ad3d14;
+  --mp-yellow: #8a5204;
+  --mp-green: #176e47;
+  --mp-cyan: #13667a;
   --mp-purple: #553ea0;
 }
 
@@ -53,6 +54,7 @@
   --color-mp-surface: var(--mp-surface);
   --color-mp-surface-hover: var(--mp-surface-hover);
   --color-mp-border: var(--mp-border);
+  --color-mp-border-strong: var(--mp-border-strong);
   --color-mp-muted: var(--mp-muted);
   --color-mp-fg: var(--mp-fg);
   --color-mp-btn-fg: var(--mp-btn-fg);
@@ -68,6 +70,14 @@ body {
   margin: 0;
   background-color: var(--mp-bg);
   color: var(--mp-fg);
+}
+
+/* Form control boundaries need >= 3:1 contrast (WCAG 1.4.11); promote
+   standard border-mp-border inputs to --mp-border-strong when unfocused. */
+input.border-mp-border:not(:focus),
+select.border-mp-border:not(:focus),
+textarea.border-mp-border:not(:focus) {
+  border-color: var(--mp-border-strong);
 }
 
 /*

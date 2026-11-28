@@ -235,7 +235,7 @@ export function TaskBankPicker({ examId, onClose, onAdded }: TaskBankPickerProps
                       {LANGUAGE_LABEL[t.language]} ・ {t.points}点 ・ テスト{t.testCaseCount}件 ・{' '}
                       {t.mine ? '自分' : t.ownerName}（{t.examTitle}）
                       {t.isPublic && (
-                        <span className="ml-1 rounded bg-mp-cyan/20 px-1 text-mp-cyan">公開</span>
+                        <span className="ml-1 rounded bg-mp-cyan/10 px-1 text-mp-cyan">公開</span>
                       )}
                     </p>
                     {t.tags.length > 0 && (

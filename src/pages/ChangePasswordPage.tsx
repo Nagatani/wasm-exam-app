@@ -44,7 +44,7 @@ export function ChangePasswordPage() {
           <UserDrawer />
         </div>
         {forced && (
-          <p className="mb-4 rounded bg-mp-yellow/20 p-2 text-sm text-mp-yellow">
+          <p className="mb-4 rounded border border-mp-yellow/40 bg-mp-yellow/10 p-2 text-sm text-mp-yellow">
             初回ログインです。配布された初期パスワードを、自分だけが知るパスワードに変更してください。
           </p>
         )}

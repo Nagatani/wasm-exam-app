@@ -16,7 +16,7 @@ function withVisibleTrailing(line: string) {
   return (
     <>
       {line.slice(0, line.length - m[0].length)}
-      <span className="rounded bg-mp-yellow/30 text-mp-yellow" title="末尾の空白">
+      <span className="rounded bg-mp-yellow/25 text-mp-fg" title="末尾の空白">
         {'·'.repeat(m[0].length)}
       </span>
     </>
