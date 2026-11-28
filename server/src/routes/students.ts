@@ -5,6 +5,7 @@ import { hashPassword } from '../lib/password';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { generateInitialPassword } from '../lib/provisioning';
 import { clearLoginFailuresFor } from '../lib/loginRateLimit';
+import { invalidateSessionCacheForUser, revokeAllUserSessions } from '../lib/session';
 
 export const studentsRouter = Router();
 
@@ -145,6 +146,7 @@ studentsRouter.post('/reset-password', async (req, res) => {
       data: { revoked: true },
     }),
   ]);
+  invalidateSessionCacheForUser(target.id);
   clearLoginFailuresFor(target.studentNumber);
 
   res.json({
@@ -174,10 +176,7 @@ studentsRouter.post('/force-logout', async (req, res) => {
     return;
   }
 
-  const { count } = await prisma.session.updateMany({
-    where: { userId: target.id, revoked: false, expiresAt: { gt: new Date() } },
-    data: { revoked: true },
-  });
+  const count = await revokeAllUserSessions(target.id);
 
   res.json({ studentNumber: target.studentNumber, displayName: target.displayName, revoked: count });
 });

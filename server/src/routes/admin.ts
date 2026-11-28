@@ -5,6 +5,7 @@ import { toPublicUser } from '../lib/publicUser';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { checkJudgeHealth } from '../lib/judgeClient';
 import { clearIpRateLimit } from '../lib/loginRateLimit';
+import { invalidateSessionCacheForUser } from '../lib/session';
 
 export const adminRouter = Router();
 
@@ -61,6 +62,7 @@ adminRouter.post(
       where: { id: target.id },
       data: { role: 'TEACHER' },
     });
+    invalidateSessionCacheForUser(target.id);
 
     res.json({ user: toPublicUser(updated) });
   },

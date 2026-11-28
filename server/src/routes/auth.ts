@@ -7,6 +7,7 @@ import {
   SESSION_COOKIE_NAME,
   SESSION_COOKIE_MAX_AGE_MS,
   createSession,
+  invalidateSessionCacheForUser,
   revokeSessionByToken,
 } from '../lib/session';
 import { toPublicUser } from '../lib/publicUser';
@@ -173,5 +174,6 @@ authRouter.post('/change-password', requireAuth, async (req, res) => {
     // Clear the printed-credential fields once the student picks their own.
     data: { passwordHash, mustChangePassword: false, initialPassword: null },
   });
+  invalidateSessionCacheForUser(user.id);
   res.json({ ok: true });
 });

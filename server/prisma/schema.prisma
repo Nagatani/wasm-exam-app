@@ -167,6 +167,7 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([expiresAt])
   @@map("sessions")
 }
 
@@ -246,6 +247,7 @@ model ExamAttempt {
 
   @@unique([examId, studentId, attemptNumber])
   @@index([examId, studentId])
+  @@index([examId, status])
   @@map("exam_attempts")
 }
 
@@ -393,7 +395,9 @@ model Submission {
   attempt ExamAttempt? @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
   @@index([examId])
+  @@index([taskId])
   @@index([studentId])
+  @@index([examId, studentId])
   @@index([attemptId])
   @@map("submissions")
 }
