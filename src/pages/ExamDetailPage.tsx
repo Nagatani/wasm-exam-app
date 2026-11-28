@@ -827,8 +827,8 @@ export function ExamDetailPage() {
                     type="button"
                     onClick={() => reorderTasks(i, i - 1)}
                     disabled={i === 0}
-                    aria-label="上に移動"
-                    className="leading-none text-mp-muted hover:text-mp-fg disabled:opacity-30"
+                    aria-label={`問題 ${task.order + 1}「${task.title}」を上に移動`}
+                    className="inline-flex min-h-6 min-w-6 items-center justify-center leading-none text-mp-muted hover:text-mp-fg disabled:opacity-30"
                   >
                     ▲
                   </button>
@@ -836,8 +836,8 @@ export function ExamDetailPage() {
                     type="button"
                     onClick={() => reorderTasks(i, i + 1)}
                     disabled={i === exam.tasks.length - 1}
-                    aria-label="下に移動"
-                    className="leading-none text-mp-muted hover:text-mp-fg disabled:opacity-30"
+                    aria-label={`問題 ${task.order + 1}「${task.title}」を下に移動`}
+                    className="inline-flex min-h-6 min-w-6 items-center justify-center leading-none text-mp-muted hover:text-mp-fg disabled:opacity-30"
                   >
                     ▼
                   </button>
