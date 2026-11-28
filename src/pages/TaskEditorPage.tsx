@@ -40,7 +40,11 @@ import {
 import { runClientSide } from '../runner/clientRunner';
 import type { AiAssistApplyDraft } from '../components/AiAssistPanel';
 import { isAiAssistEnabled, onAiAssistSettingsChanged } from '../ai/aiAssistSettings';
-import { TestCaseRow, type TestCaseRowHandle } from '../components/TestCaseRow';
+import {
+  TestCaseRow,
+  type TestCaseDuplicatePayload,
+  type TestCaseRowHandle,
+} from '../components/TestCaseRow';
 import { SampleDiff } from '../components/SampleDiff';
 import { CodeEditor } from '../components/CodeEditor';
 import { BackHeader } from '../components/BackHeader';
@@ -156,6 +160,7 @@ export function TaskEditorPage() {
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [regrading, setRegrading] = useState(false);
   const [regradeMsg, setRegradeMsg] = useState<string | null>(null);
+  const [regradeConfirmOpen, setRegradeConfirmOpen] = useState(false);
   const [tcDragIndex, setTcDragIndex] = useState<number | null>(null);
   const [testCaseReorderError, setTestCaseReorderError] = useState<string | null>(null);
   // This page has three independently-saved sections (basic info / each test
@@ -425,15 +430,21 @@ export function TaskEditorPage() {
     }
   }
 
-  async function handleRegrade() {
+  async function handleDuplicateTestCase(payload: TestCaseDuplicatePayload) {
     if (!task) return;
-    if (
-      !confirm(
-        'この問題の既存の提出をすべて、現在のテストケース・比較設定で再採点します。提出の判定・得点が上書きされます。よろしいですか？',
-      )
-    ) {
-      return;
-    }
+    const { testCase } = await createTestCase(task.id, {
+      input: payload.input,
+      expectedOutput: payload.expectedOutput,
+      isSample: payload.isSample,
+      order: task.testCases.length,
+      timeLimitMs: payload.timeLimitMs,
+      memoryLimitMb: payload.memoryLimitMb,
+    });
+    setTask((prev) => (prev ? { ...prev, testCases: [...prev.testCases, testCase] } : prev));
+  }
+
+  async function executeRegrade() {
+    if (!task) return;
     setRegrading(true);
     setRegradeMsg(null);
     try {
@@ -1223,6 +1234,18 @@ export function TaskEditorPage() {
         onCancel={() => setDeleteConfirmOpen(false)}
       />
 
+      <ConfirmDialog
+        open={regradeConfirmOpen}
+        title="既存の提出を再採点"
+        message="この問題の既存の提出をすべて、現在のテストケース・比較設定で再採点します。提出の判定・得点が上書きされます。よろしいですか？"
+        confirmLabel="再採点する"
+        onConfirm={() => {
+          setRegradeConfirmOpen(false);
+          void executeRegrade();
+        }}
+        onCancel={() => setRegradeConfirmOpen(false)}
+      />
+
       <div className="mb-6">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -1233,7 +1256,8 @@ export function TaskEditorPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={handleRegrade}
+              type="button"
+              onClick={() => setRegradeConfirmOpen(true)}
               disabled={regrading}
               className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover disabled:opacity-50"
               title="現在のテストケース・比較設定で既存の提出を judge で再採点します（全言語。judge が必要）"
@@ -1288,6 +1312,7 @@ export function TaskEditorPage() {
             >
               <div className="mb-1 flex items-center gap-2 text-xs text-mp-muted">
                 <span
+                  aria-hidden="true"
                   className="cursor-grab select-none active:cursor-grabbing"
                   title="ドラッグして並び替え"
                 >
@@ -1297,8 +1322,8 @@ export function TaskEditorPage() {
                   type="button"
                   onClick={() => reorderTestCases(i, i - 1)}
                   disabled={i === 0}
-                  aria-label="上に移動"
-                  className="leading-none hover:text-mp-fg disabled:opacity-30"
+                  aria-label={`テストケース ${i + 1} を上に移動`}
+                  className="inline-flex min-h-6 min-w-6 items-center justify-center rounded border border-mp-border bg-mp-surface leading-none hover:bg-mp-surface-hover hover:text-mp-fg disabled:opacity-30"
                 >
                   ▲
                 </button>
@@ -1306,8 +1331,8 @@ export function TaskEditorPage() {
                   type="button"
                   onClick={() => reorderTestCases(i, i + 1)}
                   disabled={i === task.testCases.length - 1}
-                  aria-label="下に移動"
-                  className="leading-none hover:text-mp-fg disabled:opacity-30"
+                  aria-label={`テストケース ${i + 1} を下に移動`}
+                  className="inline-flex min-h-6 min-w-6 items-center justify-center rounded border border-mp-border bg-mp-surface leading-none hover:bg-mp-surface-hover hover:text-mp-fg disabled:opacity-30"
                 >
                   ▼
                 </button>
@@ -1334,6 +1359,7 @@ export function TaskEditorPage() {
                     prev ? { ...prev, testCases: prev.testCases.filter((t) => t.id !== id) } : prev,
                   )
                 }
+                onDuplicate={handleDuplicateTestCase}
                 onDirtyChange={(dirty) => handleTestCaseDirtyChange(tc.id, dirty)}
                 showLimits={showTestCaseLimits}
               />
