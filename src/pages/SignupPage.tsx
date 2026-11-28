@@ -72,6 +72,8 @@ export function SignupPage() {
           value={studentId}
           onChange={(e) => setStudentId(e.target.value)}
           autoComplete="username"
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? 'signup-error' : undefined}
           required
         />
 
@@ -82,6 +84,8 @@ export function SignupPage() {
           onChange={setPassword}
           autoComplete="new-password"
           minLength={8}
+          invalid={Boolean(error)}
+          describedBy={error ? 'signup-error' : undefined}
           required
         />
 
@@ -92,10 +96,16 @@ export function SignupPage() {
           onChange={setPasswordConfirm}
           autoComplete="new-password"
           minLength={8}
+          invalid={Boolean(error)}
+          describedBy={error ? 'signup-error' : undefined}
           required
         />
 
-        {error && <p className="mb-4 text-sm text-mp-red">{error}</p>}
+        {error && (
+          <p id="signup-error" role="alert" className="mb-4 text-sm text-mp-red">
+            {error}
+          </p>
+        )}
 
         <button
           type="submit"

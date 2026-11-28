@@ -60,6 +60,8 @@ export function LoginPage() {
           value={studentId}
           onChange={(e) => setStudentId(e.target.value)}
           autoComplete="username"
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? 'login-error' : undefined}
           required
         />
 
@@ -69,10 +71,16 @@ export function LoginPage() {
           value={password}
           onChange={setPassword}
           autoComplete="current-password"
+          invalid={Boolean(error)}
+          describedBy={error ? 'login-error' : undefined}
           required
         />
 
-        {error && <p className="mb-4 text-sm text-mp-red">{error}</p>}
+        {error && (
+          <p id="login-error" role="alert" className="mb-4 text-sm text-mp-red">
+            {error}
+          </p>
+        )}
 
         <button
           type="submit"

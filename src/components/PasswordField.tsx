@@ -8,6 +8,8 @@ interface PasswordFieldProps {
   autoComplete: string;
   minLength?: number;
   required?: boolean;
+  invalid?: boolean;
+  describedBy?: string;
 }
 
 /**
@@ -23,6 +25,8 @@ export function PasswordField({
   autoComplete,
   minLength,
   required,
+  invalid,
+  describedBy,
 }: PasswordFieldProps) {
   const [visible, setVisible] = useState(false);
 
@@ -41,6 +45,8 @@ export function PasswordField({
           autoComplete={autoComplete}
           minLength={minLength}
           required={required}
+          aria-invalid={invalid}
+          aria-describedby={describedBy}
         />
         <button
           type="button"

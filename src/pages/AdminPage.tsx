@@ -31,10 +31,17 @@ function Section({
   );
 }
 
-function MessageLine({ message }: { message: Message }) {
+function MessageLine({ id, message }: { id?: string; message: Message }) {
   if (!message) return null;
   return (
-    <p className={`mt-2 text-sm ${message.ok ? 'text-mp-green' : 'text-mp-red'}`}>{message.text}</p>
+    <p
+      id={id}
+      role={message.ok ? 'status' : 'alert'}
+      aria-live={message.ok ? 'polite' : undefined}
+      className={`mt-2 text-sm ${message.ok ? 'text-mp-green' : 'text-mp-red'}`}
+    >
+      {message.text}
+    </p>
   );
 }
 
@@ -59,7 +66,12 @@ function ServiceStatus() {
     state === 'ok' ? 'text-mp-green' : state === 'disabled' ? 'text-mp-muted' : 'text-mp-red';
   const word: Record<string, string> = { ok: '正常', error: '接続不可', disabled: '無効' };
 
-  if (failed) return <p className="text-sm text-mp-red">● サーバーに接続できません</p>;
+  if (failed)
+    return (
+      <p role="alert" className="text-sm text-mp-red">
+        ● サーバーに接続できません
+      </p>
+    );
   if (!health) return <p className="text-sm text-mp-muted">確認中...</p>;
   return (
     <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
@@ -75,11 +87,15 @@ function StudentNumberForm({
   id,
   submitLabel,
   submitting,
+  invalid,
+  errorId,
   onSubmit,
 }: {
   id: string;
   submitLabel: string;
   submitting: boolean;
+  invalid?: boolean;
+  errorId?: string;
   onSubmit: (studentNumber: string) => void;
 }) {
   const [studentNumber, setStudentNumber] = useState('');
@@ -101,6 +117,8 @@ function StudentNumberForm({
           className="rounded border border-mp-border bg-mp-bg px-3 py-1.5 text-sm text-mp-fg"
           value={studentNumber}
           onChange={(e) => setStudentNumber(e.target.value)}
+          aria-invalid={invalid}
+          aria-describedby={invalid && errorId ? errorId : undefined}
           required
         />
       </div>
@@ -142,9 +160,11 @@ function PromoteTeacher() {
         id="promote-sn"
         submitLabel="教員に昇格"
         submitting={submitting}
+        invalid={Boolean(message && !message.ok)}
+        errorId="promote-sn-message"
         onSubmit={setPending}
       />
-      <MessageLine message={message} />
+      <MessageLine id="promote-sn-message" message={message} />
       <ConfirmDialog
         open={pending !== null}
         title="教員に昇格"
@@ -193,9 +213,11 @@ function ForceLogout() {
         id="logout-sn"
         submitLabel="ログアウトさせる"
         submitting={submitting}
+        invalid={Boolean(message && !message.ok)}
+        errorId="logout-sn-message"
         onSubmit={setPending}
       />
-      <MessageLine message={message} />
+      <MessageLine id="logout-sn-message" message={message} />
       <ConfirmDialog
         open={pending !== null}
         title="ログアウトさせる"
@@ -243,9 +265,11 @@ function ResetPassword() {
         id="reset-sn"
         submitLabel="パスワードを再発行"
         submitting={submitting}
+        invalid={Boolean(message && !message.ok)}
+        errorId="reset-sn-message"
         onSubmit={setPending}
       />
-      <MessageLine message={message} />
+      <MessageLine id="reset-sn-message" message={message} />
       {issued && (
         <div className="mt-3 rounded border border-mp-green/50 bg-mp-green/10 p-3 text-sm">
           <p>
@@ -323,6 +347,8 @@ function ClearIpLockout() {
             placeholder="例: 203.0.113.10"
             value={ipInput}
             onChange={(e) => setIpInput(e.target.value)}
+            aria-invalid={Boolean(message && !message.ok)}
+            aria-describedby={message && !message.ok ? 'clear-ip-message' : undefined}
           />
         </div>
         <button
@@ -333,7 +359,7 @@ function ClearIpLockout() {
           {submitting ? '処理中...' : 'IP ロックを解除'}
         </button>
       </form>
-      <MessageLine message={message} />
+      <MessageLine id="clear-ip-message" message={message} />
       <ConfirmDialog
         open={confirmOpen}
         title="IP ログインロックの解除"

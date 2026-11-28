@@ -56,6 +56,8 @@ export function ChangePasswordPage() {
             value={current}
             onChange={setCurrent}
             autoComplete="current-password"
+            invalid={Boolean(error)}
+            describedBy={error ? 'change-password-error' : undefined}
             required
           />
           <PasswordField
@@ -65,6 +67,8 @@ export function ChangePasswordPage() {
             onChange={setNext}
             autoComplete="new-password"
             minLength={8}
+            invalid={Boolean(error)}
+            describedBy={error ? 'change-password-error' : undefined}
             required
           />
           <PasswordField
@@ -74,10 +78,16 @@ export function ChangePasswordPage() {
             onChange={setConfirm}
             autoComplete="new-password"
             minLength={8}
+            invalid={Boolean(error)}
+            describedBy={error ? 'change-password-error' : undefined}
             required
           />
 
-          {error && <p className="mb-3 text-sm text-mp-red">{error}</p>}
+          {error && (
+            <p id="change-password-error" role="alert" className="mb-3 text-sm text-mp-red">
+              {error}
+            </p>
+          )}
 
           <button
             type="submit"

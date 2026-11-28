@@ -95,7 +95,11 @@ export function CoursesPage() {
         />
       )}
 
-      {error && <p className="mb-4 text-sm text-mp-red">{error}</p>}
+      {error && (
+        <p role="alert" className="mb-4 text-sm text-mp-red">
+          {error}
+        </p>
+      )}
 
       {courses === null ? (
         <SkeletonRows />
@@ -168,6 +172,8 @@ function CreateCourseForm({ onCreated }: { onCreated: () => void }) {
         className="mb-3 w-full rounded border border-mp-border bg-mp-bg px-3 py-2 text-mp-fg"
         value={name}
         onChange={(e) => setName(e.target.value)}
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? 'create-course-error' : undefined}
         required
       />
       <label className="mb-1 block text-sm text-mp-muted" htmlFor="course-term">
@@ -179,8 +185,14 @@ function CreateCourseForm({ onCreated }: { onCreated: () => void }) {
         placeholder="2026 前期 など"
         value={term}
         onChange={(e) => setTerm(e.target.value)}
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? 'create-course-error' : undefined}
       />
-      {error && <p className="mb-3 text-sm text-mp-red">{error}</p>}
+      {error && (
+        <p id="create-course-error" role="alert" className="mb-3 text-sm text-mp-red">
+          {error}
+        </p>
+      )}
       <button
         type="submit"
         disabled={submitting}
@@ -334,8 +346,16 @@ function CourseRosterPanel({
 
   return (
     <div className="border-t border-mp-border bg-mp-bg px-4 py-3">
-      {error && <p className="mb-2 text-sm text-mp-red">{error}</p>}
-      {resetNotice && <p className="mb-2 text-sm text-mp-green">{resetNotice}</p>}
+      {error && (
+        <p id={`course-roster-error-${courseId}`} role="alert" className="mb-2 text-sm text-mp-red">
+          {error}
+        </p>
+      )}
+      {resetNotice && (
+        <p role="status" aria-live="polite" className="mb-2 text-sm text-mp-green">
+          {resetNotice}
+        </p>
+      )}
       {detail === null ? (
         <p className="text-sm text-mp-muted">読み込み中...</p>
       ) : (
@@ -399,21 +419,31 @@ function CourseRosterPanel({
           </div>
 
           <div className="rounded-lg border border-l-4 border-mp-border border-l-mp-cyan bg-mp-bg p-2">
-            <p className="mb-1 text-xs font-bold text-mp-cyan">
+            <label
+              htmlFor={`acct-roster-${courseId}`}
+              className="mb-1 block text-xs font-bold text-mp-cyan"
+            >
               新規：生徒アカウントを一括作成
-            </p>
-            <p className="mb-1 text-xs text-mp-muted">
+            </label>
+            <p id={`acct-roster-help-${courseId}`} className="mb-1 text-xs text-mp-muted">
               1行に「学籍番号,氏名」、CSV可。既存の学籍番号はスキップされます。作成後、初期パスワード一覧が印刷用に開きます
             </p>
             <div className="mb-1">
               <FileLoadButton onLoaded={(loaded) => setAcctText(loaded)} />
             </div>
             <textarea
+              id={`acct-roster-${courseId}`}
               rows={4}
               className="w-full rounded border border-mp-border bg-mp-surface px-2 py-1 font-mono text-sm text-mp-fg"
               placeholder={'s2600001,山田 太郎\ns2600002,佐藤 花子'}
               value={acctText}
               onChange={(e) => setAcctText(e.target.value)}
+              aria-invalid={Boolean(error)}
+              aria-describedby={
+                error
+                  ? `acct-roster-help-${courseId} course-roster-error-${courseId}`
+                  : `acct-roster-help-${courseId}`
+              }
             />
             <div className="mt-1 flex items-center gap-2">
               <button
@@ -438,20 +468,30 @@ function CourseRosterPanel({
           </div>
 
           <div className="rounded-lg border border-l-4 border-mp-border border-l-mp-green bg-mp-bg p-2">
-            <p className="mb-1 text-xs font-bold text-mp-green">
+            <label
+              htmlFor={`enroll-roster-${courseId}`}
+              className="mb-1 block text-xs font-bold text-mp-green"
+            >
               既存：学籍番号を追加
-            </p>
-            <p className="mb-1 text-xs text-mp-muted">
+            </label>
+            <p id={`enroll-roster-help-${courseId}`} className="mb-1 text-xs text-mp-muted">
               1行ずつ、またはCSVを貼り付け（各行の先頭列を学籍番号として読みます）。既にアカウントがある生徒をこのクラスに登録します
             </p>
             <div className="mb-1">
               <FileLoadButton onLoaded={(loaded) => setRosterText(loaded)} />
             </div>
             <textarea
+              id={`enroll-roster-${courseId}`}
               rows={4}
               className="w-full rounded border border-mp-border bg-mp-surface px-2 py-1 font-mono text-sm text-mp-fg"
               value={rosterText}
               onChange={(e) => setRosterText(e.target.value)}
+              aria-invalid={Boolean(error)}
+              aria-describedby={
+                error
+                  ? `enroll-roster-help-${courseId} course-roster-error-${courseId}`
+                  : `enroll-roster-help-${courseId}`
+              }
             />
             <div className="mt-1 flex items-center gap-2">
               <button
