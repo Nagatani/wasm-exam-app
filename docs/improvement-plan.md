@@ -119,7 +119,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     3. ティントバッジは背景透明度を下げる（`/10`）か文字色を `--mp-fg` に変更する。フォーム入力欄枠線用に 3.0:1 以上を満たす `--mp-border-strong` を導入する。
   - **完了条件**: ダーク・ライト両テーマで通常テキストおよびティントバッジが ≥ 4.5:1、フォーム入力枠線が ≥ 3.0:1 を満たすことをコントラスト計算ツールで確認し、既存ソリッドボタンの適合（≥ 4.5:1）を維持していること。
 
-- [ ] **A4. 実行結果・エラー・タイマー警告・採点完了のライブリージョン（`aria-live` / `role="alert"`）整備**
+- [x] **A4. 実行結果・エラー・タイマー警告・採点完了のライブリージョン（`aria-live` / `role="alert"`）整備**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 中
   - **対象ファイル**: `src/pages/StudentTaskPage.tsx`（L355-365, L425-429, L509-517, L529-571）、`src/pages/PracticeTaskPage.tsx`（L456-498）、`src/pages/StudentExamFinishedPage.tsx`（L319）、`src/pages/LoginPage.tsx`（L75）、`src/pages/SignupPage.tsx`（L98）、`src/pages/ChangePasswordPage.tsx`（L80）、`src/pages/TeacherDashboard.tsx`（L84, L343）、`src/pages/ExamDetailPage.tsx`（L393, L514）、`src/pages/TaskEditorPage.tsx`（L530, L796, L838, L843-847, L917-919）、`src/pages/ExamResultsPage.tsx`（L251, L506, L702）、`src/components/TaskBankPicker.tsx`（L228-229, L293-294）
   - **現状の課題・根拠**:
@@ -133,7 +133,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     3. `StudentTaskPage` に 5 分前・1 分前・時間切れの閾値到達時のみ文言を更新する `sr-only` の `role="alert"` 要素を追加する。
   - **完了条件**: 実行結果・エラー・保存完了・タイマー閾値・採点完了の各イベントで、DOM 上のライブリージョンが正しく更新され、過剰な毎秒読み上げが発生しないこと。
 
-- [ ] **A5. カスタムルーターのページ遷移時フォーカス管理・タイトル更新・ランドマーク・見出し階層整備**
+- [x] **A5. カスタムルーターのページ遷移時フォーカス管理・タイトル更新・ランドマーク・見出し階層整備**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 中
   - **対象ファイル**: `src/lib/router.tsx`（L45-68）、`src/App.tsx`、`index.html`（L7）、`src/components/BackHeader.tsx`（L20）、`src/components/MarkdownBody.tsx`（L71）、`src/pages/ExamDetailPage.tsx`、`src/pages/TaskEditorPage.tsx`、その他全 Page コンポーネント（15 ページ）
   - **現状の課題・根拠**:
@@ -149,7 +149,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
 
 ### 優先度：中
 
-- [ ] **A6. フォームのラベル未紐付け・`aria-describedby` / `aria-invalid` 整備**
+- [x] **A6. フォームのラベル未紐付け・`aria-describedby` / `aria-invalid` 整備**
   - **優先度**: 中 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 小
   - **対象ファイル**: `src/components/TestCaseRow.tsx`（L91, L100, L112, L131）、`src/pages/ExamResultsPage.tsx`（L300, L492）、`src/components/AiAssistPanel.tsx`（L186）、`src/pages/TaskEditorPage.tsx`（L826, L1048）、`src/pages/LoginPage.tsx`、`src/pages/SignupPage.tsx`、`src/pages/ChangePasswordPage.tsx`
   - **現状の課題・根拠**:
@@ -162,7 +162,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     3. 認証フォームのエラー表示に `id` を振り、入力欄へ `aria-invalid={Boolean(error)}` と `aria-describedby` を設定する。
   - **完了条件**: 対象画面の全フォームコントロールがアクセシブルネームを持ち、エラー時に `aria-invalid` と `aria-describedby` で説明が関連付けられること。
 
-- [ ] **A7. Monaco エディタ（`CodeEditor.tsx`）の Tab キートラップ案内と `ariaLabel` 設定**
+- [x] **A7. Monaco エディタ（`CodeEditor.tsx`）の Tab キートラップ案内と `ariaLabel` 設定**
   - **優先度**: 中 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 小
   - **対象ファイル**: `src/components/CodeEditor.tsx`（L139-148, L265）、`src/pages/TaskEditorPage.tsx`（L830, L1224）、`src/pages/StudentTaskPage.tsx`（L465）、`src/pages/PracticeTaskPage.tsx`（L406）
   - **現状の課題・根拠**:
@@ -171,14 +171,14 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
   - **具体的な作業内容**: `CodeEditorProps` に `ariaLabel?: string` を追加して `monaco.editor.create(..., { ariaLabel, accessibilitySupport: 'auto' })` を設定し、エディタヘッダまたは `sr-only` に Tab 脱出ショートカット案内を追加、`loadError` に `role="alert"` を付与する。
   - **完了条件**: 各エディタが固有の `ariaLabel` を持ち、Tab 脱出案内が表示／読み上げ可能で、ロードエラーに `role="alert"` が付いていること。
 
-- [ ] **A8. 結果テーブルのセマンティクス整備（`scope` / `<caption>` / `aria-sort` / 空 `<th>`）**
+- [x] **A8. 結果テーブルのセマンティクス整備（`scope` / `<caption>` / `aria-sort` / 空 `<th>`）**
   - **優先度**: 中 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 小
   - **対象ファイル**: `src/pages/ExamResultsPage.tsx`（L339, L342, L436-447, L566, L644）、`src/pages/PracticeStatsPage.tsx`（L262）、`src/pages/StudentExamFinishedPage.tsx`（L205, L328）
   - **現状の課題・根拠**: 全テーブルで `scope="col"` と `<caption>`（または `aria-label`）が未設定。`ExamResultsPage` は展開ボタン列の `<th>` が空、`SortHeader` の `<th>` に `aria-sort` が無く、行展開ボタンが全員同じ `aria-label="設問別の詳細を開く"` で対象者が判別しづらい。
   - **具体的な作業内容**: 全テーブルヘッダに `scope="col"`、各テーブルに `<caption className="sr-only">...</caption>`、空 `<th>` に `<span className="sr-only">詳細</span>`、`SortHeader` の `<th>` に `aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}`、展開ボタンに `${student.displayName}の設問別の詳細を${expanded ? '閉じる' : '開く'}` を設定する。
   - **完了条件**: 全結果テーブルで `scope="col"`・`<caption>`・`aria-sort`・対象者名入り展開ラベルが正しく出力されること。
 
-- [ ] **A9. フォーカスリングの視認性確保（`focus:outline-none` 撤廃）と `prefers-reduced-motion` 対応**
+- [x] **A9. フォーカスリングの視認性確保（`focus:outline-none` 撤廃）と `prefers-reduced-motion` 対応**
   - **優先度**: 中 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 小
   - **対象ファイル**: `src/index.css`（L241-244）、`src/pages/LoginPage.tsx`（L59）、`src/pages/SignupPage.tsx`（L71）、`src/components/PasswordField.tsx`（L38）、`src/components/Skeleton.tsx`（L8）、`src/components/UserDrawer.tsx`（L163）
   - **現状の課題・根拠**:
@@ -187,7 +187,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
   - **具体的な作業内容**: `src/index.css` に `:focus-visible { outline: 2px solid var(--mp-cyan); outline-offset: 2px; }` と `@media (prefers-reduced-motion: reduce)` を定義し、認証フォームの `focus:outline-none` を撤廃、`UserDrawer` / `Skeleton` に `motion-reduce:transition-none` / `motion-reduce:animate-none` を付与する。
   - **完了条件**: 全インタラクティブ要素で `:focus-visible` が視認でき、OS のモーション軽減設定有効時にスライド・点滅・不定プログレスのアニメーションが停止／簡略化されること。
 
-- [ ] **A10. `HelpPopover` の ARIA 構造改善とタップターゲットサイズ確保（WCAG 2.5.8）**
+- [x] **A10. `HelpPopover` の ARIA 構造改善とタップターゲットサイズ確保（WCAG 2.5.8）**
   - **優先度**: 中 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 小
   - **対象ファイル**: `src/components/HelpPopover.tsx`（L40-56）、`src/pages/ExamDetailPage.tsx`（L539-556）、`src/pages/TaskEditorPage.tsx`（L954-971）
   - **現状の課題・根拠**:
@@ -280,7 +280,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
 
 ### 優先度：中
 
-- [ ] **P6. `StudentExamFinishedPage` の 2 秒ポーリング集中緩和・待ち順可視化・SSE 化**（関連：`A4`）
+- [x] **P6. `StudentExamFinishedPage` の 2 秒ポーリング集中緩和・待ち順可視化・SSE 化**（関連：`A4`）
   - **優先度**: 中 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 小（短期）／ 中（SSE）
   - **対象ファイル**: `src/pages/StudentExamFinishedPage.tsx`、`server/src/routes/student.ts`、`server/src/lib/grading.ts`
   - **現状の課題・根拠**:
@@ -290,7 +290,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     2. **中期**: `GET /api/student/exams/:examId/result/stream`（SSE）を追加し、`gradeAttempt` 完了イベントで即時プッシュする（定常ポーリング 50 req/s → 0 req/s）。
   - **完了条件**: 採点待ち画面に待ち順が表示され、ポーリング負荷が削減されること（SSE 導入時は完了通知が即時反映され、切断時はポーリングへフォールバックすること）。
 
-- [ ] **P7. ログイン・初回パスワード変更ラッシュ時の `scrypt` 最適化と `UV_THREADPOOL_SIZE` 引き上げ**
+- [x] **P7. ログイン・初回パスワード変更ラッシュ時の `scrypt` 最適化と `UV_THREADPOOL_SIZE` 引き上げ**
   - **優先度**: 中 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 小
   - **対象ファイル**: `server/Dockerfile`、`docker-compose.prod.yml`、`server/src/routes/auth.ts`（L161-170）、`server/src/routes/students.ts`
   - **現状の課題・根拠**:
@@ -301,7 +301,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     3. `students.ts` の `/bulk` の直列 `for` ループ内 `hashPassword` を並列制限付き（concurrency 4〜8）に改善する。
   - **完了条件**: `/change-password` の既存挙動を維持したまま `scrypt` 呼び出しが 2 回に減り、`/bulk` の 100 人一括登録が並列化されていること。
 
-- [ ] **P8. Java プレビュー突発負荷の保護と `regrade` の非同期バックグラウンド化**
+- [x] **P8. Java プレビュー突発負荷の保護と `regrade` の非同期バックグラウンド化**
   - **優先度**: 中 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 中
   - **対象ファイル**: `server/src/lib/executionQueue.ts`、`server/src/routes/tasks.ts`、`server/src/routes/student.ts`、`server/src/routes/practice.ts`
   - **現状の課題・根拠**:
@@ -312,7 +312,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     2. `regrade` を `withJudgeCapacity`（background 優先）＋非同期ジョブ化し、進捗／完了をステータス API で確認できるようにする。
   - **完了条件**: クライアント切断時に待機中ジョブがキューから離脱すること、`regrade` 実行中も生徒の Java プレビューが優先実行され HTTP タイムアウトしないこと。
 
-- [ ] **P9. 静的アセット配信のキャッシュ・圧縮設定と Pyodide 自前配信オプション整備**（関連：`L9`）
+- [x] **P9. 静的アセット配信のキャッシュ・圧縮設定と Pyodide 自前配信オプション整備**（関連：`L9`）
   - **優先度**: 中 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 小
   - **対象ファイル**: `server/src/app.ts`、`docs/operations.md`、`docker-compose.prod.yml`（任意オプション）
   - **現状の課題・根拠**:
@@ -378,7 +378,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     2. 新規 `GET /api/exams/:examId/verification-bundle` で全問題の `testCases`＋該当言語の `solution` を一括取得し、`ExamDetailPage` に **「全問題の解答例を一括検証」** ボタンを追加（C/JS/TS/Python はブラウザ `runClientSide`、Java は `check-solution` で順次検証し問題ごとの AC/WA/CE/未登録・最大実行時間を一覧表示）。
   - **完了条件**: 拡張した `publish-check` の全検査項目が統合テストで検証され、`ExamDetailPage` から全問題の解答例検証結果と問題編集リンクを確認できること。
 
-- [ ] **T4. 下書き（DRAFT）状態のまま使える「生徒画面プレビュー」導線**
+- [x] **T4. 下書き（DRAFT）状態のまま使える「生徒画面プレビュー」導線**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 中
   - **対象ファイル**: `src/pages/TaskEditorPage.tsx`、`src/pages/ExamDetailPage.tsx`、`src/App.tsx`、新規プレビュー用モーダルまたは `src/pages/TeacherTaskPreviewPage.tsx`、`docs/teacher-guide.md`（L282 更新）
   - **現状の課題・根拠**: 現状は講師が手動で `/student/...` を開く必要があり、`student.ts` / `practice.ts` が `status: 'PUBLISHED'` でフィルタしているため **DRAFT 状態の試験は生徒画面でプレビューできない**。また試験モードで誤って最終提出すると講師自身の受験記録が残る。
@@ -394,14 +394,14 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
 
 ### 優先度：中
 
-- [ ] **T6. 試験単位のポータブル JSON エクスポート／インポート**
+- [x] **T6. 試験単位のポータブル JSON エクスポート／インポート**
   - **優先度**: 中 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 中
   - **対象ファイル**: `server/src/lib/taskPortable.ts`（L7-9 参照）、`server/src/routes/exams.ts`、`src/pages/ExamDetailPage.tsx`、`src/pages/TeacherDashboard.tsx`
   - **現状の課題・根拠**: `wasm-exam-task/v1` は単一問題単位のみで、別サーバー・別年度環境へ試験一式を移行するには 1 問ずつエクスポート→インポートする必要がある。
   - **具体的な作業内容**: `GET /api/exams/:examId/export`（試験メタデータ＋全問題配列、`wasm-exam/v1` 形式）と `POST /api/exams/import`（常に `DRAFT`・スケジュール未設定で新規試験作成、`isPublic: false`）を追加。`ExamDetailPage` に「試験をエクスポート」、`TeacherDashboard` に「JSON から試験をインポート」を配置し、`/uploads/` 画像参照がある場合は注意メッセージを表示する。
   - **完了条件**: 試験のエクスポート→別試験としてのインポートで全問題・テストケース・解答例が復元され、常に `DRAFT` で作成されることを統合テストで確認できる。
 
-- [ ] **T7. `TaskBankPicker` の強化（問題文プレビュー・複数選択一括追加・検索／タグ補完／ソート改善）**
+- [x] **T7. `TaskBankPicker` の強化（問題文プレビュー・複数選択一括追加・検索／タグ補完／ソート改善）**
   - **優先度**: 中 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 中
   - **対象ファイル**: `src/components/TaskBankPicker.tsx`、`server/src/routes/taskBank.ts`（L43）、`src/api/taskBank.ts`
   - **現状の課題・根拠**: 一覧から問題文・コードを確認せずに追加するしかなく、追加も 1 問ずつ。検索 `q` が `title` のみで `statementMarkdown` を対象外としており、既存の `GET /api/task-bank/tags` も未接続、ソート不可。
@@ -411,21 +411,21 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     3. `taskBank.ts` の `q` 検索に `statementMarkdown` を含め、タグ入力に `GET /api/task-bank/tags` 連動の `<datalist>` 補完とソート（新着順／タイトル順／配点順）を追加する。
   - **完了条件**: モーダルを閉じずにプレビュー確認・複数件一括追加・本文キーワード検索・タグ補完・並び替えが動作すること。
 
-- [ ] **T8. テストケース一括インポートの拡充（CSV/TSV/JSON 対応・追加前プレビュー）＆ エクスポート**
+- [x] **T8. テストケース一括インポートの拡充（CSV/TSV/JSON 対応・追加前プレビュー）＆ エクスポート**
   - **優先度**: 中 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 小〜中
   - **対象ファイル**: `src/pages/TaskEditorPage.tsx`（`BulkTestCasePanel` L1026-1065）、`src/lib/bulkTestCases.ts`、`src/lib/bulkTestCases.test.ts`
   - **現状の課題・根拠**: 独自書式（`===` / `---` / `@sample`）のみで追加前パースプレビューが無く、テストケース単体のエクスポートも無い。
   - **具体的な作業内容**: 入力欄下にリアルタイムのパース結果プレビュー（`N 件を認識（うちサンプル M 件）`＋先頭数件の表表示）を追加。CSV / TSV（スプレッドシート貼り付け：`input,expectedOutput,isSample`）および JSON 形式のタブ／自動判定と、既存テストケースの同形式エクスポートボタンを追加する。
   - **完了条件**: 独自書式・CSV/TSV・JSON のパーサおよびエクスポートがユニットテストでカバーされ、UI 上で登録前に認識件数と内容を確認できること。
 
-- [ ] **T9. `ExamDetailPage` 問題一覧の情報充実 ＆ 合計配点表示**
+- [x] **T9. `ExamDetailPage` 問題一覧の情報充実 ＆ 合計配点表示**
   - **優先度**: 中 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 小
   - **対象ファイル**: `server/src/routes/exams.ts`（L324）、`src/pages/ExamDetailPage.tsx`、`src/types/exam.ts`
   - **現状の課題・根拠**: `GET /api/exams/:examId` が `{ id, order, title, points }` のみ返却しており、問題一覧で言語・テストケース数・解答例有無・試験全体の合計配点が分からない。
   - **具体的な作業内容**: `GET /api/exams/:examId` の select に `language` と `_count: { select: { testCases: true, solutions: true } }` を追加し、`ExamDetailPage` に合計配点（例：`合計 100 点`）および各問題行に言語バッジ・テスト件数・解答例登録済みバッジを表示する。
   - **完了条件**: `ExamDetailPage` 上で試験合計配点と各問題の言語・テスト件数・解答例有無が一覧確認できること。
 
-- [ ] **T10. テストケース行の操作性向上（複製・折りたたみ・バッジ・`ConfirmDialog` 統一・誤記修正）**（関連：`A1`, `A12`）
+- [x] **T10. テストケース行の操作性向上（複製・折りたたみ・バッジ・`ConfirmDialog` 統一・誤記修正）**（関連：`A1`, `A12`）
   - **優先度**: 中 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 小
   - **対象ファイル**: `src/components/TestCaseRow.tsx`（L82, L152）、`src/pages/TaskEditorPage.tsx`（L324）
   - **現状の課題・根拠**: テストケースの複製ボタン・折りたたみが無く件数増加で縦長になる。削除確認（`TestCaseRow.tsx:82`）と再採点確認（`TaskEditorPage.tsx:324`）が `window.confirm` のまま。また `TestCaseRow.tsx:152` の説明文が「Java・C（再採点）にのみ適用されます」と実態（Java のみ）とズレている。
@@ -483,7 +483,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
 
 ### 4-2. 講師向け活用（作問・品質向上・授業振り返り支援）
 
-- [ ] **L3. 既存問題の強化モード（エッジケース入力追加・問題文の曖昧さチェック・スターターコード生成）＆ プレビュー改善**
+- [x] **L3. 既存問題の強化モード（エッジケース入力追加・問題文の曖昧さチェック・スターターコード生成）＆ プレビュー改善**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 中
   - **対象ファイル**: `src/components/AiAssistPanel.tsx`（L224-233）、`src/pages/TaskEditorPage.tsx`（L738-745）、`src/ai/aiAssist.ts`
   - **現状の課題・根拠**: 現状は「白紙からの一括下書き生成」のみで既存の問題文・テストケース・解答例を受け取れない。またプレビューが問題文とテスト件数のみで、コードや各テスト入出力を確認せず即 `bulkCreateTestCases` 永続化されてしまう。
@@ -513,7 +513,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
 
 ### 4-3. 生徒向け活用（演習モード `PRACTICE` 限定）
 
-- [ ] **L6. エラーメッセージのかみ砕き解説（CE / RE 翻訳）**
+- [x] **L6. エラーメッセージのかみ砕き解説（CE / RE 翻訳）**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 小
   - **対象ファイル**: `src/pages/PracticeTaskPage.tsx`、`src/ai/aiHintContext.ts`、`src/ai/aiHintContext.test.ts`、`src/ai/aiHint.ts`、`src/components/HintPanel.tsx`
   - **現状の課題・根拠**: `aiHintContext.ts`（L41-47）では `CE` 時の `compileStderr` がステージ 2 まで隠されており、clang / javac / Python traceback の英語エラーの意味が分からない初学者でもいきなり「疑わしい箇所（ヒント 2）」を開かざるを得ない。一方、エラー文自体の日本語解説は 3B モデルの答え漏れリスクが構造的に極めて低い。
@@ -523,7 +523,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     3. `StudentTaskPage.tsx`（`EXAM` モード）には一切追加しない。
   - **完了条件**: `aiHintContext.test.ts` で問題文・非公開テストが含まれないことを検証し、`PRACTICE` モードのみでストリーミング解説が動作すること。
 
-- [ ] **L7. AC 後のコードレビュー（ネタバレリスク 0 の学習支援）**
+- [x] **L7. AC 後のコードレビュー（ネタバレリスク 0 の学習支援）**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 2 ／ **工数目安**: 小
   - **対象ファイル**: `src/pages/PracticeTaskPage.tsx`、`src/components/HintPanel.tsx`（L46, L84）、`src/ai/aiHintContext.ts`、`src/ai/aiHintContext.test.ts`、`src/ai/aiHint.ts`
   - **現状の課題・根拠**: `HintPanel` は `verdict.overallStatus !== 'AC'` のときしか機能せず、AC を取った瞬間に役割を終える。AC 後なら答え漏れリスクがゼロであり、3B モデルでも安全かつ教育効果が高い（可読性・変数名・冗長な分岐・計算量・境界条件の気づき）。
