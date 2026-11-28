@@ -198,14 +198,14 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
 
 ### 優先度：低
 
-- [ ] **A11. トグルボタン群の `aria-pressed` / `role="group"` 統一と装飾記号の `aria-hidden`**
+- [x] **A11. トグルボタン群の `aria-pressed` / `role="group"` 統一と装飾記号の `aria-hidden`**
   - **優先度**: 低 ／ **推奨フェーズ**: Phase 3 ／ **工数目安**: 小
   - **対象ファイル**: `src/pages/ExamResultsPage.tsx`（L247, L307-327, L675）、`src/pages/TaskEditorPage.tsx`（L772-793, L952）、`src/components/ThemeToggle.tsx`（L13）、`src/pages/ExamDetailPage.tsx`（L536）、`src/pages/StudentTaskPage.tsx`（L402）、`src/components/HintPanel.tsx`（L83）
   - **現状の課題・根拠**: `ExamResultsPage`（絞り込み）と `TaskEditorPage`（編集／分割／プレビュー）に `role="group"`・`aria-pressed` が無い。`☀️`/`🌙`・`⠿`・`✎`・`📄`/`📋`・`🤖` 等の装飾記号に `aria-hidden="true"` が無く不要な読み上げが起き、`ThemeToggle` に `aria-label` が無い。
   - **具体的な作業内容**: トグルボタン群に `role="group" aria-label="..."` と `aria-pressed` を付与し、装飾記号を `<span aria-hidden="true">` で囲み、`ThemeToggle` に `aria-label={theme === 'dark' ? 'ライトモードに切り替え' : 'ダークモードに切り替え'}` を追加する。
   - **完了条件**: 全トグルボタン群で押下状態が `aria-pressed` で伝わり、装飾記号が SR 読み上げ対象から除外されていること。
 
-- [ ] **A12. 残存しているネイティブ `window.confirm` の `ConfirmDialog` 化**（関連：`A1`, `T10`）
+- [x] **A12. 残存しているネイティブ `window.confirm` の `ConfirmDialog` 化**（関連：`A1`, `T10`）
   - **優先度**: 低 ／ **推奨フェーズ**: Phase 3 ／ **工数目安**: 小〜中
   - **対象ファイル**: `src/pages/StudentTaskPage.tsx`（L270）、`src/pages/PracticeTaskPage.tsx`（L250, L258）（※作問側の `src/components/TestCaseRow.tsx:82`・`src/pages/TaskEditorPage.tsx:324` は `T10` で対応）
   - **現状の課題・根拠**: 生徒画面のコードリセット等でネイティブ `window.confirm` が残存しており、他画面の `ConfirmDialog` と操作感・フォーカス挙動が不統一。
@@ -325,7 +325,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
 
 ### 優先度：低
 
-- [ ] **P10. 運用メトリクス可視化（`service-health` 拡張）と負荷テストの現実化**（関連：`P3`）
+- [x] **P10. 運用メトリクス可視化（`service-health` 拡張）と負荷テストの現実化**（関連：`P3`）
   - **優先度**: 低 ／ **推奨フェーズ**: Phase 3 ／ **工数目安**: 小〜中
   - **対象ファイル**: `server/src/lib/executionQueue.ts`、`server/src/lib/grading.ts`、`server/src/lib/judgeClient.ts`、`server/src/routes/admin.ts`、`src/pages/AdminPage.tsx`、`server/scripts/loadtest-grading.ts`
   - **現状の課題・根拠**:
@@ -434,14 +434,14 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
 
 ### 優先度：低
 
-- [ ] **T11. 初学者向けプログラミング問題の定型テンプレート（非 AI・即時利用）**
+- [x] **T11. 初学者向けプログラミング問題の定型テンプレート（非 AI・即時利用）**
   - **優先度**: 低 ／ **推奨フェーズ**: Phase 3 ／ **工数目安**: 小
   - **対象ファイル**: `src/pages/TaskEditorPage.tsx`、新規 `src/lib/taskTemplates.ts`
   - **現状の課題・根拠**: 新規問題作成時は空の問題文＋最小スケルトンのみ。AI 作問サポートは WebGPU＋約 2.5GB モデルのオプトインが必要で、誰でも即座には使えない。
   - **具体的な作業内容**: 問題文が空のとき（または「テンプレートから作成」メニュー）に、初学者向け定番パターン（単一入力と計算／N 個の整数配列／条件分岐／文字列処理／浮動小数点計算）の定型セット（Markdown 骨子【問題】【入力形式】【出力形式】【制約】＋言語別入力読み取り済み `starterCode`＋境界値テスト入力ひな形）を即時挿入できるようにする。
   - **完了条件**: 5 言語それぞれで定型テンプレートを 1 クリック挿入でき、AI 未有効環境でも即座に作問を開始できること。
 
-- [ ] **T12. 初期テンプレート ⇔ 解答例コードのクイックコピー ＆ 境界値チェックリスト**
+- [x] **T12. 初期テンプレート ⇔ 解答例コードのクイックコピー ＆ 境界値チェックリスト**
   - **優先度**: 低 ／ **推奨フェーズ**: Phase 3 ／ **工数目安**: 小
   - **対象ファイル**: `src/pages/TaskEditorPage.tsx`（`SolutionEditor`、テストケース追加エリア）
   - **現状の課題・根拠**: `SolutionEditor` が初期状態で空のため毎回 `starterCode` を手動コピペする必要がある。境界値テストの抜け漏れ防止ガイドも無い。
@@ -495,7 +495,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     2. プレビュー画面でテストケース一覧（入力＋検証済み期待出力）とコードを確認・個別選択してから反映できるようにする。
   - **完了条件**: 既存問題に対して 3 モードが動作し、エッジケースの期待値が必ず実実行から生成され、選択したケースのみ反映されること。
 
-- [ ] **L4. 試験・演習のつまずき傾向サマリー（100% ブラウザ内・個人情報保護）**
+- [x] **L4. 試験・演習のつまずき傾向サマリー（100% ブラウザ内・個人情報保護）**
   - **優先度**: 高 ／ **推奨フェーズ**: Phase 3 ／ **工数目安**: 中
   - **対象ファイル**: `server/src/routes/exams.ts`（または新規ルート）、`src/pages/ExamResultsPage.tsx`、`src/pages/PracticeStatsPage.tsx`、新規 `src/ai/aiErrorSummary.ts`、新規 lazy パネル `src/components/ErrorSummaryPanel.tsx`
   - **現状の課題・根拠**: 成績／演習状況画面では正答率バーと個別提出閲覧のみで、クラス全体の誤答・コンパイルエラー傾向を把握するには 1 人ずつ展開が必要。外部 LLM API 送信は学内インフラ制約に反する。
@@ -504,7 +504,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     2. `ExamResultsPage` / `PracticeStatsPage` の問題別行に `isAiAssistEnabled()` 時のみ「つまずき傾向を分析」ボタンを配置（`React.lazy`）。クライアント側でコード切り詰め＋正規化ハッシュによる重複クラスタリング後に WebLLM へ渡し、「よくある誤答パターン上位 3〜5 件」「次回講義の補足ポイント」を要約する。
   - **完了条件**: API レスポンスに個人識別情報が一切含まれないことを統合テストで保証し、ブラウザ内完結で要約が出力されること。
 
-- [ ] **L5. 類題・バリエーション生成（再試験・別クラス向け）**
+- [x] **L5. 類題・バリエーション生成（再試験・別クラス向け）**
   - **優先度**: 中 ／ **推奨フェーズ**: Phase 3 ／ **工数目安**: 小〜中
   - **対象ファイル**: `src/components/AiAssistPanel.tsx`、`src/ai/aiAssist.ts`
   - **現状の課題・根拠**: 再試験や別クラス出題では複製後に手作業で題材・条件・数値を書き換えている。
@@ -532,7 +532,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     2. 純粋関数 `buildPostAcReviewContext` に `language`・`statementMarkdown`・生徒の AC コードのみを渡し（非公開テスト入出力は一切渡さないことを `aiHintContext.test.ts` で保証）、「良い点 1 つ」「改善のヒント 1〜2 点」をストリーミング出力する。
   - **完了条件**: 非公開テスト秘匿テストがパスし、`PRACTICE` モードの AC 後にのみコードレビューが実行できること。
 
-- [ ] **L8. 解放済みヒントに対する 1 問 1 答フォローアップ質問 ＋ 5 言語対応 `looksLikeCode` 強化**
+- [x] **L8. 解放済みヒントに対する 1 問 1 答フォローアップ質問 ＋ 5 言語対応 `looksLikeCode` 強化**
   - **優先度**: 中 ／ **推奨フェーズ**: Phase 3 ／ **工数目安**: 小〜中
   - **対象ファイル**: `src/components/HintPanel.tsx`、`src/ai/aiHintContext.ts`（L79-80）、`src/ai/aiHintContext.test.ts`、`src/ai/aiHint.ts`
   - **現状の課題・根拠**:
@@ -557,7 +557,7 @@ WCAG 2.1 / 2.2 AA 準拠を基準としたフロントエンド監査結果に�
     3. `CSP_MODE=enforce` 下で Chrome / Edge 実機検証を行い、不足オリジンがあれば `server/src/lib/csp.ts` を更新（あわせて Java `check-solution` 経路も実機確認し `docs/roadmap.md` の該当項目をクローズ）。
   - **完了条件**: `CSP_MODE=enforce` 環境で CSP 違反ゼロのまま WebLLM モデル取得・推論および AI 作問の Java 期待値検証が動作し、学内ミラー設定手順が整備されていること。
 
-- [ ] **L10. 構造化出力の信頼性向上と解答例コンパイル失敗時の自動リカバリ**
+- [x] **L10. 構造化出力の信頼性向上と解答例コンパイル失敗時の自動リカバリ**
   - **優先度**: 中 ／ **推奨フェーズ**: Phase 3 ／ **工数目安**: 小
   - **対象ファイル**: `src/ai/aiAssist.ts`（L167-186）、`src/components/AiAssistPanel.tsx`（L115-119）、新規 `src/ai/structuredJson.ts`
   - **現状の課題・根拠**: `generateTaskDraft` は `max_tokens` 未設定で長文暴走リスクがあり、JSON パース失敗や解答例コンパイル失敗時に即エラー終了してユーザーに最初からやり直させている。
