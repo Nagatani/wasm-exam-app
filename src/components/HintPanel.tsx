@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { generateHint, HINT_STAGE_LABEL, type HintStage } from '../ai/aiHint';
 import { explainErrorStream, hasExplainableError } from '../ai/aiErrorExplain';
+import { reviewAcCodeStream } from '../ai/aiCodeReview';
 import { interruptGenerate, isGenerationAbortedError } from '../ai/webllmEngine';
 import type { PracticeTask } from '../types/practice';
 import type { JudgeVerdict } from '../types/student';
@@ -8,8 +9,9 @@ import type { JudgeVerdict } from '../types/student';
 const STAGES: HintStage[] = [1, 2, 3];
 
 /**
- * Staged AI hint & error-explanation panel for a practice-mode task
- * (PracticeTaskPage). Strictly PRACTICE mode only — never mounted in EXAM mode.
+ * Staged AI hint, error-explanation (L6), and post-AC code review (L7) panel
+ * for a practice-mode task (PracticeTaskPage). Strictly PRACTICE mode only —
+ * never mounted in EXAM mode.
  *
  * PracticeTaskPage only mounts this (lazily) once it has confirmed both the
  * task's teacher-set `aiHintEnabled` flag and this browser's student opt-in
@@ -20,11 +22,13 @@ export function HintPanel({
   code,
   verdict,
   compileStderr,
+  isAc,
 }: {
   task: PracticeTask;
   code: string;
   verdict: JudgeVerdict | null;
   compileStderr: string | null;
+  isAc?: boolean;
 }) {
   const visibleStages = STAGES.filter((s) => s <= task.aiHintMaxStage);
   const [unlockedStage, setUnlockedStage] = useState<0 | 1 | 2 | 3>(0);
@@ -40,11 +44,17 @@ export function HintPanel({
   const [errorExplanation, setErrorExplanation] = useState<string | null>(null);
   const [errorExplainStreamText, setErrorExplainStreamText] = useState('');
 
+  // Post-AC code review (L7)
+  const [reviewingCode, setReviewingCode] = useState(false);
+  const [codeReview, setCodeReview] = useState<string | null>(null);
+  const [codeReviewStreamText, setCodeReviewStreamText] = useState('');
+
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  const ac = isAc ?? verdict?.overallStatus === 'AC';
   const hasFailedRun = verdict !== null && verdict.overallStatus !== 'AC';
   const showErrorExplain = hasExplainableError(verdict, compileStderr);
-  const busy = loadingStage !== null || explainingError;
+  const busy = loadingStage !== null || explainingError || reviewingCode;
 
   function isStageAvailable(stage: HintStage): boolean {
     if (stage === 1) return hasFailedRun;
@@ -146,9 +156,91 @@ export function HintPanel({
     }
   }
 
+  async function handleCodeReview() {
+    if (!ac) return;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setError(null);
+    setAbortedMessage(null);
+    setReviewingCode(true);
+    setCodeReview(null);
+    setCodeReviewStreamText('');
+    setProgressText('');
+    try {
+      const text = await reviewAcCodeStream(
+        {
+          language: task.language,
+          statementMarkdown: task.statementMarkdown,
+          code,
+        },
+        {
+          onProgress: (report) => setProgressText(report.text),
+          onDelta: (textSoFar) => {
+            setProgressText('');
+            setCodeReviewStreamText(textSoFar);
+          },
+          signal: controller.signal,
+        },
+      );
+      setCodeReview(text);
+    } catch (err) {
+      if (isGenerationAbortedError(err)) {
+        setAbortedMessage('コードレビューの生成を中断しました。');
+      } else {
+        setError(err instanceof Error ? err.message : 'コードレビューの生成に失敗しました。');
+      }
+    } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+      setReviewingCode(false);
+      setCodeReviewStreamText('');
+      setProgressText('');
+    }
+  }
+
   return (
     <div className="rounded border border-mp-border bg-mp-bg p-3">
       <p className="mb-2 text-xs font-bold text-mp-muted">🤖 AI学習サポート</p>
+
+      {ac && (
+        <div className="mb-3 border-b border-mp-border pb-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleCodeReview()}
+              disabled={busy}
+              className="flex-1 rounded border border-mp-green/60 bg-mp-surface px-3 py-1.5 text-left text-xs font-bold text-mp-fg hover:bg-mp-surface-hover disabled:opacity-40"
+            >
+              {reviewingCode ? 'レビューを生成中...' : '✨ AC 後のコードレビュー'}
+            </button>
+            {reviewingCode && (
+              <button
+                type="button"
+                onClick={handleAbort}
+                className="rounded border border-mp-red/50 bg-mp-surface px-2.5 py-1.5 text-xs font-bold text-mp-red hover:bg-mp-red hover:text-mp-btn-fg"
+              >
+                中断
+              </button>
+            )}
+          </div>
+          {reviewingCode && progressText && (
+            <p className="mt-1 text-xs text-mp-muted">{progressText}</p>
+          )}
+          {reviewingCode && codeReviewStreamText && (
+            <div className="mt-2 rounded border border-mp-green/40 bg-mp-green/5 p-2 text-xs">
+              <p className="mb-1 font-bold text-mp-green">AC 後のコードレビュー（生成中）</p>
+              <p className="whitespace-pre-wrap text-mp-fg">{codeReviewStreamText}</p>
+            </div>
+          )}
+          {!reviewingCode && codeReview && (
+            <div className="mt-2 rounded border border-mp-green/40 bg-mp-green/5 p-2 text-xs">
+              <p className="mb-1 font-bold text-mp-green">AC 後のコードレビュー</p>
+              <p className="whitespace-pre-wrap text-mp-fg">{codeReview}</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {showErrorExplain && (
         <div className="mb-3 border-b border-mp-border pb-3">
@@ -189,7 +281,7 @@ export function HintPanel({
         </div>
       )}
 
-      {!hasFailedRun && (
+      {!hasFailedRun && !ac && (
         <p className="mb-2 text-xs text-mp-muted">
           まずは「実行」して結果を確認してから、ヒントを利用できます。
         </p>
@@ -249,7 +341,7 @@ export function HintPanel({
 }
 
 // Default export so PracticeTaskPage can `React.lazy()` this — it (and
-// @mlc-ai/web-llm underneath it, via ../ai/aiHint / ../ai/aiErrorExplain →
-// ../ai/webllmEngine) is several MB of JS that shouldn't land in the shared
-// main bundle just from opening a practice task page.
+// @mlc-ai/web-llm underneath it, via ../ai/aiHint / ../ai/aiErrorExplain /
+// ../ai/aiCodeReview → ../ai/webllmEngine) is several MB of JS that shouldn't
+// land in the shared main bundle just from opening a practice task page.
 export default HintPanel;

@@ -543,6 +543,7 @@ export function PracticeTaskPage() {
                 code={code}
                 verdict={verdict}
                 compileStderr={compileError}
+                isAc={verdict?.overallStatus === 'AC'}
               />
             </Suspense>
           )}
