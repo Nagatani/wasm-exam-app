@@ -49,6 +49,8 @@ export interface MonacoEditorOptions {
   scrollBeyondLastLine?: boolean;
   automaticLayout?: boolean;
   readOnly?: boolean;
+  ariaLabel?: string;
+  accessibilitySupport?: 'auto' | 'off' | 'on';
 }
 
 export interface MonacoCreateOptions extends MonacoEditorOptions {

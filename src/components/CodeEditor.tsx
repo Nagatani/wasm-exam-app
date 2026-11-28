@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useTheme } from '../contexts/useTheme';
 import {
   loadMonaco,
@@ -44,7 +44,19 @@ interface CodeEditorProps {
   // Squiggly diagnostics to overlay (e.g. parsed compile-error locations).
   // Replaces any previously set ones each render; pass [] to clear.
   markers?: EditorMarker[];
+  // Accessible name for the editor region and Monaco's internal textarea.
+  // Defaults to `${language} コードエディタ`.
+  ariaLabel?: string;
 }
+
+const LANGUAGE_DISPLAY: Record<NonNullable<CodeEditorProps['language']>, string> = {
+  c: 'C',
+  java: 'Java',
+  javascript: 'JavaScript',
+  typescript: 'TypeScript',
+  python: 'Python',
+  plaintext: 'テキスト',
+};
 
 // Modifier keys fire their own onKeyDown when pressed alone (e.g. tapping
 // Ctrl before Ctrl+V) — excluded so they don't inflate the keystroke count.
@@ -94,9 +106,12 @@ export function CodeEditor({
   onCmdEnter,
   onCmdS,
   markers,
+  ariaLabel,
 }: CodeEditorProps) {
   const { theme } = useTheme();
   const themeName = theme === 'dark' ? MONACO_DARK_THEME_NAME : MONACO_LIGHT_THEME_NAME;
+  const hintId = useId();
+  const resolvedAriaLabel = ariaLabel ?? `${LANGUAGE_DISPLAY[language]} コードエディタ`;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<MonacoStandaloneEditor | null>(null);
@@ -110,6 +125,7 @@ export function CodeEditor({
     themeName,
     readOnly,
     markers,
+    resolvedAriaLabel,
     onChange,
     onKeystroke,
     onPasteText,
@@ -124,6 +140,7 @@ export function CodeEditor({
       themeName,
       readOnly,
       markers,
+      resolvedAriaLabel,
       onChange,
       onKeystroke,
       onPasteText,
@@ -151,6 +168,8 @@ export function CodeEditor({
           scrollBeyondLastLine: false,
           automaticLayout: true,
           readOnly: latest.readOnly,
+          ariaLabel: latest.resolvedAriaLabel,
+          accessibilitySupport: 'auto',
         });
 
         editorRef.current = editor;
@@ -267,6 +286,10 @@ export function CodeEditor({
   }, [readOnly]);
 
   useEffect(() => {
+    editorRef.current?.updateOptions({ ariaLabel: resolvedAriaLabel });
+  }, [resolvedAriaLabel]);
+
+  useEffect(() => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
     if (editor && monaco) {
@@ -277,9 +300,15 @@ export function CodeEditor({
   const heightStyle = typeof height === 'number' ? `${height}px` : height;
 
   return (
-    <div className="overflow-hidden rounded border border-mp-border">
+    <div
+      role="region"
+      aria-label={resolvedAriaLabel}
+      aria-describedby={hintId}
+      className="overflow-hidden rounded border border-mp-border"
+    >
       {loadError ? (
         <div
+          role="alert"
           style={{ height: heightStyle }}
           className="flex items-center justify-center bg-mp-bg p-4 text-sm text-mp-red"
         >
@@ -288,6 +317,13 @@ export function CodeEditor({
       ) : (
         <div ref={containerRef} style={{ height: heightStyle }} />
       )}
+      <p
+        id={hintId}
+        className="border-t border-mp-border bg-mp-surface px-2 py-1 text-[11px] text-mp-muted"
+      >
+        キーボード操作: <kbd className="font-mono">Ctrl+M</kbd>（macOS:{' '}
+        <kbd className="font-mono">Control+Shift+M</kbd>）で Tab キーによるフォーカス移動を切り替え
+      </p>
     </div>
   );
 }
