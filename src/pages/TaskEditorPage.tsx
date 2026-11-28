@@ -2,6 +2,7 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useId,
   useImperativeHandle,
   useRef,
   useState,
@@ -159,6 +160,11 @@ export function TaskEditorPage() {
   const [showBulk, setShowBulk] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkInsertSnippet, setBulkInsertSnippet] = useState<{ seq: number; text: string } | null>(
+    null,
+  );
+  const [boundaryBusy, setBoundaryBusy] = useState(false);
+  const [boundaryFeedback, setBoundaryFeedback] = useState<string | null>(null);
   const [regrading, setRegrading] = useState(false);
   const [regradeMsg, setRegradeMsg] = useState<string | null>(null);
   const [regradeConfirmOpen, setRegradeConfirmOpen] = useState(false);
@@ -462,6 +468,34 @@ export function TaskEditorPage() {
       order: task.testCases.length,
     });
     setTask((prev) => (prev ? { ...prev, testCases: [...prev.testCases, testCase] } : prev));
+  }
+
+  async function handleQuickAddBoundaryCase(label: string, sampleInput: string) {
+    if (!task || boundaryBusy) return;
+    setBoundaryBusy(true);
+    setBoundaryFeedback(null);
+    try {
+      const { testCase } = await createTestCase(task.id, {
+        input: sampleInput,
+        expectedOutput: '',
+        isSample: false,
+        order: task.testCases.length,
+      });
+      setTask((prev) => (prev ? { ...prev, testCases: [...prev.testCases, testCase] } : prev));
+      setBoundaryFeedback(`境界値「${label}」のテストケースを追加しました（期待値は空）。`);
+    } catch (err) {
+      setBoundaryFeedback(
+        err instanceof ApiError ? err.message : '境界値テストケースの追加に失敗しました。',
+      );
+    } finally {
+      setBoundaryBusy(false);
+    }
+  }
+
+  function handleInsertBoundaryToBulk(label: string, sampleInput: string) {
+    setShowBulk(true);
+    setBulkInsertSnippet((prev) => ({ seq: (prev?.seq ?? 0) + 1, text: sampleInput }));
+    setBoundaryFeedback(`境界値「${label}」を一括追加欄に挿入しました。`);
   }
 
   // Drag-and-drop / ▲▼ reordering for the test case list — same pattern as
@@ -1400,7 +1434,12 @@ export function TaskEditorPage() {
               各行は「このテストケースを保存」で個別に保存されます（基本情報とは別）。
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <BoundaryChecklistPopover
+              busy={boundaryBusy}
+              onAddCase={handleQuickAddBoundaryCase}
+              onInsertBulk={handleInsertBoundaryToBulk}
+            />
             <button
               type="button"
               onClick={() => setRegradeConfirmOpen(true)}
@@ -1424,6 +1463,11 @@ export function TaskEditorPage() {
             </button>
           </div>
         </div>
+        {boundaryFeedback && (
+          <p className="mb-2 text-xs text-mp-cyan" role="status" aria-live="polite">
+            {boundaryFeedback}
+          </p>
+        )}
         {regradeMsg && <p className="mb-2 text-sm text-mp-cyan">{regradeMsg}</p>}
         {testCaseReorderError && (
           <p className="mb-2 text-sm text-mp-red">{testCaseReorderError}</p>
@@ -1435,6 +1479,7 @@ export function TaskEditorPage() {
             error={bulkError}
             existingCases={task.testCases}
             taskTitle={task.title}
+            insertSnippet={bulkInsertSnippet}
             onImport={handleBulkImport}
           />
         )}
@@ -1519,6 +1564,7 @@ export function TaskEditorPage() {
         key={`${task.id}-${task.language}-${aiApplyCounter}`}
         taskId={task.id}
         language={task.language}
+        starterCode={task.starterCode ?? ''}
         initialCode={aiSolutionOverride ?? findSolution(task, task.language)}
         initialSavedCode={findSolution(task, task.language)}
         canCheck={task.testCases.length > 0}
@@ -1546,6 +1592,161 @@ export function TaskEditorPage() {
   );
 }
 
+interface BoundaryChecklistItem {
+  id: string;
+  label: string;
+  hint: string;
+  sampleInput: string;
+}
+
+const BOUNDARY_CHECKLIST_ITEMS: readonly BoundaryChecklistItem[] = [
+  {
+    id: 'zero',
+    label: '0（ゼロ）',
+    hint: 'ゼロ除算・符号判定・初期値 0 の抜け漏れ確認',
+    sampleInput: '0',
+  },
+  {
+    id: 'negative',
+    label: '負数',
+    hint: '負の入力・負の剰余・絶対値処理の確認',
+    sampleInput: '-1',
+  },
+  {
+    id: 'minmax',
+    label: '最小・最大値',
+    hint: '制約の下限・上限、オーバーフローやループ端の確認',
+    sampleInput: '10000',
+  },
+  {
+    id: 'single',
+    label: '単一要素',
+    hint: 'N = 1 の配列や1文字文字列でループが正しく動くか確認',
+    sampleInput: '1\n0',
+  },
+  {
+    id: 'whitespace',
+    label: '空行・末尾空白',
+    hint: '行末スペースや余分な改行による読み取り・比較ズレの確認',
+    sampleInput: 'hello   ',
+  },
+  {
+    id: 'float',
+    label: '浮動小数点誤差',
+    hint: '割り切れない小数（1/3 など）と誤差許容（FLOAT）の確認',
+    sampleInput: '1 3',
+  },
+];
+
+function BoundaryChecklistPopover({
+  busy,
+  onAddCase,
+  onInsertBulk,
+}: {
+  busy: boolean;
+  onAddCase: (label: string, sampleInput: string) => void;
+  onInsertBulk: (label: string, sampleInput: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const popoverId = useId();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    }
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={popoverId}
+        className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover"
+      >
+        境界値チェックリスト
+      </button>
+      {open && (
+        <div
+          id={popoverId}
+          role="region"
+          aria-label="境界値チェックリスト"
+          className="absolute right-0 top-full z-30 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-mp-border bg-mp-surface p-3 text-xs text-mp-fg shadow-xl sm:w-96"
+        >
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="font-bold text-mp-fg">境界値チェックリスト</span>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                triggerRef.current?.focus();
+              }}
+              className="text-xs text-mp-cyan hover:underline"
+            >
+              閉じる
+            </button>
+          </div>
+          <p className="mb-2 text-mp-muted">
+            抜け漏れやすい代表的な境界条件です。1クリックで入力ひな形をテストケースや一括追加欄へ挿入できます。
+          </p>
+          <ul className="space-y-2">
+            {BOUNDARY_CHECKLIST_ITEMS.map((item) => (
+              <li
+                key={item.id}
+                className="rounded border border-mp-border bg-mp-bg p-2"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-1">
+                  <span className="font-bold text-mp-fg">{item.label}</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => onAddCase(item.label, item.sampleInput)}
+                      className="rounded border border-mp-border bg-mp-surface px-1.5 py-0.5 text-[11px] font-semibold hover:bg-mp-surface-hover disabled:opacity-50"
+                    >
+                      + ケース追加
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onInsertBulk(item.label, item.sampleInput);
+                        setOpen(false);
+                      }}
+                      className="rounded border border-mp-border bg-mp-surface px-1.5 py-0.5 text-[11px] font-semibold text-mp-cyan hover:bg-mp-surface-hover"
+                    >
+                      一括欄へ挿入
+                    </button>
+                  </div>
+                </div>
+                <p className="mt-0.5 text-[11px] text-mp-muted">{item.hint}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 type BulkFormat = 'standard' | 'csv' | 'json';
 
 function downloadTextFile(filename: string, content: string, mimeType: string) {
@@ -1565,16 +1766,28 @@ function BulkTestCasePanel({
   error,
   existingCases,
   taskTitle,
+  insertSnippet,
   onImport,
 }: {
   busy: boolean;
   error: string | null;
   existingCases: TestCase[];
   taskTitle: string;
+  insertSnippet?: { seq: number; text: string } | null;
   onImport: (cases: BulkTestCase[]) => void;
 }) {
   const [format, setFormat] = useState<BulkFormat>('standard');
   const [text, setText] = useState('');
+  const lastSnippetSeqRef = useRef(0);
+
+  useEffect(() => {
+    if (!insertSnippet || insertSnippet.seq === lastSnippetSeqRef.current) return;
+    lastSnippetSeqRef.current = insertSnippet.seq;
+    setFormat('standard');
+    setText((prev) =>
+      prev.trim() === '' ? insertSnippet.text : `${prev.trimEnd()}\n===\n${insertSnippet.text}`,
+    );
+  }, [insertSnippet]);
 
   const placeholderByFormat: Record<BulkFormat, string> = {
     standard: `3\n---\n6\n===\n@sample\n10\n---\n20`,
@@ -1939,6 +2152,7 @@ function SolutionEditor({
   ref,
   taskId,
   language,
+  starterCode,
   initialCode,
   initialSavedCode,
   canCheck,
@@ -1951,6 +2165,7 @@ function SolutionEditor({
   ref?: Ref<SolutionEditorHandle>;
   taskId: string;
   language: Language;
+  starterCode: string;
   initialCode: string;
   // The actual last-persisted solution, when it differs from `initialCode`
   // (e.g. an AiAssistPanel apply seeds `initialCode` with a not-yet-saved
@@ -1973,6 +2188,7 @@ function SolutionEditor({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [copyConfirmOpen, setCopyConfirmOpen] = useState(false);
 
   const dirty = code !== savedCode;
 
@@ -2011,13 +2227,48 @@ function SolutionEditor({
     void saveSolution().catch(() => {});
   }
 
+  function handleRequestCopyStarter() {
+    if (starterCode.trim() === '') return;
+    if (code.trim() !== '') {
+      setCopyConfirmOpen(true);
+    } else {
+      setCode(starterCode);
+    }
+  }
+
   const trimmed = code.trim();
 
   return (
     <div className="mb-4 rounded-lg border border-mp-border bg-mp-surface p-4">
-      <h3 className="mb-2 text-sm font-bold text-mp-muted">
-        解答例コード（{LANGUAGE_LABEL[language]}） — 生徒には非公開
-      </h3>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-bold text-mp-muted">
+          解答例コード（{LANGUAGE_LABEL[language]}） — 生徒には非公開
+        </h3>
+        <button
+          type="button"
+          onClick={handleRequestCopyStarter}
+          disabled={starterCode.trim() === ''}
+          title={
+            starterCode.trim() === ''
+              ? '初期テンプレートコードが空です'
+              : '基本情報の初期テンプレートコードを解答例エディタへコピーします'
+          }
+          className="rounded border border-mp-border bg-mp-bg px-2.5 py-1 text-xs font-semibold hover:bg-mp-surface-hover disabled:opacity-50"
+        >
+          初期テンプレートをコピー
+        </button>
+      </div>
+      <ConfirmDialog
+        open={copyConfirmOpen}
+        title="初期テンプレートをコピー"
+        message="現在の解答例コードを上書きして、初期テンプレートコードをコピーします。よろしいですか？"
+        confirmLabel="上書きしてコピー"
+        onConfirm={() => {
+          setCopyConfirmOpen(false);
+          setCode(starterCode);
+        }}
+        onCancel={() => setCopyConfirmOpen(false)}
+      />
       <div className="mb-2">
         <CodeEditor
           value={code}
