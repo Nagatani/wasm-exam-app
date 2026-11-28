@@ -6,7 +6,13 @@ import { requireAuth, requireRole } from '../middleware/auth';
 import { languageSchema, parseLanguageParam } from '../lib/language';
 import { isRegradeCapable, isServerExec, judgeInputFromContainer, judgeLanguage } from '../lib/attempts';
 import { isJudgeConfigured, runOnJudge, JudgeError } from '../lib/judgeClient';
-import { withJudgeSlot, QueueRejectedError } from '../lib/executionQueue';
+import {
+  withJudgeCapacity,
+  withJudgeSlot,
+  QueueAbortedError,
+  QueueRejectedError,
+} from '../lib/executionQueue';
+import { attachRequestAbort } from '../lib/execution';
 import { judgeSubmission } from '../lib/judge';
 import { PORTABLE_TASK_FORMAT } from '../lib/taskPortable';
 
@@ -203,10 +209,19 @@ tasksRouter.post('/:taskId/check-solution', async (req, res) => {
         memoryLimitMb: tc.memoryLimitMb,
       }));
 
+  const { signal, cleanup } = attachRequestAbort(req, res);
   let jr;
   try {
-    jr = await withJudgeSlot(req.user!.id, () => runOnJudge({ code: parsed.data.code, tests }));
+    jr = await withJudgeSlot(
+      req.user!.id,
+      () => runOnJudge({ code: parsed.data.code, tests }),
+      { signal },
+    );
   } catch (err) {
+    if (err instanceof QueueAbortedError) {
+      if (!res.writableEnded) res.status(499).json({ error: err.message });
+      return;
+    }
     if (err instanceof QueueRejectedError) {
       res.status(429).json({ error: err.message });
       return;
@@ -216,6 +231,8 @@ tasksRouter.post('/:taskId/check-solution', async (req, res) => {
       return;
     }
     throw err;
+  } finally {
+    cleanup();
   }
 
   if (!jr.compile.ok) {
@@ -355,7 +372,8 @@ tasksRouter.post('/:taskId/regrade', async (req, res) => {
   for (const sub of submissions) {
     let jr;
     try {
-      jr = await withJudgeSlot(req.user!.id, () => runOnJudge({ language, code: sub.code, tests }));
+      // Background priority so teacher regrades never block student Java previews.
+      jr = await withJudgeCapacity(() => runOnJudge({ language, code: sub.code, tests }));
     } catch {
       failed += 1;
       continue;

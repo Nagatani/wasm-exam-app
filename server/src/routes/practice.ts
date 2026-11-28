@@ -4,7 +4,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../middleware/auth';
 import { judgeSubmission } from '../lib/judge';
-import { resolveOutcomes, RunRequestError, type ResolvedOutcomes } from '../lib/execution';
+import { attachRequestAbort, resolveOutcomes, RunRequestError, type ResolvedOutcomes } from '../lib/execution';
 
 // Practice mode (ExamMode.PRACTICE): untimed, unlimited-retry learning
 // support. Deliberately routes around every ExamAttempt/TaskDraft concept —
@@ -167,15 +167,18 @@ practiceRouter.post('/tasks/:taskId/run', async (req, res) => {
     return;
   }
 
+  const { signal, cleanup } = attachRequestAbort(req, res);
   let resolved: ResolvedOutcomes;
   try {
-    resolved = await resolveOutcomes(req.body, task, userId);
+    resolved = await resolveOutcomes(req.body, task, userId, signal);
   } catch (err) {
     if (err instanceof RunRequestError) {
-      res.status(err.status).json({ error: err.message });
+      if (!res.writableEnded) res.status(err.status).json({ error: err.message });
       return;
     }
     throw err;
+  } finally {
+    cleanup();
   }
 
   const verdict = judgeSubmission(
@@ -212,15 +215,18 @@ practiceRouter.post('/tasks/:taskId/submit', async (req, res) => {
     return;
   }
 
+  const { signal, cleanup } = attachRequestAbort(req, res);
   let resolved: ResolvedOutcomes;
   try {
-    resolved = await resolveOutcomes(req.body, task, userId);
+    resolved = await resolveOutcomes(req.body, task, userId, signal);
   } catch (err) {
     if (err instanceof RunRequestError) {
-      res.status(err.status).json({ error: err.message });
+      if (!res.writableEnded) res.status(err.status).json({ error: err.message });
       return;
     }
     throw err;
+  } finally {
+    cleanup();
   }
 
   const verdict = judgeSubmission(

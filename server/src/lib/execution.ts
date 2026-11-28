@@ -1,9 +1,34 @@
+import type { Request, Response } from 'express';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { type JudgeInput } from './judge';
 import { isJudgeConfigured, runOnJudge, JudgeError } from './judgeClient';
-import { withJudgeSlot, QueueRejectedError } from './executionQueue';
+import { withJudgeSlot, QueueAbortedError, QueueRejectedError } from './executionQueue';
 import { isServerExec } from './attempts';
+
+/**
+ * Creates an AbortController tied to an Express request/response lifecycle so
+ * a client disconnect before the response finishes aborts waiting judge jobs.
+ * Uses `res.on('close')` guarded by `!res.writableEnded` (plus `req.on('aborted')`)
+ * because Node >= 16 emits `req`'s `close` event as soon as the body is read.
+ */
+export function attachRequestAbort(
+  req: Request,
+  res: Response,
+): { signal: AbortSignal; cleanup: () => void } {
+  const controller = new AbortController();
+  const onAborted = () => controller.abort();
+  const onResClose = () => {
+    if (!res.writableEnded) controller.abort();
+  };
+  req.on('aborted', onAborted);
+  res.on('close', onResClose);
+  const cleanup = () => {
+    req.off('aborted', onAborted);
+    res.off('close', onResClose);
+  };
+  return { signal: controller.signal, cleanup };
+}
 
 // Shared by the exam flow (server/src/routes/student.ts) and practice mode
 // (server/src/routes/practice.ts) — both need to turn a student's request
@@ -49,6 +74,7 @@ export async function resolveOutcomes(
   body: unknown,
   task: TaskWithTestCases,
   userId: string,
+  signal?: AbortSignal,
 ): Promise<ResolvedOutcomes> {
   if (!isServerExec(task.language)) {
     const parsed = clientExecSchema.safeParse(body);
@@ -78,8 +104,15 @@ export async function resolveOutcomes(
 
   let judgeResult;
   try {
-    judgeResult = await withJudgeSlot(userId, () => runOnJudge({ code: parsed.data.code, tests }));
+    judgeResult = await withJudgeSlot(
+      userId,
+      () => runOnJudge({ code: parsed.data.code, tests }),
+      { signal },
+    );
   } catch (err) {
+    if (err instanceof QueueAbortedError) {
+      throw new RunRequestError(499, err.message);
+    }
     if (err instanceof QueueRejectedError) {
       throw new RunRequestError(429, err.message);
     }

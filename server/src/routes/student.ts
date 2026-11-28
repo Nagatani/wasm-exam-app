@@ -16,6 +16,7 @@ import {
   maybeSettleAttempt,
 } from '../lib/attempts';
 import {
+  attachRequestAbort,
   MAX_CODE_LENGTH,
   outcomeSchema,
   resolveOutcomes,
@@ -446,15 +447,18 @@ studentRouter.post('/tasks/:taskId/run', async (req, res) => {
     return;
   }
 
+  const { signal, cleanup } = attachRequestAbort(req, res);
   let resolved: ResolvedOutcomes;
   try {
-    resolved = await resolveOutcomes(req.body, task, req.user!.id);
+    resolved = await resolveOutcomes(req.body, task, req.user!.id, signal);
   } catch (err) {
     if (err instanceof RunRequestError) {
-      res.status(err.status).json({ error: err.message });
+      if (!res.writableEnded) res.status(err.status).json({ error: err.message });
       return;
     }
     throw err;
+  } finally {
+    cleanup();
   }
 
   const verdict = judgeSubmission(
