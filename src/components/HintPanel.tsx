@@ -201,7 +201,9 @@ export function HintPanel({
 
   return (
     <div className="rounded border border-mp-border bg-mp-bg p-3">
-      <p className="mb-2 text-xs font-bold text-mp-muted">🤖 AI学習サポート</p>
+      <p className="mb-2 text-xs font-bold text-mp-muted">
+        <span aria-hidden="true">🤖</span> AI学習サポート
+      </p>
 
       {ac && (
         <div className="mb-3 border-b border-mp-border pb-3">
@@ -212,7 +214,13 @@ export function HintPanel({
               disabled={busy}
               className="flex-1 rounded border border-mp-green/60 bg-mp-surface px-3 py-1.5 text-left text-xs font-bold text-mp-fg hover:bg-mp-surface-hover disabled:opacity-40"
             >
-              {reviewingCode ? 'レビューを生成中...' : '✨ AC 後のコードレビュー'}
+              {reviewingCode ? (
+                'レビューを生成中...'
+              ) : (
+                <>
+                  <span aria-hidden="true">✨</span> AC 後のコードレビュー
+                </>
+              )}
             </button>
             {reviewingCode && (
               <button
@@ -251,7 +259,13 @@ export function HintPanel({
               disabled={busy}
               className="flex-1 rounded border border-mp-yellow/60 bg-mp-surface px-3 py-1.5 text-left text-xs font-bold text-mp-fg hover:bg-mp-surface-hover disabled:opacity-40"
             >
-              {explainingError ? '解説を生成中...' : '💡 エラーをやさしく解説'}
+              {explainingError ? (
+                '解説を生成中...'
+              ) : (
+                <>
+                  <span aria-hidden="true">💡</span> エラーをやさしく解説
+                </>
+              )}
             </button>
             {explainingError && (
               <button

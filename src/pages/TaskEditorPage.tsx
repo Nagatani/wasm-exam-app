@@ -1099,7 +1099,11 @@ export function TaskEditorPage() {
                 }}
               />
             </label>
-            <div className="flex overflow-hidden rounded border border-mp-border text-xs">
+            <div
+              role="group"
+              aria-label="問題文の表示モード"
+              className="flex overflow-hidden rounded border border-mp-border text-xs"
+            >
               {(
                 [
                   ['edit', '編集'],
@@ -1110,6 +1114,7 @@ export function TaskEditorPage() {
                 <button
                   key={value}
                   type="button"
+                  aria-pressed={statementView === value}
                   onClick={() => setStatementView(value)}
                   className={`px-2 py-0.5 font-semibold ${
                     statementView === value

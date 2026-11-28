@@ -435,7 +435,7 @@ export function StudentTaskPage() {
                         : 'border border-mp-border text-mp-muted hover:bg-mp-surface-hover'
                   }`}
                 >
-                  {isDrafted ? '✎ ' : ''}問題 {t.order + 1}
+                  {isDrafted && <span aria-hidden="true">✎ </span>}問題 {t.order + 1}
                 </button>
               );
             })}

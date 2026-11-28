@@ -244,7 +244,13 @@ export function ExamResultsPage() {
           disabled={downloading}
           className="shrink-0 rounded bg-mp-cyan px-4 py-2 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
         >
-          {downloading ? 'ダウンロード中...' : '📄 CSVダウンロード'}
+          {downloading ? (
+            'ダウンロード中...'
+          ) : (
+            <>
+              <span aria-hidden="true">📄</span> CSVダウンロード
+            </>
+          )}
         </button>
       </div>
 
@@ -304,7 +310,11 @@ export function ExamResultsPage() {
               placeholder="学籍番号・氏名で検索"
               className="w-56 rounded border border-mp-border bg-mp-bg px-3 py-1.5 text-sm text-mp-fg"
             />
-            <div className="flex overflow-hidden rounded border border-mp-border text-sm">
+            <div
+              role="group"
+              aria-label="提出状況で絞り込み"
+              className="flex overflow-hidden rounded border border-mp-border text-sm"
+            >
               {(
                 [
                   ['all', 'すべて'],
@@ -314,6 +324,8 @@ export function ExamResultsPage() {
               ).map(([value, label]) => (
                 <button
                   key={value}
+                  type="button"
+                  aria-pressed={rowFilter === value}
                   onClick={() => setRowFilter(value)}
                   className={`px-3 py-1.5 font-bold ${
                     rowFilter === value
@@ -682,7 +694,9 @@ function StudentResultRowGroup({
                             title={`打鍵数: ${cell.keystrokeCount} / 貼り付け回数: ${cell.pasteCount} / 貼り付け文字数: ${cell.pastedCharCount}`}
                             className="ml-1 rounded border border-mp-orange/40 bg-mp-orange/15 px-1 text-xs font-bold text-mp-fg"
                           >
-                            📋{cell.pasteCount}
+                            <span aria-hidden="true">📋</span>
+                            <span className="sr-only">貼り付け </span>
+                            {cell.pasteCount}
                           </span>
                         )}
                       </td>

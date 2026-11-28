@@ -817,6 +817,7 @@ export function ExamDetailPage() {
                 }`}
               >
                 <span
+                  aria-hidden="true"
                   className="shrink-0 cursor-grab select-none text-mp-muted active:cursor-grabbing"
                   title="ドラッグして並び替え"
                 >
