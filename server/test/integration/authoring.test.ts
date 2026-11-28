@@ -171,6 +171,123 @@ describe('export / import', () => {
     expect((await teacher.post(`/api/exams/${dest.examId}/tasks/import`, exported)).status).toBe(400);
     expect(await prisma.task.count({ where: { examId: dest.examId } })).toBe(1);
   });
+
+  it('round-trips a full exam via export/import as DRAFT with private tasks and cleared schedule', async () => {
+    const { client: teacher } = await signupTeacher();
+    const src = await createExam(teacher, {
+      title: '期末試験2026',
+      maxAttempts: 2,
+      opensAt: new Date(Date.now() + 3600_000).toISOString(),
+      closesAt: new Date(Date.now() + 7200_000).toISOString(),
+      tasks: [
+        {
+          title: '問題A',
+          language: 'PYTHON',
+          points: 40,
+          cases: [
+            ['1 2', '3', true],
+            ['10 20', '30', false],
+          ],
+        },
+        {
+          title: '問題B',
+          language: 'JS',
+          points: 60,
+          cases: [['hello', 'HELLO', true]],
+        },
+      ],
+    });
+    await teacher.patch(`/api/exams/${src.examId}`, {
+      description: '全2問です。',
+      defaultLanguage: 'PYTHON',
+    });
+    await teacher.patch(`/api/tasks/${src.tasks[0].id}`, {
+      statementMarkdown: '![図](/uploads/sample-diagram.png)\n2数の和を求めよ。',
+      tags: ['基礎', '算術'],
+      isPublic: true,
+      allowPartialCredit: true,
+    });
+    await teacher.put(`/api/tasks/${src.tasks[0].id}/solutions/python`, {
+      code: 'print(sum(map(int, input().split())))',
+    });
+    await teacher.put(`/api/tasks/${src.tasks[1].id}/solutions/js`, {
+      code: 'print(readline().toUpperCase());',
+    });
+
+    const exported = await teacher.get(`/api/exams/${src.examId}/export`);
+    expect(exported.status).toBe(200);
+    expect(exported.headers.get('content-disposition')).toContain('attachment');
+    const file = JSON.parse(exported.text);
+    expect(file.format).toBe('wasm-exam/v1');
+    expect(file.exam).toMatchObject({
+      title: '期末試験2026',
+      description: '全2問です。',
+      mode: 'EXAM',
+      timeLimitMinutes: 60,
+      maxAttempts: 2,
+      defaultLanguage: 'PYTHON',
+    });
+    expect(file.tasks).toHaveLength(2);
+
+    const imported = await teacher.post('/api/exams/import', file);
+    expect(imported.status).toBe(201);
+    expect(imported.body.hasUploadReferences).toBe(true);
+    expect(imported.body.exam).toMatchObject({
+      title: '期末試験2026',
+      status: 'DRAFT',
+      taskCount: 2,
+    });
+
+    const newExam = await prisma.exam.findUniqueOrThrow({
+      where: { id: imported.body.exam.id },
+      include: {
+        tasks: {
+          orderBy: { order: 'asc' },
+          include: { testCases: { orderBy: { order: 'asc' } }, solutions: true },
+        },
+      },
+    });
+    expect(newExam).toMatchObject({
+      title: '期末試験2026',
+      description: '全2問です。',
+      mode: 'EXAM',
+      status: 'DRAFT',
+      timeLimitMinutes: 60,
+      maxAttempts: 2,
+      defaultLanguage: 'PYTHON',
+      opensAt: null,
+      closesAt: null,
+      courseId: null,
+    });
+    expect(newExam.tasks).toHaveLength(2);
+    expect(newExam.tasks[0]).toMatchObject({
+      order: 0,
+      title: '問題A',
+      language: 'PYTHON',
+      points: 40,
+      tags: ['基礎', '算術'],
+      isPublic: false,
+      allowPartialCredit: true,
+    });
+    expect(newExam.tasks[0].testCases.map((tc) => [tc.input, tc.expectedOutput, tc.isSample])).toEqual([
+      ['1 2', '3', true],
+      ['10 20', '30', false],
+    ]);
+    expect(newExam.tasks[0].solutions).toEqual([
+      expect.objectContaining({ language: 'PYTHON', code: 'print(sum(map(int, input().split())))' }),
+    ]);
+    expect(newExam.tasks[1].isPublic).toBe(false);
+    expect(newExam.tasks[1].solutions).toEqual([
+      expect.objectContaining({ language: 'JS', code: 'print(readline().toUpperCase());' }),
+    ]);
+  });
+
+  it('rejects a malformed exam import file without creating an exam', async () => {
+    const { client: teacher } = await signupTeacher();
+    const before = await prisma.exam.count();
+    expect((await teacher.post('/api/exams/import', { format: 'wrong', exam: {}, tasks: [] })).status).toBe(400);
+    expect(await prisma.exam.count()).toBe(before);
+  });
 });
 
 describe('exam duplication', () => {

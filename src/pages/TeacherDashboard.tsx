@@ -6,7 +6,7 @@ import { SkeletonRows } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState';
 import { HelpPopover } from '../components/HelpPopover';
 import { EXAM_MODE_HELP_TEXT } from '../lib/examModeHelp';
-import { createExam, duplicateExam, listExams } from '../api/exams';
+import { createExam, duplicateExam, importExam, listExams } from '../api/exams';
 import { listCourses } from '../api/courses';
 import { ApiError } from '../api/client';
 import { datetimeLocalToIso } from '../lib/datetime';
@@ -26,6 +26,10 @@ export function TeacherDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+  const [importWarn, setImportWarn] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   async function loadExams() {
     setLoading(true);
@@ -56,21 +60,75 @@ export function TeacherDashboard() {
     }
   }
 
+  async function handleImportExamFile(file: File) {
+    setImporting(true);
+    setImportMsg(null);
+    setImportWarn(null);
+    setImportError(null);
+    try {
+      const text = await file.text();
+      let payload: unknown;
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        throw new Error('JSONとして読み込めませんでした。エクスポートした試験ファイルを指定してください。');
+      }
+      const { exam, hasUploadReferences } = await importExam(payload);
+      setImportMsg(`「${exam.title}」（${exam.taskCount}問）を非公開（下書き）としてインポートしました。`);
+      if (hasUploadReferences) {
+        setImportWarn(
+          '問題文に /uploads/ 画像への参照が含まれています。別サーバーから移行した場合は画像ファイルを再アップロードしてください。',
+        );
+      }
+      await loadExams();
+    } catch (err) {
+      setImportError(
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : '試験のインポートに失敗しました。',
+      );
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-mp-bg p-6 text-mp-fg">
       <AppHeader title="教師ダッシュボード" />
 
       <p className="mb-4 text-mp-muted">ようこそ、{profile?.displayName} さん。</p>
 
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-bold">試験一覧</h2>
-        <button
-          onClick={() => setShowCreateForm((v) => !v)}
-          className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90"
-        >
-          {showCreateForm ? 'キャンセル' : '+ 新規試験作成'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="cursor-pointer rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover focus-within:outline-2 focus-within:outline-mp-cyan focus-within:outline-offset-2">
+            {importing ? 'インポート中...' : 'JSONから試験をインポート'}
+            <input
+              type="file"
+              accept="application/json"
+              className="sr-only"
+              disabled={importing}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) void handleImportExamFile(file);
+              }}
+            />
+          </label>
+          <button
+            onClick={() => setShowCreateForm((v) => !v)}
+            className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90"
+          >
+            {showCreateForm ? 'キャンセル' : '+ 新規試験作成'}
+          </button>
+        </div>
       </div>
+
+      {importMsg && <p className="mb-2 text-sm font-bold text-mp-green">{importMsg}</p>}
+      {importWarn && <p className="mb-2 text-sm text-mp-yellow">{importWarn}</p>}
+      {importError && <p className="mb-2 text-sm text-mp-red">{importError}</p>}
 
       {showCreateForm && (
         <CreateExamForm

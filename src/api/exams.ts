@@ -65,6 +65,47 @@ export function duplicateExam(examId: string) {
   return apiFetch<{ exam: ExamSummary }>(`/api/exams/${examId}/duplicate`, { method: 'POST' });
 }
 
+export async function exportExam(examId: string): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}/api/exams/${examId}/export`, { credentials: 'include' });
+  } catch {
+    throw new ApiError(
+      'サーバーに接続できませんでした。ネットワーク環境を確認し、しばらくしてから再度お試しください。',
+      0,
+    );
+  }
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(body.error ?? '試験のエクスポートに失敗しました。', res.status);
+  }
+
+  const blob = await res.blob();
+  const disposition = res.headers.get('Content-Disposition') ?? '';
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/);
+  const asciiMatch = disposition.match(/filename="([^"]+)"/);
+  const filename = utf8Match
+    ? decodeURIComponent(utf8Match[1])
+    : (asciiMatch?.[1] ?? `exam-${examId}.json`);
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+export function importExam(payload: unknown) {
+  return apiFetch<{ exam: ExamSummary; hasUploadReferences: boolean }>('/api/exams/import', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getExamResults(examId: string) {
   return apiFetch<ExamResults>(`/api/exams/${examId}/results`);
 }

@@ -10,7 +10,11 @@ import { toCsv, UTF8_BOM } from '../lib/csv';
 import { languageSchema } from '../lib/language';
 import { isServerExec } from '../lib/attempts';
 import { isJudgeConfigured } from '../lib/judgeClient';
-import { portableTaskFileSchema } from '../lib/taskPortable';
+import {
+  parsePortableExam,
+  portableTaskFileSchema,
+  toPortableExam,
+} from '../lib/taskPortable';
 import { UPLOADS_DIR, UPLOADS_URL_PREFIX } from '../lib/uploads';
 
 export const examsRouter = Router();
@@ -146,6 +150,104 @@ examsRouter.post('/', async (req, res) => {
   });
 
   res.status(201).json({ exam });
+});
+
+// Import an entire exam (metadata + tasks/testCases/solutions) from a portable
+// JSON export (`wasm-exam/v1`). Always creates a brand-new DRAFT exam with no
+// scheduling window (`opensAt`/`closesAt` null) and all tasks private
+// (`isPublic: false`) inside one transaction.
+examsRouter.post('/import', async (req, res) => {
+  const parsed = parsePortableExam(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'インポートする試験ファイルの形式が正しくありません。' });
+    return;
+  }
+
+  const { exam: meta, tasks } = parsed.data;
+  const uploadRefRe = /\/uploads\/[^\s)"'<>?#]+/;
+  const hasUploadReferences = tasks.some((t) => uploadRefRe.test(t.statementMarkdown));
+
+  const created = await prisma.$transaction(async (tx) => {
+    return tx.exam.create({
+      data: {
+        title: meta.title,
+        description: meta.description,
+        mode: meta.mode,
+        timeLimitMinutes: meta.mode === 'PRACTICE' ? null : meta.timeLimitMinutes,
+        maxAttempts: meta.mode === 'PRACTICE' ? null : meta.maxAttempts,
+        defaultLanguage: meta.defaultLanguage,
+        opensAt: null,
+        closesAt: null,
+        courseId: null,
+        status: 'DRAFT',
+        createdById: req.user!.id,
+        tasks: {
+          create: tasks.map((t, i) => ({
+            order: i,
+            title: t.title,
+            statementMarkdown: t.statementMarkdown,
+            language: t.language,
+            starterCode: t.starterCode,
+            points: t.points,
+            comparisonMode: t.comparisonMode,
+            floatTolerance: t.floatTolerance,
+            allowPartialCredit: t.allowPartialCredit,
+            tags: t.tags,
+            isPublic: false,
+            aiHintEnabled: t.aiHintEnabled,
+            aiHintMaxStage: t.aiHintMaxStage,
+            testCases: { create: t.testCases },
+            solutions: { create: t.solutions },
+          })),
+        },
+      },
+      include: { _count: { select: { tasks: true } } },
+    });
+  });
+
+  res.status(201).json({
+    exam: {
+      id: created.id,
+      title: created.title,
+      description: created.description,
+      timeLimitMinutes: created.timeLimitMinutes,
+      mode: created.mode,
+      status: created.status,
+      createdAt: created.createdAt,
+      updatedAt: created.updatedAt,
+      taskCount: created._count.tasks,
+      courseId: created.courseId,
+      courseName: null,
+    },
+    hasUploadReferences,
+  });
+});
+
+// Export an entire exam (metadata + tasks/testCases/solutions) as a portable
+// JSON file (`wasm-exam/v1`).
+examsRouter.get('/:examId/export', async (req, res) => {
+  const exam = await prisma.exam.findUnique({
+    where: { id: req.params.examId },
+    include: {
+      tasks: {
+        orderBy: { order: 'asc' },
+        include: { testCases: { orderBy: { order: 'asc' } }, solutions: true },
+      },
+    },
+  });
+  if (!exam) {
+    res.status(404).json({ error: '試験が見つかりません。' });
+    return;
+  }
+
+  const payload = toPortableExam(exam);
+  const safeName = exam.title.replace(/[\\/:*?"<>|]/g, '_').slice(0, 80) || 'exam';
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="exam.json"; filename*=UTF-8''${encodeURIComponent(`${safeName}.json`)}`,
+  );
+  res.send(JSON.stringify(payload, null, 2));
 });
 
 // Duplicate an entire exam: metadata + every task (statement, test cases,

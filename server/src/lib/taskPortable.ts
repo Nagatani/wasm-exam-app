@@ -63,3 +63,111 @@ export const portableTaskFileSchema = z.object({
 });
 
 export type PortableTask = z.infer<typeof portableTaskSchema>;
+
+// Exam-level portable JSON export/import shape (exam metadata + all tasks).
+// Used by GET /api/exams/:examId/export and POST /api/exams/import.
+export const PORTABLE_EXAM_SCHEMA = 'wasm-exam/v1';
+
+const portableExamMetaSchema = z
+  .object({
+    title: z.string().min(1),
+    description: z.string().nullable().default(null),
+    mode: z.enum(['EXAM', 'PRACTICE']).default('EXAM'),
+    timeLimitMinutes: z.number().int().positive().nullable().default(null),
+    maxAttempts: z.number().int().positive().nullable().default(1),
+    defaultLanguage: languageSchema.default('C'),
+  })
+  .superRefine((data, ctx) => {
+    if (data.mode !== 'PRACTICE' && data.timeLimitMinutes == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '制限時間は1分以上で入力してください。',
+        path: ['timeLimitMinutes'],
+      });
+    }
+  });
+
+export const portableExamSchema = z.object({
+  format: z.literal(PORTABLE_EXAM_SCHEMA),
+  exam: portableExamMetaSchema,
+  tasks: z.array(portableTaskSchema).max(200),
+});
+
+export type PortableExam = z.infer<typeof portableExamSchema>;
+
+export interface PortableExamSource {
+  title: string;
+  description: string | null;
+  mode: 'EXAM' | 'PRACTICE';
+  timeLimitMinutes: number | null;
+  maxAttempts: number | null;
+  defaultLanguage: PortableTask['language'];
+  tasks: Array<{
+    title: string;
+    statementMarkdown: string;
+    language: PortableTask['language'];
+    starterCode: string | null;
+    points: number;
+    comparisonMode: PortableTask['comparisonMode'];
+    floatTolerance: number;
+    allowPartialCredit: boolean;
+    tags: string[];
+    aiHintEnabled: boolean;
+    aiHintMaxStage: number;
+    testCases: Array<{
+      input: string;
+      expectedOutput: string;
+      isSample: boolean;
+      order: number;
+      timeLimitMs: number;
+      memoryLimitMb: number;
+    }>;
+    solutions: Array<{
+      language: PortableTask['language'];
+      code: string;
+    }>;
+  }>;
+}
+
+export function toPortableExam(src: PortableExamSource): PortableExam {
+  return {
+    format: PORTABLE_EXAM_SCHEMA,
+    exam: {
+      title: src.title,
+      description: src.description,
+      mode: src.mode,
+      timeLimitMinutes: src.mode === 'PRACTICE' ? null : src.timeLimitMinutes,
+      maxAttempts: src.mode === 'PRACTICE' ? null : src.maxAttempts,
+      defaultLanguage: src.defaultLanguage,
+    },
+    tasks: src.tasks.map((t) => ({
+      title: t.title,
+      statementMarkdown: t.statementMarkdown,
+      language: t.language,
+      starterCode: t.starterCode,
+      points: t.points,
+      comparisonMode: t.comparisonMode,
+      floatTolerance: t.floatTolerance,
+      allowPartialCredit: t.allowPartialCredit,
+      tags: t.tags,
+      aiHintEnabled: t.aiHintEnabled,
+      aiHintMaxStage: t.aiHintMaxStage,
+      testCases: t.testCases.map((tc) => ({
+        input: tc.input,
+        expectedOutput: tc.expectedOutput,
+        isSample: tc.isSample,
+        order: tc.order,
+        timeLimitMs: tc.timeLimitMs,
+        memoryLimitMb: tc.memoryLimitMb,
+      })),
+      solutions: t.solutions.map((s) => ({
+        language: s.language,
+        code: s.code,
+      })),
+    })),
+  };
+}
+
+export function parsePortableExam(raw: unknown) {
+  return portableExamSchema.safeParse(raw);
+}

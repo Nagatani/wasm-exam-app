@@ -3,6 +3,7 @@ import { Link } from '../lib/router';
 import { useNavigate, useParams } from '../lib/routerContext';
 import {
   deleteExam,
+  exportExam,
   getExam,
   getPublishCheck,
   getVerificationBundle,
@@ -82,6 +83,7 @@ export function ExamDetailPage() {
   const [reorderError, setReorderError] = useState<string | null>(null);
   const [bankPickerOpen, setBankPickerOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [verifyingAll, setVerifyingAll] = useState(false);
   const [verifyProgress, setVerifyProgress] = useState<{
     current: number;
@@ -177,6 +179,19 @@ export function ExamDetailPage() {
     if (!exam) return;
     await deleteExam(exam.id);
     navigate('/teacher');
+  }
+
+  async function handleExportExam() {
+    if (!exam || exporting) return;
+    setExporting(true);
+    setError(null);
+    try {
+      await exportExam(exam.id);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '試験のエクスポートに失敗しました。');
+    } finally {
+      setExporting(false);
+    }
   }
 
   async function handleAddTask() {
@@ -568,13 +583,23 @@ export function ExamDetailPage() {
               {saving ? '保存中...' : '保存'}
             </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setDeleteConfirmOpen(true)}
-            className="rounded border border-mp-red/50 px-3 py-1.5 text-sm text-mp-red hover:bg-mp-red hover:text-mp-btn-fg"
-          >
-            試験を削除
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleExportExam()}
+              disabled={exporting}
+              className="rounded border border-mp-border bg-mp-bg px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover disabled:opacity-50"
+            >
+              {exporting ? 'エクスポート中...' : '試験をJSONエクスポート'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setDeleteConfirmOpen(true)}
+              className="rounded border border-mp-red/50 px-3 py-1.5 text-sm text-mp-red hover:bg-mp-red hover:text-mp-btn-fg"
+            >
+              試験を削除
+            </button>
+          </div>
         </div>
       </form>
 
