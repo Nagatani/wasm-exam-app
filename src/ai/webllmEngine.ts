@@ -371,6 +371,140 @@ export function interruptGenerate(): void {
 }
 
 /**
+ * Strips surrounding markdown code fences (```json ... ``` or ``` ... ```) from
+ * a model response when JSON.parse fails on the raw text.
+ */
+export function stripMarkdownCodeFence(raw: string): string {
+  const trimmed = raw.trim();
+  const fullFence = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
+  if (fullFence) {
+    return fullFence[1].trim();
+  }
+  const embeddedFence = /```(?:json)?\s*([\s\S]*?)\s*```/i.exec(trimmed);
+  if (embeddedFence) {
+    return embeddedFence[1].trim();
+  }
+  return trimmed;
+}
+
+export interface StructuredJsonRequestOptions<T> {
+  engine: MLCEngineInterface;
+  system: string;
+  user: string;
+  schema: string;
+  validate: (value: unknown) => value is T;
+  maxTokens: number;
+  temperature?: number;
+  signal?: AbortSignal;
+  /** Number of automatic retries after the initial attempt on JSON/schema failure. Defaults to 1. */
+  maxRetries?: number;
+  parseErrorMessage?: string;
+  validationErrorMessage?: string;
+}
+
+/**
+ * Sends a JSON-schema constrained chat completion request with an explicit
+ * `max_tokens` cap, markdown code-fence stripping fallback, and automatic retry
+ * with validation feedback on JSON parse or schema validation failure.
+ */
+export async function requestStructuredJson<T>(
+  options: StructuredJsonRequestOptions<T>,
+): Promise<T> {
+  const {
+    engine,
+    system,
+    user,
+    schema,
+    validate,
+    maxTokens,
+    temperature = 0.5,
+    signal,
+    maxRetries = 1,
+    parseErrorMessage = 'AIの出力を解析できませんでした。もう一度お試しください。',
+    validationErrorMessage = 'AIの出力の形式が正しくありませんでした。もう一度お試しください。',
+  } = options;
+
+  let lastError: Error = new Error(parseErrorMessage);
+  let lastRawContent = '';
+  let lastFeedback = '';
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (signal?.aborted) {
+      throw new GenerationAbortedError();
+    }
+
+    const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ];
+    if (attempt > 0) {
+      messages.push(
+        { role: 'assistant', content: lastRawContent.slice(0, 2000) },
+        {
+          role: 'user',
+          content: `直前の出力は次の理由で受理できませんでした: ${lastFeedback}\n指定されたJSONスキーマに厳密に従った有効なJSONオブジェクトのみを出力してください。コードブロック（\`\`\`）や説明文は一切含めないでください。`,
+        },
+      );
+    }
+
+    let completion;
+    beginWebLlmGeneration();
+    try {
+      completion = await engine.chat.completions.create({
+        messages,
+        response_format: { type: 'json_object', schema },
+        temperature,
+        max_tokens: maxTokens,
+      });
+    } catch (err) {
+      if (signal?.aborted) {
+        throw new GenerationAbortedError();
+      }
+      throw err;
+    } finally {
+      endWebLlmGeneration();
+    }
+
+    if (signal?.aborted || completion.choices[0]?.finish_reason === 'abort') {
+      throw new GenerationAbortedError();
+    }
+
+    const raw = completion.choices[0]?.message?.content ?? '';
+    lastRawContent = raw;
+
+    let parsed: unknown;
+    let parsedOk = false;
+    try {
+      parsed = JSON.parse(raw);
+      parsedOk = true;
+    } catch {
+      try {
+        parsed = JSON.parse(stripMarkdownCodeFence(raw));
+        parsedOk = true;
+      } catch {
+        parsedOk = false;
+      }
+    }
+
+    if (!parsedOk) {
+      lastError = new Error(parseErrorMessage);
+      lastFeedback = '有効なJSONとして解析できませんでした。';
+      continue;
+    }
+
+    if (!validate(parsed)) {
+      lastError = new Error(validationErrorMessage);
+      lastFeedback = '必須フィールドが不足しているか、型・内容がスキーマと一致しませんでした。';
+      continue;
+    }
+
+    return parsed;
+  }
+
+  throw lastError;
+}
+
+/**
  * Unloads the live engine (if any) and terminates its worker to free VRAM.
  * Keeps cached model files intact so subsequent loads are fast.
  */

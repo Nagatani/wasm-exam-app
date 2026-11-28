@@ -3,6 +3,7 @@ import {
   generateEdgeCaseInputs,
   generateStarterFromSolution,
   generateTaskDraft,
+  repairSolutionCode,
   reviewTaskStatement,
   type ExistingTaskContext,
 } from '../ai/aiAssist';
@@ -39,6 +40,17 @@ interface VerifiedCase {
   expectedOutput: string;
 }
 
+class SolutionCompileError extends Error {
+  readonly stderr: string;
+  constructor(stderr: string) {
+    super(
+      `解答例のコンパイル/検証に失敗しました。解答例を確認してから再度お試しください。（${stderr.slice(0, 200)}）`,
+    );
+    this.name = 'SolutionCompileError';
+    this.stderr = stderr;
+  }
+}
+
 interface GeneratedDraft {
   statementMarkdown: string;
   starterCode: string;
@@ -55,6 +67,7 @@ interface GeneratedDraft {
   // a value invented by the LLM. `unverifiedReason` says why.
   unverifiedJava: boolean;
   unverifiedReason?: string;
+  autoRepaired?: boolean;
 }
 
 interface GeneratedEdgeCases {
@@ -199,9 +212,7 @@ export function AiAssistPanel({
       result = await runClientSide(language, solutionCode, testCases, () => {});
     }
     if (result.compileFailed) {
-      throw new Error(
-        `解答例のコンパイル/検証に失敗しました。解答例を確認してから再度お試しください。（${result.compileStderr.slice(0, 200)}）`,
-      );
+      throw new SolutionCompileError(result.compileStderr);
     }
     const verified: VerifiedCase[] = [];
     for (const [i, input] of inputs.entries()) {
@@ -215,6 +226,44 @@ export function AiAssistPanel({
       excludedCount: inputs.length - verified.length,
       unverifiedJava: false,
     };
+  }
+
+  async function verifyGeneratedSolutionWithAutoRepair(
+    solutionCode: string,
+    statementMarkdown: string,
+    inputs: string[],
+    signal: AbortSignal,
+  ): Promise<{
+    solutionCode: string;
+    verified: VerifiedCase[];
+    excludedCount: number;
+    unverifiedJava: boolean;
+    unverifiedReason?: string;
+    autoRepaired: boolean;
+  }> {
+    try {
+      const verification = await verifyInputsWithSolution(solutionCode, inputs);
+      return { solutionCode, ...verification, autoRepaired: false };
+    } catch (err) {
+      if (!(err instanceof SolutionCompileError) || signal.aborted) {
+        throw err;
+      }
+      setPhase('generating');
+      setProgressText('解答例のコンパイルに失敗したため、自動修正を試みています...');
+      const repairedCode = await repairSolutionCode(
+        {
+          language,
+          statementMarkdown,
+          brokenSolutionCode: solutionCode,
+          compileStderr: err.stderr,
+        },
+        { signal },
+      );
+      setPhase('verifying');
+      setProgressText('修正後の解答例を再検証しています...');
+      const verification = await verifyInputsWithSolution(repairedCode, inputs);
+      return { solutionCode: repairedCode, ...verification, autoRepaired: true };
+    }
   }
 
   async function ensureModelLoaded(controller: AbortController): Promise<boolean> {
@@ -250,14 +299,15 @@ export function AiAssistPanel({
 
       setPhase('verifying');
       setProgressText('解答例を実行してテストケースの期待値を求めています...');
-      const verification = await verifyInputsWithSolution(
+      const verification = await verifyGeneratedSolutionWithAutoRepair(
         generated.solutionCode,
+        generated.statementMarkdown,
         generated.testCaseInputs,
+        controller.signal,
       );
       setDraft({
         statementMarkdown: generated.statementMarkdown,
         starterCode: generated.starterCode,
-        solutionCode: generated.solutionCode,
         ...verification,
       });
       setDraftSelected(verification.verified.map(() => true));
@@ -662,7 +712,14 @@ export function AiAssistPanel({
 
           {mode === 'draft' && draft && (
             <div className="rounded border border-mp-border bg-mp-bg p-3">
-              <p className="mb-2 text-xs font-bold text-mp-muted">下書きプレビュー</p>
+              <p className="mb-2 text-xs font-bold text-mp-muted">
+                下書きプレビュー
+                {draft.autoRepaired && (
+                  <span className="ml-2 font-normal text-mp-cyan">
+                    （コンパイルエラーを自動修正して検証済み）
+                  </span>
+                )}
+              </p>
               <div className="mb-2 max-h-40 overflow-y-auto rounded border border-mp-border bg-mp-surface p-2 text-xs whitespace-pre-wrap">
                 {draft.statementMarkdown}
               </div>

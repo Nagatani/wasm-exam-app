@@ -4,6 +4,7 @@ import {
   endWebLlmGeneration,
   GenerationAbortedError,
   loadWebLlmEngine,
+  requestStructuredJson,
 } from './webllmEngine';
 import type { ComparisonMode, Language } from '../types/exam';
 import { LANGUAGE_LABEL } from '../lib/language';
@@ -76,6 +77,14 @@ const STARTER_CODE_SCHEMA = JSON.stringify({
   required: ['starterCode'],
 });
 
+const SOLUTION_CODE_SCHEMA = JSON.stringify({
+  type: 'object',
+  properties: {
+    solutionCode: { type: 'string' },
+  },
+  required: ['solutionCode'],
+});
+
 function isAiTaskDraft(v: unknown): v is AiTaskDraft {
   if (typeof v !== 'object' || v === null) return false;
   const o = v as Record<string, unknown>;
@@ -97,7 +106,13 @@ function isEdgeCaseInputsResponse(v: unknown): v is { inputs: string[] } {
 function isStarterCodeResponse(v: unknown): v is { starterCode: string } {
   if (typeof v !== 'object' || v === null) return false;
   const o = v as Record<string, unknown>;
-  return typeof o.starterCode === 'string';
+  return typeof o.starterCode === 'string' && o.starterCode.trim().length > 0;
+}
+
+function isSolutionCodeResponse(v: unknown): v is { solutionCode: string } {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.solutionCode === 'string' && o.solutionCode.trim().length > 0;
 }
 
 function formatExistingTestCases(testCases: ExistingTaskTestCase[], includeExpected: boolean): string {
@@ -149,36 +164,16 @@ export async function generateTaskDraft(
 - solutionCode: 上記の問題を実際に解く、完全に動作する正しい${languageLabel}のコード。標準入力から読み取り、標準出力に結果を書き、そのままコンパイル・実行できること。
 - testCaseInputs: ちょうど${input.testCaseCount}件の標準入力の値（文字列の配列）。境界値を含む多様なケースにすること。期待される出力はここに含めないこと（別の手段で求めるため）。`;
 
-  beginWebLlmGeneration();
-  let completion;
-  try {
-    completion = await engine.chat.completions.create({
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: input.prompt },
-      ],
-      response_format: { type: 'json_object', schema: DRAFT_JSON_SCHEMA },
-      temperature: 0.7,
-    });
-  } finally {
-    endWebLlmGeneration();
-  }
-
-  if (signal?.aborted || completion.choices[0]?.finish_reason === 'abort') {
-    throw new GenerationAbortedError();
-  }
-
-  const content = completion.choices[0]?.message?.content ?? '';
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    throw new Error('AIの出力を解析できませんでした。もう一度お試しください。');
-  }
-  if (!isAiTaskDraft(parsed)) {
-    throw new Error('AIの出力の形式が正しくありませんでした。もう一度お試しください。');
-  }
-  return parsed;
+  return requestStructuredJson<AiTaskDraft>({
+    engine,
+    system,
+    user: input.prompt,
+    schema: DRAFT_JSON_SCHEMA,
+    validate: isAiTaskDraft,
+    maxTokens: 2048,
+    temperature: 0.7,
+    signal,
+  });
 }
 
 /**
@@ -226,36 +221,16 @@ ${formatExistingTestCases(taskContext.testCases, false)}
 【解答例（${languageLabel}）】
 ${taskContext.solutionCode.slice(0, 4000) || '(なし)'}`;
 
-  beginWebLlmGeneration();
-  let completion;
-  try {
-    completion = await engine.chat.completions.create({
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
-      response_format: { type: 'json_object', schema: EDGE_CASE_INPUTS_SCHEMA },
-      temperature: 0.6,
-      max_tokens: 800,
-    });
-  } finally {
-    endWebLlmGeneration();
-  }
-
-  if (signal?.aborted || completion.choices[0]?.finish_reason === 'abort') {
-    throw new GenerationAbortedError();
-  }
-
-  const content = completion.choices[0]?.message?.content ?? '';
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    throw new Error('AIの出力を解析できませんでした。もう一度お試しください。');
-  }
-  if (!isEdgeCaseInputsResponse(parsed)) {
-    throw new Error('AIの出力の形式が正しくありませんでした。もう一度お試しください。');
-  }
+  const parsed = await requestStructuredJson<{ inputs: string[] }>({
+    engine,
+    system,
+    user,
+    schema: EDGE_CASE_INPUTS_SCHEMA,
+    validate: isEdgeCaseInputsResponse,
+    maxTokens: 800,
+    temperature: 0.6,
+    signal,
+  });
 
   const existingSet = new Set(taskContext.testCases.map((tc) => tc.input));
   const seen = new Set<string>();
@@ -410,35 +385,71 @@ ${taskContext.statementMarkdown || '(未設定)'}
 【解答例コード（${languageLabel}）】
 ${taskContext.solutionCode.slice(0, 6000)}`;
 
-  beginWebLlmGeneration();
-  let completion;
-  try {
-    completion = await engine.chat.completions.create({
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
-      response_format: { type: 'json_object', schema: STARTER_CODE_SCHEMA },
-      temperature: 0.3,
-      max_tokens: 800,
-    });
-  } finally {
-    endWebLlmGeneration();
-  }
+  const parsed = await requestStructuredJson<{ starterCode: string }>({
+    engine,
+    system,
+    user,
+    schema: STARTER_CODE_SCHEMA,
+    validate: isStarterCodeResponse,
+    maxTokens: 800,
+    temperature: 0.3,
+    signal,
+    validationErrorMessage: 'スターターコードの形式が正しくありませんでした。もう一度お試しください。',
+  });
+  return parsed.starterCode;
+}
 
-  if (signal?.aborted || completion.choices[0]?.finish_reason === 'abort') {
+export interface RepairSolutionInput {
+  language: Language;
+  statementMarkdown: string;
+  brokenSolutionCode: string;
+  compileStderr: string;
+}
+
+/**
+ * Single-attempt automatic repair of a generated solution that failed
+ * compilation. Feeds `compileStderr` back to the model and asks it to fix
+ * ONLY the solution code (leaving statement, starter, and inputs intact).
+ */
+export async function repairSolutionCode(
+  input: RepairSolutionInput,
+  options?: GenerateTaskDraftOptions,
+): Promise<string> {
+  const signal = options?.signal;
+  if (signal?.aborted) {
     throw new GenerationAbortedError();
   }
 
-  const content = completion.choices[0]?.message?.content ?? '';
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    throw new Error('AIの出力を解析できませんでした。もう一度お試しください。');
+  const engine = await loadWebLlmEngine(options?.onProgress);
+  if (signal?.aborted) {
+    throw new GenerationAbortedError();
   }
-  if (!isStarterCodeResponse(parsed) || !parsed.starterCode.trim()) {
-    throw new Error('スターターコードの形式が正しくありませんでした。もう一度お試しください。');
-  }
-  return parsed.starterCode;
+
+  const languageLabel = LANGUAGE_LABEL[input.language];
+
+  const system = `あなたはプログラミング演習の解答例を修正するアシスタントです。与えられた${languageLabel}の解答例コードにコンパイルエラー（または構文エラー）が発生しました。エラー内容を確認し、問題文の仕様を満たしつつそのままコンパイル・実行できる修正済みの解答例コードのみを出力してください。
+
+必ず次のJSONスキーマに従ったJSONオブジェクトのみを出力してください。説明文・前置き・コードブロックの \`\`\` 記法は一切使わないでください: ${SOLUTION_CODE_SCHEMA}`;
+
+  const user = `【問題文】
+${input.statementMarkdown.slice(0, 3000) || '(未設定)'}
+
+【コンパイルエラーのあった解答例（${languageLabel}）】
+${input.brokenSolutionCode.slice(0, 5000)}
+
+【コンパイルエラー内容】
+${input.compileStderr.slice(0, 2000)}`;
+
+  const parsed = await requestStructuredJson<{ solutionCode: string }>({
+    engine,
+    system,
+    user,
+    schema: SOLUTION_CODE_SCHEMA,
+    validate: isSolutionCodeResponse,
+    maxTokens: 1200,
+    temperature: 0.2,
+    signal,
+    validationErrorMessage: '修正後の解答例コードの形式が正しくありませんでした。もう一度お試しください。',
+  });
+  return parsed.solutionCode;
 }
