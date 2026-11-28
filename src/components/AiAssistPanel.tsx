@@ -3,6 +3,7 @@ import {
   generateEdgeCaseInputs,
   generateStarterFromSolution,
   generateTaskDraft,
+  generateVariationDraft,
   repairSolutionCode,
   reviewTaskStatement,
   type ExistingTaskContext,
@@ -77,11 +78,12 @@ interface GeneratedEdgeCases {
   unverifiedReason?: string;
 }
 
-type AssistMode = 'draft' | 'edge-cases' | 'review' | 'starter';
+type AssistMode = 'draft' | 'variation' | 'edge-cases' | 'review' | 'starter';
 type Phase = 'idle' | 'loading-model' | 'generating' | 'verifying' | 'ready' | 'error';
 
 const MODE_TABS: { id: AssistMode; label: string }[] = [
   { id: 'draft', label: '新規下書き生成' },
+  { id: 'variation', label: '類題を生成' },
   { id: 'edge-cases', label: 'エッジケース入力追加' },
   { id: 'review', label: '問題文チェック' },
   { id: 'starter', label: 'スターター生成' },
@@ -123,6 +125,8 @@ export function AiAssistPanel({
   const [mode, setMode] = useState<AssistMode>('draft');
   const [prompt, setPrompt] = useState('');
   const [testCaseCount, setTestCaseCount] = useState(4);
+  const [variationInstruction, setVariationInstruction] = useState('');
+  const [variationTestCaseCount, setVariationTestCaseCount] = useState(4);
   const [edgeCaseCount, setEdgeCaseCount] = useState(3);
   const [phase, setPhase] = useState<Phase>('idle');
   const [progressText, setProgressText] = useState('');
@@ -318,6 +322,59 @@ export function AiAssistPanel({
         setPhase('idle');
       } else {
         setError(err instanceof Error ? err.message : 'AIでの下書き生成に失敗しました。');
+        setPhase('error');
+      }
+    } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+      setProgressText('');
+    }
+  }
+
+  async function handleGenerateVariation() {
+    if (!existingTask.statementMarkdown.trim()) {
+      setError('類題を生成するには、元の問題文が入力されている必要があります。');
+      return;
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setError(null);
+    setAbortedMessage(null);
+    setDraft(null);
+    setDraftSelected([]);
+    setConfirmOverwrite(false);
+    try {
+      if (!(await ensureModelLoaded(controller))) return;
+      setPhase('generating');
+      setProgressText('現在の問題をもとに類題を生成しています...');
+      const generated = await generateVariationDraft(
+        buildTaskContext(variationTestCaseCount),
+        variationInstruction,
+        { signal: controller.signal },
+      );
+
+      setPhase('verifying');
+      setProgressText('類題の解答例を実行してテストケースの期待値を求めています...');
+      const verification = await verifyGeneratedSolutionWithAutoRepair(
+        generated.solutionCode,
+        generated.statementMarkdown,
+        generated.testCaseInputs,
+        controller.signal,
+      );
+      setDraft({
+        statementMarkdown: generated.statementMarkdown,
+        starterCode: generated.starterCode,
+        ...verification,
+      });
+      setDraftSelected(verification.verified.map(() => true));
+      setPhase('ready');
+    } catch (err) {
+      if (isGenerationAbortedError(err)) {
+        setAbortedMessage('類題の生成を中断しました。');
+        setPhase('idle');
+      } else {
+        setError(err instanceof Error ? err.message : '類題の生成に失敗しました。');
         setPhase('error');
       }
     } finally {
@@ -608,6 +665,61 @@ export function AiAssistPanel({
             </div>
           )}
 
+          {mode === 'variation' && (
+            <div>
+              <p className="mb-2 text-xs text-mp-muted">
+                現在の問題文・解答例（{LANGUAGE_LABEL[language]}）をもとに、アルゴリズムや難易度を保ちながら題材・条件を変えた類題（問題文・初期テンプレート・検証済みテストケース・解答例）を生成します。元の問題を上書きしないよう、先に問題を複製してから利用することをおすすめします。
+              </p>
+              <textarea
+                rows={3}
+                aria-label="類題の変更方針（任意）"
+                className="mb-2 w-full rounded border border-mp-border bg-mp-bg px-2 py-1 text-sm text-mp-fg"
+                placeholder="例: 題材を買い物の合計金額に変え、最小値ではなく平均値を求めるようにする（空欄のままでも生成できます）"
+                value={variationInstruction}
+                onChange={(e) => setVariationInstruction(e.target.value)}
+                disabled={busy}
+              />
+              <div className="mb-2 flex items-center gap-2 text-sm">
+                <label htmlFor="ai-variation-testcase-count" className="text-mp-muted">
+                  テストケース数
+                </label>
+                <input
+                  id="ai-variation-testcase-count"
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={variationTestCaseCount}
+                  onChange={(e) =>
+                    setVariationTestCaseCount(
+                      Math.min(10, Math.max(1, Number(e.target.value) || 1)),
+                    )
+                  }
+                  disabled={busy}
+                  className="w-16 rounded border border-mp-border bg-mp-bg px-2 py-1 text-sm text-mp-fg"
+                />
+                <div className="ml-auto flex items-center gap-2">
+                  {canAbort && (
+                    <button
+                      type="button"
+                      onClick={handleAbort}
+                      className="rounded border border-mp-red/50 bg-mp-bg px-3 py-1.5 text-sm font-bold text-mp-red hover:bg-mp-red hover:text-mp-btn-fg"
+                    >
+                      中断
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void handleGenerateVariation()}
+                    disabled={busy || existingTask.statementMarkdown.trim() === ''}
+                    className="rounded bg-mp-cyan px-3 py-1.5 text-sm font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-50"
+                  >
+                    {busy ? '生成中...' : '類題を生成する'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {mode === 'edge-cases' && (
             <div>
               <p className="mb-2 text-xs text-mp-muted">
@@ -710,10 +822,10 @@ export function AiAssistPanel({
           {abortedMessage && <p className="mb-2 text-xs text-mp-muted">{abortedMessage}</p>}
           {error && <p className="mb-2 text-sm text-mp-red">{error}</p>}
 
-          {mode === 'draft' && draft && (
+          {(mode === 'draft' || mode === 'variation') && draft && (
             <div className="rounded border border-mp-border bg-mp-bg p-3">
               <p className="mb-2 text-xs font-bold text-mp-muted">
-                下書きプレビュー
+                {mode === 'variation' ? '類題プレビュー' : '下書きプレビュー'}
                 {draft.autoRepaired && (
                   <span className="ml-2 font-normal text-mp-cyan">
                     （コンパイルエラーを自動修正して検証済み）

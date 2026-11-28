@@ -453,3 +453,67 @@ ${input.compileStderr.slice(0, 2000)}`;
   });
   return parsed.solutionCode;
 }
+
+/**
+ * Generates a variation (類題) of an existing task — preserving core algorithm
+ * and difficulty while changing the scenario, conditions, or numeric framing.
+ * Deliberately returns test inputs ONLY; the caller verifies `solutionCode` by
+ * executing it to obtain expected outputs.
+ */
+export async function generateVariationDraft(
+  taskContext: ExistingTaskContext,
+  variationInstruction: string,
+  options?: GenerateTaskDraftOptions | ((report: InitProgressReport) => void),
+): Promise<AiTaskDraft> {
+  const resolvedOptions: GenerateTaskDraftOptions =
+    typeof options === 'function' ? { onProgress: options } : (options ?? {});
+  const signal = resolvedOptions.signal;
+  if (signal?.aborted) {
+    throw new GenerationAbortedError();
+  }
+  if (!taskContext.statementMarkdown.trim()) {
+    throw new Error('類題を作成するには、元の問題文が入力されている必要があります。');
+  }
+
+  const engine = await loadWebLlmEngine(resolvedOptions.onProgress);
+  if (signal?.aborted) {
+    throw new GenerationAbortedError();
+  }
+
+  const testCaseCount = Math.min(10, Math.max(1, taskContext.count ?? 4));
+  const languageLabel = LANGUAGE_LABEL[taskContext.language];
+  const instructionText = variationInstruction.trim();
+
+  const system = `あなたはプログラミング演習の類題（バリエーション問題）を作成するアシスタントです。既存のプログラミング課題をもとに、使用するアルゴリズムや難易度の水準を保ちつつ、題材・設定・条件・数値などを変えた新しい${languageLabel}の類題を作成してください。
+
+必ず次のJSONスキーマに従ったJSONオブジェクトのみを出力してください。説明文・前置き・コードブロックの \`\`\` 記法は一切使わないでください: ${DRAFT_JSON_SCHEMA}
+
+各フィールドの内容:
+- statementMarkdown: 新しい類題の生徒向け問題文（Markdown、日本語）。元の問題と丸写しにならず、入力・出力の形式と制約を明記すること。
+- starterCode: 生徒に配布する初期テンプレートコード（${languageLabel}）。関数や main の骨組みだけを含め、解答そのものは書かないこと。
+- solutionCode: 新しい類題を実際に解く、完全に動作する正しい${languageLabel}のコード。標準入力から読み取り、標準出力に結果を書き、そのままコンパイル・実行できること。
+- testCaseInputs: ちょうど${testCaseCount}件の標準入力の値（文字列の配列）。境界値を含む多様なケースにすること。期待される出力はここに含めないこと（別の手段で求めるため）。`;
+
+  const user = `【元のタイトル】
+${taskContext.title || '(未設定)'}
+
+【元の問題文】
+${taskContext.statementMarkdown.slice(0, 3500)}
+
+【元の解答例（${languageLabel}）】
+${taskContext.solutionCode.slice(0, 4000) || '(未登録)'}
+
+【類題作成の指示】
+${instructionText || '元の問題と同等の難易度・学習目標を保ちながら、題材や条件を変えた新しい類題を作成してください。'}`;
+
+  return requestStructuredJson<AiTaskDraft>({
+    engine,
+    system,
+    user,
+    schema: DRAFT_JSON_SCHEMA,
+    validate: isAiTaskDraft,
+    maxTokens: 2048,
+    temperature: 0.7,
+    signal,
+  });
+}
