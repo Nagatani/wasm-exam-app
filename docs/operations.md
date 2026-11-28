@@ -238,6 +238,35 @@ AI作問サポート（講師）と AIヒント（生徒・演習モードのみ
 - クラス全体で AIヒントを使う授業では、事前に各ブラウザでダウンロードを済ませておくことを推奨します。
 - オプトインを切ってもモデルは残ります。削除するには「設定（AI機能など）」の「ダウンロード済みモデルを削除してオフにする」を使います（講師・生徒の両機能で同じキャッシュを共有しているため、どちらから削除しても両方に効きます）。
 
+## 大規模運用・配信の最適化
+
+100 人規模の同時受験・一斉提出に備える際の推奨設定です。
+
+### 静的アセットのキャッシュとリバースプロキシ圧縮（gzip / brotli）
+
+- `server` は Vite のハッシュ付きビルド成果物（`/assets/*`）に `Cache-Control: public, max-age=31536000, immutable`、`index.html`（SPA フォールバックを含む）に `Cache-Control: no-cache` を付与します。
+- リバースプロキシ（Nginx / Caddy 等）で **gzip / brotli 圧縮**を有効にすると、JS/CSS バンドルや JSON 応答の転送量を削減できます（Nginx 例：`gzip on; gzip_types text/plain text/css application/javascript application/json image/svg+xml;`）。
+
+### `UV_THREADPOOL_SIZE`（ログイン・パスワード変更ラッシュ対策）
+
+- パスワードハッシュ（`scrypt`）は Node.js の libuv スレッドプール（既定 4）を使用します。
+- コンテナ版（`server/Dockerfile`・`docker-compose.prod.yml`）では既定で `UV_THREADPOOL_SIZE=16` を設定しています（環境変数で上書き可能）。ホスト運用（構成A）で 100 人が一斉にログイン・初回パスワード変更を行う場合は、ホストの CPU コア数に応じて `UV_THREADPOOL_SIZE=8`〜`16` を指定してください。
+
+### マルチ judge 構成（`JUDGE_URLS`）
+
+- 単一 `judge` コンテナで採点待ち時間が長くなる場合は、複数の `judge` コンテナを起動し、`server` の環境変数 `JUDGE_URLS` にカンマ区切りで指定します（例：`JUDGE_URLS=http://judge:8080,http://judge-2:8080`）。未指定時は `JUDGE_URL` が使われます。
+- `server` は in-flight 数が最小の judge へジョブを振り分け、障害時は残りの健全な judge へフェイルオーバーします。`JUDGE_CONCURRENCY` は全 judge の `JUDGE_MAX_CONCURRENT` の合計値に合わせてください（1 台あたりの目安：`mem_limit ≈ 0.4g × 同時実行数 + 0.5g`、`pids_limit ≈ 256 × 同時実行数`）。
+- Java プレビュー等のインタラクティブ待機キューは `JUDGE_INTERACTIVE_MAX_QUEUE`（既定 30）および `JUDGE_INTERACTIVE_WAIT_TIMEOUT_MS`（既定 25000ms）で保護されます。講師の再採点（`regrade`）はバックグラウンド優先度で実行されるため、生徒の Java「実行」を妨げません。
+
+### Pyodide / WebLLM 学内ミラーの必須ヘッダー
+
+- 本アプリは `Cross-Origin-Embedder-Policy: require-corp` を有効化しています。Pyodide（`VITE_PYODIDE_BASE_URL`）や WebLLM のモデル／WASM を**別オリジン**の学内ミラーから配信する場合は、ミラー側の HTTP レスポンスに以下を必ず設定してください（同一オリジン配下からの配信では不要です）：
+  ```
+  Cross-Origin-Resource-Policy: cross-origin
+  Access-Control-Allow-Origin: https://exam.example.ac.jp
+  ```
+- 別オリジンのミラーを使う場合は、`CSP_EXTRA_SOURCES` にもそのオリジンを追加してください。
+
 ## アカウント
 
 ### 生徒アカウントの一括作成と初期パスワード

@@ -98,9 +98,29 @@ export function createApp(): Express {
   // terminal needed for day-to-day operation. Registered after the API routes
   // so /api/* always reaches Express handlers first; anything else falls back
   // to index.html so React Router's client-side routes survive a hard refresh.
-  app.use(express.static(CLIENT_DIST_PATH));
+  //
+  // Vite outputs content-hashed bundles under /assets/*, which are safe to
+  // cache immutably for a year; index.html must revalidate on every load so
+  // browsers pick up new asset hashes immediately after a deploy.
+  app.use(
+    '/assets',
+    express.static(path.join(CLIENT_DIST_PATH, 'assets'), {
+      maxAge: '1y',
+      immutable: true,
+    }),
+  );
+  app.use(
+    express.static(CLIENT_DIST_PATH, {
+      setHeaders(res, filePath) {
+        if (path.basename(filePath) === 'index.html') {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+      },
+    }),
+  );
   app.get('*', (_req, res) => {
-    res.sendFile(path.join(CLIENT_DIST_PATH, 'index.html'));
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(path.join(CLIENT_DIST_PATH, 'index.html'), { cacheControl: false });
   });
 
   return app;
