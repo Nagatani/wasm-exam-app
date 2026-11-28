@@ -3,7 +3,44 @@
 // loopback / an internal network. See judge/Judge.java for the protocol.
 
 const JUDGE_URL = (process.env.JUDGE_URL ?? '').replace(/\/$/, '');
-const REQUEST_TIMEOUT_MS = Number(process.env.JUDGE_REQUEST_TIMEOUT_MS ?? 60_000);
+const envRequestTimeoutMs = Number(process.env.JUDGE_REQUEST_TIMEOUT_MS);
+const REQUEST_TIMEOUT_MS =
+  Number.isFinite(envRequestTimeoutMs) && envRequestTimeoutMs > 0 ? envRequestTimeoutMs : 60_000;
+
+// Mirrors judge/runner/shared/limits.js (RUN_TIME_LIMIT_MS) and Judge.java.
+const PER_TEST_LIMIT_MS: Record<'C' | 'JS' | 'TS' | 'PYTHON', number> = {
+  C: 10_000,
+  JS: 10_000,
+  TS: 10_000,
+  PYTHON: 15_000,
+};
+const JAVA_DEFAULT_TEST_LIMIT_MS = 2_000;
+const JAVA_MAX_TEST_LIMIT_MS = 15_000;
+const COMPILE_AND_STARTUP_MARGIN_MS = 30_000;
+const PER_TEST_OVERHEAD_MS = 2_000;
+
+// Compute an HTTP request timeout that never cuts short a legitimate multi-test
+// TLE (e.g. 5 × 15s Python = 75s) while honoring `minTimeoutMs` (default
+// JUDGE_REQUEST_TIMEOUT_MS) as a floor.
+export function computeJudgeTimeoutMs(
+  req: Pick<JudgeRunRequest, 'language' | 'tests'>,
+  minTimeoutMs = REQUEST_TIMEOUT_MS,
+): number {
+  const lang = req.language ?? 'JAVA';
+  let testsBudgetMs: number;
+  if (lang === 'JAVA') {
+    testsBudgetMs = req.tests.reduce((sum, t) => {
+      const limit =
+        Number.isFinite(t.timeLimitMs) && t.timeLimitMs > 0
+          ? Math.min(JAVA_MAX_TEST_LIMIT_MS, t.timeLimitMs)
+          : JAVA_DEFAULT_TEST_LIMIT_MS;
+      return sum + limit + PER_TEST_OVERHEAD_MS;
+    }, 0);
+  } else {
+    testsBudgetMs = req.tests.length * (PER_TEST_LIMIT_MS[lang] + PER_TEST_OVERHEAD_MS);
+  }
+  return Math.max(minTimeoutMs, COMPILE_AND_STARTUP_MARGIN_MS + testsBudgetMs);
+}
 
 export function isJudgeConfigured(): boolean {
   return JUDGE_URL.length > 0;
@@ -58,7 +95,7 @@ export async function runOnJudge(req: JudgeRunRequest): Promise<JudgeRunResponse
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(req),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(computeJudgeTimeoutMs(req)),
     });
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);

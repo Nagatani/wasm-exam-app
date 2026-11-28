@@ -26,7 +26,29 @@ export function isServerGraded(): boolean {
   return isJudgeConfigured();
 }
 
-const RETRY_DELAY_MS = Math.max(1000, Number(process.env.GRADING_RETRY_MS ?? 15_000));
+const envBaseRetryMs = Number(process.env.GRADING_RETRY_MS);
+const BASE_RETRY_DELAY_MS = Math.max(
+  1000,
+  Number.isFinite(envBaseRetryMs) && envBaseRetryMs > 0 ? envBaseRetryMs : 5_000,
+);
+const MAX_RETRY_DELAY_MS = Math.max(BASE_RETRY_DELAY_MS, 60_000);
+const envMaxRetries = Number(process.env.GRADING_MAX_RETRIES);
+const MAX_RETRIES =
+  Number.isInteger(envMaxRetries) && envMaxRetries >= 0 ? envMaxRetries : 8;
+
+// Exponential backoff with ±20% jitter, capped at `maxDelayMs`.
+// `retryIndex` is 0-based (0 for the first retry after the initial failure).
+export function computeRetryDelayMs(
+  retryIndex: number,
+  baseDelayMs = BASE_RETRY_DELAY_MS,
+  maxDelayMs = MAX_RETRY_DELAY_MS,
+  random: () => number = Math.random,
+): number {
+  const safeIndex = Math.max(0, Math.floor(retryIndex));
+  const exp = Math.min(maxDelayMs, baseDelayMs * 2 ** safeIndex);
+  const jittered = exp * (0.8 + random() * 0.4);
+  return Math.max(1, Math.min(maxDelayMs, Math.round(jittered)));
+}
 // Attempts graded at once. Twice the judge slot count by default, so while one
 // attempt is between tasks (DB writes) another already has its next judge
 // request queued — the judge slots (withJudgeCapacity) stay busy, and they
@@ -75,6 +97,11 @@ export async function beginGrading(attemptId: string, submittedAt: Date): Promis
 
 type GradeOutcome = 'done' | 'gone';
 
+// Memoize per-task verdicts within an attempt's retry cycle so a transient
+// failure on task N does not re-run tasks 1..N-1 on retry. Cleared once the
+// attempt finishes (or exhausts retries / resets).
+const taskVerdictCache = new Map<string, Map<string, { code: string; verdict: JudgeVerdict }>>();
+
 // Grade one GRADING attempt. Throws on a judge/infrastructure failure (the
 // queue retries later); a compile error or wrong answer is a normal verdict.
 export async function gradeAttempt(attemptId: string): Promise<GradeOutcome> {
@@ -86,14 +113,30 @@ export async function gradeAttempt(attemptId: string): Promise<GradeOutcome> {
     },
   });
   // Deleted (差し戻し) or already graded meanwhile → nothing to do.
-  if (!attempt || attempt.status !== 'GRADING') return 'gone';
+  if (!attempt || attempt.status !== 'GRADING') {
+    taskVerdictCache.delete(attemptId);
+    return 'gone';
+  }
+
+  let attemptCache = taskVerdictCache.get(attemptId);
+  if (!attemptCache) {
+    attemptCache = new Map();
+    taskVerdictCache.set(attemptId, attemptCache);
+  }
 
   const draftByTask = new Map(attempt.drafts.map((d) => [d.taskId, d]));
   const submissionData: Prisma.SubmissionCreateManyInput[] = [];
   for (const task of attempt.exam.tasks) {
     const draft = draftByTask.get(task.id);
     if (!draft) continue; // never drafted → no submission → "未提出"
-    const verdict = await gradeCodeOnJudge(task, task.testCases, draft.code);
+    const cached = attemptCache.get(task.id);
+    let verdict: JudgeVerdict;
+    if (cached && cached.code === draft.code) {
+      verdict = cached.verdict;
+    } else {
+      verdict = await gradeCodeOnJudge(task, task.testCases, draft.code);
+      attemptCache.set(task.id, { code: draft.code, verdict });
+    }
     submissionData.push({
       examId: attempt.examId,
       taskId: task.id,
@@ -113,7 +156,7 @@ export async function gradeAttempt(attemptId: string): Promise<GradeOutcome> {
   const score = submissionData.reduce((sum, d) => sum + (d.score ?? 0), 0);
 
   // Guarded: if the attempt was reset (差し戻し) while grading, write nothing.
-  return prisma.$transaction(async (tx) => {
+  const outcome = await prisma.$transaction(async (tx) => {
     const flipped = await tx.examAttempt.updateMany({
       where: { id: attempt.id, status: 'GRADING' },
       data: { status: 'SUBMITTED', score },
@@ -122,6 +165,8 @@ export async function gradeAttempt(attemptId: string): Promise<GradeOutcome> {
     if (submissionData.length > 0) await tx.submission.createMany({ data: submissionData });
     return 'done' as const;
   });
+  taskVerdictCache.delete(attemptId);
+  return outcome;
 }
 
 // ---- in-process queue ------------------------------------------------------
@@ -131,6 +176,7 @@ const order: string[] = [];
 let running = 0;
 let idleWaiters: Array<() => void> = [];
 const retryTimers = new Set<ReturnType<typeof setTimeout>>();
+const retryCountByAttempt = new Map<string, number>();
 
 export function enqueueGrading(attemptId: string): void {
   if (queued.has(attemptId)) return;
@@ -144,14 +190,34 @@ function pump(): void {
     const id = order.shift()!;
     running += 1;
     void gradeAttempt(id)
-      .then(() => queued.delete(id))
+      .then(() => {
+        queued.delete(id);
+        retryCountByAttempt.delete(id);
+        taskVerdictCache.delete(id);
+      })
       .catch((err) => {
-        console.error(`grading attempt ${id} failed, retrying in ${RETRY_DELAY_MS}ms:`, err);
+        const failures = (retryCountByAttempt.get(id) ?? 0) + 1;
+        if (failures > MAX_RETRIES) {
+          console.error(
+            `grading attempt ${id} failed after ${MAX_RETRIES} retries; giving up:`,
+            err,
+          );
+          queued.delete(id);
+          retryCountByAttempt.delete(id);
+          taskVerdictCache.delete(id);
+          return;
+        }
+        retryCountByAttempt.set(id, failures);
+        const delayMs = computeRetryDelayMs(failures - 1);
+        console.error(
+          `grading attempt ${id} failed (retry ${failures}/${MAX_RETRIES}), retrying in ${delayMs}ms:`,
+          err,
+        );
         const timer = setTimeout(() => {
           retryTimers.delete(timer);
           order.push(id);
           pump();
-        }, RETRY_DELAY_MS);
+        }, delayMs);
         timer.unref?.();
         retryTimers.add(timer);
       })
@@ -189,6 +255,8 @@ export function waitForGradingIdle(): Promise<void> {
 export function resetGradingQueue(): void {
   retryTimers.forEach((t) => clearTimeout(t));
   retryTimers.clear();
+  retryCountByAttempt.clear();
+  taskVerdictCache.clear();
   queued.clear();
   order.length = 0;
 }
