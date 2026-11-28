@@ -193,4 +193,8 @@ export interface StudentExamResult {
   canRetake: boolean;
   // The latest attempt is submitted and still being graded on the judge.
   grading: boolean;
+  // 0 = currently running, >= 1 = 1-based queue position, null = unknown.
+  // Present while `grading` is true.
+  queuePosition?: number | null;
+  gradingTotal?: number | null;
 }

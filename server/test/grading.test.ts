@@ -22,7 +22,14 @@ vi.mock('../src/lib/judgeClient', async (importOriginal) => {
   };
 });
 
-import { computeRetryDelayMs, gradeAttempt, resetGradingQueue } from '../src/lib/grading';
+import {
+  computeRetryDelayMs,
+  enqueueGrading,
+  getGradingQueuePosition,
+  gradeAttempt,
+  resetGradingQueue,
+  waitForGradingIdle,
+} from '../src/lib/grading';
 
 function makeTests(count: number, timeLimitMs = 2_000): JudgeRunRequest['tests'] {
   return Array.from({ length: count }, (_, i) => ({
@@ -183,5 +190,48 @@ describe('gradeAttempt task memoization', () => {
     // task-1 was served from the retry-cycle cache, so total calls = 3 (not 4).
     expect(mockRunOnJudge).toHaveBeenCalledTimes(3);
     expect(createdSubmissions).toHaveLength(2);
+  });
+});
+
+describe('getGradingQueuePosition', () => {
+  afterEach(() => {
+    resetGradingQueue();
+    vi.clearAllMocks();
+  });
+
+  it('returns null for unknown attempts, 0 for running, and 1-based index for queued', async () => {
+    expect(getGradingQueuePosition('unknown')).toBeNull();
+
+    // Hold gradeAttempt open via mockFindUnique so default CONCURRENCY (4)
+    // slots fill up and subsequent attempts stay in the wait queue.
+    const resolvers = new Map<string, () => void>();
+    mockFindUnique.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        new Promise((resolve) => {
+          resolvers.set(where.id, () => resolve(null));
+        }),
+    );
+
+    const ids = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6'];
+    for (const id of ids) enqueueGrading(id);
+
+    // First 4 are actively running (position 0); a5 and a6 are waiting (1 and 2).
+    expect(getGradingQueuePosition('a1')).toEqual({ position: 0, total: 6 });
+    expect(getGradingQueuePosition('a4')).toEqual({ position: 0, total: 6 });
+    expect(getGradingQueuePosition('a5')).toEqual({ position: 1, total: 6 });
+    expect(getGradingQueuePosition('a6')).toEqual({ position: 2, total: 6 });
+
+    // Finish all in-flight attempts (resolving a1..a4 lets a5..a6 start).
+    for (const id of ['a1', 'a2', 'a3', 'a4']) resolvers.get(id)?.();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(getGradingQueuePosition('a1')).toBeNull();
+    expect(getGradingQueuePosition('a5')).toEqual({ position: 0, total: 2 });
+    expect(getGradingQueuePosition('a6')).toEqual({ position: 0, total: 2 });
+
+    for (const id of ['a5', 'a6']) resolvers.get(id)?.();
+    await waitForGradingIdle();
+
+    expect(getGradingQueuePosition('a5')).toBeNull();
+    expect(getGradingQueuePosition('a6')).toBeNull();
   });
 });

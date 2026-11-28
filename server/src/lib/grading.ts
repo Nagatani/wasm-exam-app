@@ -172,11 +172,30 @@ export async function gradeAttempt(attemptId: string): Promise<GradeOutcome> {
 // ---- in-process queue ------------------------------------------------------
 
 const queued = new Set<string>();
+const runningIds = new Set<string>();
 const order: string[] = [];
 let running = 0;
 let idleWaiters: Array<() => void> = [];
 const retryTimers = new Set<ReturnType<typeof setTimeout>>();
 const retryCountByAttempt = new Map<string, number>();
+
+/**
+ * Returns the attempt's current position in the in-process grading queue:
+ * - `position: 0` when the attempt is actively being graded right now
+ * - `position >= 1` (1-based) when waiting in the queue
+ * - `null` when the attempt is not tracked in the queue
+ */
+export function getGradingQueuePosition(
+  attemptId: string,
+): { position: number; total: number } | null {
+  if (!queued.has(attemptId)) return null;
+  const total = queued.size;
+  if (runningIds.has(attemptId)) return { position: 0, total };
+  const idx = order.indexOf(attemptId);
+  if (idx !== -1) return { position: idx + 1, total };
+  // Waiting on a retry timer — place after currently queued attempts.
+  return { position: order.length + 1, total };
+}
 
 export function enqueueGrading(attemptId: string): void {
   if (queued.has(attemptId)) return;
@@ -189,6 +208,7 @@ function pump(): void {
   while (running < CONCURRENCY && order.length > 0) {
     const id = order.shift()!;
     running += 1;
+    runningIds.add(id);
     void gradeAttempt(id)
       .then(() => {
         queued.delete(id);
@@ -222,6 +242,7 @@ function pump(): void {
         retryTimers.add(timer);
       })
       .finally(() => {
+        runningIds.delete(id);
         running -= 1;
         pump();
         if (running === 0 && order.length === 0) {
@@ -257,6 +278,7 @@ export function resetGradingQueue(): void {
   retryTimers.clear();
   retryCountByAttempt.clear();
   taskVerdictCache.clear();
+  runningIds.clear();
   queued.clear();
   order.length = 0;
 }

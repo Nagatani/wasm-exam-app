@@ -28,7 +28,27 @@ import {
 
 type Mode = 'loading' | 'review' | 'result';
 
-const GRADING_POLL_MS = 2000;
+// Backoff steps while polling grading status: 2s -> 3s -> 5s cap with ±20% jitter.
+const GRADING_POLL_STEPS_MS = [2000, 3000, 5000] as const;
+
+function nextGradingPollMs(step: number): number {
+  const base = GRADING_POLL_STEPS_MS[Math.min(step, GRADING_POLL_STEPS_MS.length - 1)];
+  return Math.round(base * (0.8 + Math.random() * 0.4));
+}
+
+function formatGradingQueueText(
+  queuePosition?: number | null,
+  gradingTotal?: number | null,
+): string {
+  if (queuePosition === 0) return '採点処理中...';
+  if (typeof queuePosition === 'number' && queuePosition > 0) {
+    if (typeof gradingTotal === 'number' && gradingTotal > 0) {
+      return `採点待ち: ${queuePosition} 番目 / 全 ${gradingTotal} 件`;
+    }
+    return `採点待ち: ${queuePosition} 番目`;
+  }
+  return '採点中です…';
+}
 
 const STATUS_COLOR: Record<'AC' | 'WA' | 'CE' | 'TLE' | 'MLE', string> = {
   AC: 'text-mp-green',
@@ -52,6 +72,7 @@ export function StudentExamFinishedPage() {
   const [retaking, setRetaking] = useState(false);
   const [submitStage, setSubmitStage] = useState<'none' | 'undrafted' | 'final'>('none');
   const autoSubmittedRef = useRef(false);
+  const pollStepRef = useRef(0);
 
   const loadResult = useCallback(async () => {
     if (!examId) return;
@@ -61,14 +82,63 @@ export function StudentExamFinishedPage() {
   }, [examId]);
 
   // While the latest attempt is being graded on the judge, poll its result
-  // until the grade arrives (normally a few seconds).
+  // with jittered backoff (2s -> 3s -> 5s cap, ±20% jitter), pausing while
+  // the tab is hidden and resetting on visibility return.
+  const isGrading = mode === 'result' && Boolean(result?.grading);
   useEffect(() => {
-    if (mode !== 'result' || !result?.grading) return;
-    const id = setTimeout(() => {
-      loadResult().catch(() => {});
-    }, GRADING_POLL_MS);
-    return () => clearTimeout(id);
-  }, [mode, result, loadResult]);
+    if (!isGrading) {
+      pollStepRef.current = 0;
+      return;
+    }
+
+    let cancelled = false;
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+
+    const clearTimer = () => {
+      if (timerId !== null) {
+        clearTimeout(timerId);
+        timerId = null;
+      }
+    };
+
+    const scheduleNext = () => {
+      clearTimer();
+      if (cancelled || document.hidden) return;
+      const delay = nextGradingPollMs(pollStepRef.current);
+      timerId = setTimeout(() => {
+        timerId = null;
+        if (cancelled || document.hidden) return;
+        pollStepRef.current = Math.min(pollStepRef.current + 1, GRADING_POLL_STEPS_MS.length - 1);
+        loadResult()
+          .catch(() => {})
+          .finally(() => {
+            if (!cancelled) scheduleNext();
+          });
+      }, delay);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        clearTimer();
+      } else {
+        pollStepRef.current = 0;
+        clearTimer();
+        loadResult()
+          .catch(() => {})
+          .finally(() => {
+            if (!cancelled) scheduleNext();
+          });
+      }
+    };
+
+    scheduleNext();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      cancelled = true;
+      clearTimer();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isGrading, loadResult]);
 
   const handleSubmit = useCallback(
     async () => {
@@ -315,57 +385,68 @@ export function StudentExamFinishedPage() {
 
           {error && <p className="mb-3 text-sm text-mp-red">{error}</p>}
 
-          {result.grading ? (
-            <div className="mb-6 rounded border border-mp-cyan/50 bg-mp-cyan/10 p-4 text-center" role="status">
-              <p className="mb-1 font-bold text-mp-cyan">採点中です…</p>
-              <p className="text-sm text-mp-muted">
-                提出は受け付けられています（このページを閉じても取り消されません）。
-                サーバーで採点が終わると、ここに結果が表示されます。
+          <div role="status" aria-live="polite">
+            {result.grading ? (
+              <div className="mb-6 rounded border border-mp-cyan/50 bg-mp-cyan/10 p-4 text-center">
+                <p className="mb-1 font-bold text-mp-cyan">
+                  {formatGradingQueueText(result.queuePosition, result.gradingTotal)}
+                </p>
+                <p className="text-sm text-mp-muted">
+                  提出は受け付けられています（このページを閉じても取り消されません）。
+                  サーバーで採点が終わると、ここに結果が表示されます。
+                </p>
+              </div>
+            ) : attempt ? (
+              <p className="sr-only">
+                採点が完了しました。合計 {attempt.score ?? 0} / {exam.totalPoints} 点
               </p>
-            </div>
-          ) : attempt ? (
-            <>
-              <table className="mb-4 w-full text-sm">
-                <thead>
-                  <tr className="border-b border-mp-border text-left text-mp-muted">
-                    <th className="py-2">問題</th>
-                    <th className="py-2">結果</th>
-                    <th className="py-2 text-right">得点</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {exam.tasks.map((task) => {
-                    const cell = perTaskById.get(task.id);
-                    return (
-                      <tr key={task.id} className="border-b border-mp-border/50">
-                        <td className="py-2">
-                          {task.order + 1}. {task.title}
-                        </td>
-                        <td
-                          className={`py-2 font-bold ${
-                            cell?.status ? STATUS_COLOR[cell.status] : 'text-mp-muted'
-                          }`}
-                        >
-                          {cell?.status
-                            ? `${statusGlyph(cell.status)} ${cell.status}`
-                            : '未提出'}
-                        </td>
-                        <td className="py-2 text-right">
-                          {cell?.score ?? 0} / {task.points}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            ) : null}
+          </div>
 
-              <p className="mb-6 text-right text-lg font-bold">
-                合計: {attempt.score ?? 0} / {exam.totalPoints} 点
-              </p>
-            </>
-          ) : (
-            <p className="mb-6 text-center text-mp-muted">この試験はまだ受験していません。</p>
-          )}
+          {!result.grading &&
+            (attempt ? (
+              <>
+                <table className="mb-4 w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-mp-border text-left text-mp-muted">
+                      <th className="py-2">問題</th>
+                      <th className="py-2">結果</th>
+                      <th className="py-2 text-right">得点</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {exam.tasks.map((task) => {
+                      const cell = perTaskById.get(task.id);
+                      return (
+                        <tr key={task.id} className="border-b border-mp-border/50">
+                          <td className="py-2">
+                            {task.order + 1}. {task.title}
+                          </td>
+                          <td
+                            className={`py-2 font-bold ${
+                              cell?.status ? STATUS_COLOR[cell.status] : 'text-mp-muted'
+                            }`}
+                          >
+                            {cell?.status
+                              ? `${statusGlyph(cell.status)} ${cell.status}`
+                              : '未提出'}
+                          </td>
+                          <td className="py-2 text-right">
+                            {cell?.score ?? 0} / {task.points}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                <p className="mb-6 text-right text-lg font-bold">
+                  合計: {attempt.score ?? 0} / {exam.totalPoints} 点
+                </p>
+              </>
+            ) : (
+              <p className="mb-6 text-center text-mp-muted">この試験はまだ受験していません。</p>
+            ))}
 
           <div className="flex flex-col gap-2">
             {canRetake && (
