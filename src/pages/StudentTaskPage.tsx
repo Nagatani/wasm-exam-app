@@ -100,6 +100,8 @@ export function StudentTaskPage() {
   const [compileError, setCompileError] = useState<string | null>(null);
   const [compileMarkers, setCompileMarkers] = useState<EditorMarker[]>([]);
   const [draftedTaskIds, setDraftedTaskIds] = useState<string[]>([]);
+  const [timerAlert, setTimerAlert] = useState('');
+  const announcedMilestoneRef = useRef<'none' | '5m' | '1m' | 'timeup'>('none');
 
   // Ctrl/Cmd+Enter in the editor triggers a preview run. Registered once on
   // mount, so it calls through this ref to always see the latest state.
@@ -176,6 +178,34 @@ export function StudentTaskPage() {
   const backup = useCodeBackup(backupKey, code, code !== savedCodeRef.current);
 
   const timeUp = deadline !== null && now >= deadline;
+
+  // Announce countdown milestones (5 min, 1 min, time-up) once per threshold
+  // rather than every second.
+  useEffect(() => {
+    announcedMilestoneRef.current = 'none';
+    setTimerAlert('');
+  }, [attemptId]);
+
+  useEffect(() => {
+    if (deadline === null) return;
+    const rem = deadline - now;
+    if (rem <= 0) {
+      if (announcedMilestoneRef.current !== 'timeup') {
+        announcedMilestoneRef.current = 'timeup';
+        setTimerAlert('試験時間が終了しました。提出画面に移動します。');
+      }
+    } else if (rem < 60_000) {
+      if (announcedMilestoneRef.current !== '1m' && announcedMilestoneRef.current !== 'timeup') {
+        announcedMilestoneRef.current = '1m';
+        setTimerAlert('残り時間1分未満です。');
+      }
+    } else if (rem < 5 * 60_000) {
+      if (announcedMilestoneRef.current === 'none') {
+        announcedMilestoneRef.current = '5m';
+        setTimerAlert('残り時間5分未満です。');
+      }
+    }
+  }, [deadline, now]);
 
   // When the clock runs out, hand off to the review page, which auto-submits
   // the current drafts (decision: auto-finalize on time-up).
@@ -315,7 +345,7 @@ export function StudentTaskPage() {
 
   if (!task) {
     return (
-      <div className="min-h-screen bg-mp-bg p-6 text-mp-red">
+      <div role="alert" className="min-h-screen bg-mp-bg p-6 text-mp-red">
         {error ?? '問題が見つかりません。'}
       </div>
     );
@@ -422,8 +452,15 @@ export function StudentTaskPage() {
         />
       )}
 
+      <div role="alert" className="sr-only">
+        {timerAlert}
+      </div>
+
       {timeUp && (
-        <div className="border-b border-mp-border bg-mp-red px-4 py-2 text-center text-sm font-bold text-mp-btn-fg">
+        <div
+          role="alert"
+          className="border-b border-mp-border bg-mp-red px-4 py-2 text-center text-sm font-bold text-mp-btn-fg"
+        >
           試験時間が終了しました。提出画面に移動します...
         </div>
       )}
@@ -506,7 +543,7 @@ export function StudentTaskPage() {
             </button>
           </div>
 
-          <div className="text-xs">
+          <div className="text-xs" role="status" aria-live="polite" aria-atomic="true">
             {dirty ? (
               <span className="font-bold text-mp-orange">● 未保存</span>
             ) : draftSavedFlash ? (
@@ -526,49 +563,70 @@ export function StudentTaskPage() {
             </p>
           )}
 
-          {busy && progress && (
-            <div className="space-y-1">
-              <div className="h-1.5 w-full overflow-hidden rounded bg-mp-bg">
+          {error && (
+            <p role="alert" className="text-sm text-mp-red">
+              {error}
+            </p>
+          )}
+
+          <div
+            role="status"
+            aria-live="polite"
+            className={(busy && progress) || verdict ? 'space-y-3' : 'sr-only'}
+          >
+            {busy && progress && (
+              <div className="space-y-1">
                 <div
-                  className={`h-full bg-mp-cyan transition-[width] duration-300 ${
-                    progress.phase === 'running' ? '' : 'mp-progress-indeterminate'
-                  }`}
-                  style={
-                    progress.phase === 'running'
-                      ? { width: `${(progress.current / Math.max(1, progress.total)) * 100}%` }
-                      : undefined
-                  }
-                />
+                  role="progressbar"
+                  aria-label="テスト実行の進捗"
+                  aria-valuemin={progress.phase === 'running' ? 0 : undefined}
+                  aria-valuenow={progress.phase === 'running' ? progress.current : undefined}
+                  aria-valuemax={progress.phase === 'running' ? progress.total : undefined}
+                  className="h-1.5 w-full overflow-hidden rounded bg-mp-bg"
+                >
+                  <div
+                    className={`h-full bg-mp-cyan transition-[width] duration-300 ${
+                      progress.phase === 'running' ? '' : 'mp-progress-indeterminate'
+                    }`}
+                    style={
+                      progress.phase === 'running'
+                        ? { width: `${(progress.current / Math.max(1, progress.total)) * 100}%` }
+                        : undefined
+                    }
+                  />
+                </div>
+                <p className="text-xs text-mp-muted">
+                  {progress.phase === 'compiling'
+                    ? compilingMessage
+                    : progress.phase === 'server'
+                      ? 'サーバーでコンパイル・実行しています...'
+                      : `テストケース ${progress.current}/${progress.total} を実行中...`}
+                </p>
               </div>
-              <p className="text-xs text-mp-muted">
-                {progress.phase === 'compiling'
-                  ? compilingMessage
-                  : progress.phase === 'server'
-                    ? 'サーバーでコンパイル・実行しています...'
-                    : `テストケース ${progress.current}/${progress.total} を実行中...`}
-              </p>
-            </div>
-          )}
-          {error && <p className="text-sm text-mp-red">{error}</p>}
+            )}
 
-          {verdict && (
-            <div
-              className={`rounded border px-3 py-2 text-center font-bold ${STATUS_COLOR[verdict.overallStatus]}`}
-            >
-              {STATUS_LABEL[verdict.overallStatus]}
-              {verdict.overallStatus !== 'CE' && (
-                <span className="ml-2 font-normal">
-                  （{verdict.score}/{task.points}点）
-                </span>
-              )}
-            </div>
-          )}
+            {verdict && (
+              <div
+                className={`rounded border px-3 py-2 text-center font-bold ${STATUS_COLOR[verdict.overallStatus]}`}
+              >
+                {STATUS_LABEL[verdict.overallStatus]}
+                {verdict.overallStatus !== 'CE' && (
+                  <span className="ml-2 font-normal">
+                    （{verdict.score}/{task.points}点）
+                  </span>
+                )}
+              </div>
+            )}
 
-          {verdict?.overallStatus === 'CE' && compileError && (
-            <pre className="whitespace-pre-wrap rounded bg-mp-bg p-3 text-xs text-mp-red">
-              {compileError}
-            </pre>
-          )}
+            {verdict?.overallStatus === 'CE' && compileError && (
+              <pre
+                role="alert"
+                className="whitespace-pre-wrap rounded bg-mp-bg p-3 text-xs text-mp-red"
+              >
+                {compileError}
+              </pre>
+            )}
+          </div>
 
           {verdict && verdict.overallStatus !== 'CE' && (
             <div className="space-y-2">

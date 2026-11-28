@@ -269,7 +269,7 @@ export function PracticeTaskPage() {
 
   if (!task) {
     return (
-      <div className="min-h-screen bg-mp-bg p-6 text-mp-red">
+      <div role="alert" className="min-h-screen bg-mp-bg p-6 text-mp-red">
         {error ?? '問題が見つかりません。'}
       </div>
     );
@@ -439,9 +439,14 @@ export function PracticeTaskPage() {
             </button>
           </div>
 
-          {lastSubmitFlash && (
-            <p className="text-xs font-bold text-mp-green">提出しました（履歴に記録されました）</p>
-          )}
+          <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className={lastSubmitFlash ? 'text-xs font-bold text-mp-green' : 'sr-only'}
+          >
+            {lastSubmitFlash ? '提出しました（履歴に記録されました）' : ''}
+          </div>
 
           <p className="rounded border border-mp-border bg-mp-bg p-2 text-xs text-mp-muted">
             演習モードには時間制限がなく、何度でも提出できます。「実行」は採点のみで記録されません。「提出する」は全テストケースで判定し、提出履歴に記録されます。コードはこのページを離れると保存されません。
@@ -453,49 +458,70 @@ export function PracticeTaskPage() {
             </p>
           )}
 
-          {busy && progress && (
-            <div className="space-y-1">
-              <div className="h-1.5 w-full overflow-hidden rounded bg-mp-bg">
+          {error && (
+            <p role="alert" className="text-sm text-mp-red">
+              {error}
+            </p>
+          )}
+
+          <div
+            role="status"
+            aria-live="polite"
+            className={(busy && progress) || verdict ? 'space-y-3' : 'sr-only'}
+          >
+            {busy && progress && (
+              <div className="space-y-1">
                 <div
-                  className={`h-full bg-mp-cyan transition-[width] duration-300 ${
-                    progress.phase === 'running' ? '' : 'mp-progress-indeterminate'
-                  }`}
-                  style={
-                    progress.phase === 'running'
-                      ? { width: `${(progress.current / Math.max(1, progress.total)) * 100}%` }
-                      : undefined
-                  }
-                />
+                  role="progressbar"
+                  aria-label="テスト実行の進捗"
+                  aria-valuemin={progress.phase === 'running' ? 0 : undefined}
+                  aria-valuenow={progress.phase === 'running' ? progress.current : undefined}
+                  aria-valuemax={progress.phase === 'running' ? progress.total : undefined}
+                  className="h-1.5 w-full overflow-hidden rounded bg-mp-bg"
+                >
+                  <div
+                    className={`h-full bg-mp-cyan transition-[width] duration-300 ${
+                      progress.phase === 'running' ? '' : 'mp-progress-indeterminate'
+                    }`}
+                    style={
+                      progress.phase === 'running'
+                        ? { width: `${(progress.current / Math.max(1, progress.total)) * 100}%` }
+                        : undefined
+                    }
+                  />
+                </div>
+                <p className="text-xs text-mp-muted">
+                  {progress.phase === 'compiling'
+                    ? compilingMessage
+                    : progress.phase === 'server'
+                      ? 'サーバーでコンパイル・実行しています...'
+                      : `テストケース ${progress.current}/${progress.total} を実行中...`}
+                </p>
               </div>
-              <p className="text-xs text-mp-muted">
-                {progress.phase === 'compiling'
-                  ? compilingMessage
-                  : progress.phase === 'server'
-                    ? 'サーバーでコンパイル・実行しています...'
-                    : `テストケース ${progress.current}/${progress.total} を実行中...`}
-              </p>
-            </div>
-          )}
-          {error && <p className="text-sm text-mp-red">{error}</p>}
+            )}
 
-          {verdict && (
-            <div
-              className={`rounded border px-3 py-2 text-center font-bold ${STATUS_COLOR[verdict.overallStatus]}`}
-            >
-              {STATUS_LABEL[verdict.overallStatus]}
-              {verdict.overallStatus !== 'CE' && (
-                <span className="ml-2 font-normal">
-                  （{verdict.score}/{task.points}点）
-                </span>
-              )}
-            </div>
-          )}
+            {verdict && (
+              <div
+                className={`rounded border px-3 py-2 text-center font-bold ${STATUS_COLOR[verdict.overallStatus]}`}
+              >
+                {STATUS_LABEL[verdict.overallStatus]}
+                {verdict.overallStatus !== 'CE' && (
+                  <span className="ml-2 font-normal">
+                    （{verdict.score}/{task.points}点）
+                  </span>
+                )}
+              </div>
+            )}
 
-          {verdict?.overallStatus === 'CE' && compileError && (
-            <pre className="whitespace-pre-wrap rounded bg-mp-bg p-3 text-xs text-mp-red">
-              {compileError}
-            </pre>
-          )}
+            {verdict?.overallStatus === 'CE' && compileError && (
+              <pre
+                role="alert"
+                className="whitespace-pre-wrap rounded bg-mp-bg p-3 text-xs text-mp-red"
+              >
+                {compileError}
+              </pre>
+            )}
+          </div>
 
           {task.aiHintEnabled && aiHintOptedIn && (
             <Suspense

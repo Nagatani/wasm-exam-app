@@ -72,8 +72,14 @@ function RuntimeReadinessCard({ ready }: { ready: Readiness }) {
     <div className="mb-6 rounded-lg border border-mp-border bg-mp-surface p-3 text-sm">
       <div className="mb-1 flex flex-wrap items-center gap-x-4 gap-y-1">
         <span className="font-bold text-mp-muted">実行環境の準備状況</span>
-        {row('C（コンパイラ ~106MB）', ready.c)}
-        {row('Python（~10MB）', ready.python)}
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex flex-wrap items-center gap-x-4 gap-y-1"
+        >
+          {row('C（コンパイラ ~106MB）', ready.c)}
+          {row('Python（~10MB）', ready.python)}
+        </div>
         <button
           onClick={() => prewarmAllClientRunners()}
           className="rounded border border-mp-border bg-mp-bg px-2 py-0.5 text-xs font-bold hover:bg-mp-surface-hover"
@@ -168,7 +174,11 @@ export function StudentDashboard() {
 
       <RuntimeReadinessCard ready={ready} />
 
-      {error && <p className="mb-4 text-sm text-mp-red">{error}</p>}
+      {error && (
+        <p role="alert" className="mb-4 text-sm text-mp-red">
+          {error}
+        </p>
+      )}
 
       {loading ? (
         <SkeletonRows />
