@@ -34,18 +34,19 @@ function printCredentials(
     s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
   const body = rows
     .map(
-      (r) => `<tr><td>${esc(r.studentNumber)}</td><td>${esc(r.displayName)}</td><td class="pw">${esc(
+      (r) => `<tr><th scope="row">${esc(r.studentNumber)}</th><td>${esc(r.displayName)}</td><td class="pw">${esc(
         r.initialPassword,
       )}</td></tr>`,
     )
     .join('');
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>初期パスワード一覧</title>
 <style>body{font-family:sans-serif;padding:24px}h1{font-size:16px}table{border-collapse:collapse;width:100%}
-th,td{border:1px solid #999;padding:6px 10px;text-align:left;font-size:13px}.pw{font-family:monospace}
+th,td{border:1px solid #999;padding:6px 10px;text-align:left;font-size:13px}tbody th{font-weight:normal}.pw{font-family:monospace}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 p{font-size:12px;color:#555}</style></head><body>
 <h1>${esc(courseName)} — 初期パスワード一覧</h1>
 <p>初回ログイン後、生徒は必ずパスワードを変更してください。変更するとこの初期パスワードは無効になります。</p>
-<table><thead><tr><th>学籍番号</th><th>氏名</th><th>初期パスワード</th></tr></thead><tbody>${body}</tbody></table>
+<table><caption class="sr-only">${esc(courseName)}の初期パスワード一覧</caption><thead><tr><th scope="col">学籍番号</th><th scope="col">氏名</th><th scope="col">初期パスワード</th></tr></thead><tbody>${body}</tbody></table>
 </body></html>`);
   w.document.close();
   w.focus();
@@ -110,6 +111,8 @@ export function CoursesPage() {
           {courses.map((course) => (
             <li key={course.id}>
               <button
+                type="button"
+                aria-expanded={expandedId === course.id}
                 onClick={() =>
                   setExpandedId((id) => (id === course.id ? null : course.id))
                 }

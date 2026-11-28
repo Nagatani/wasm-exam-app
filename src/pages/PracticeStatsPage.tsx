@@ -260,24 +260,27 @@ export function PracticeStatsPage() {
 
       <div className="overflow-x-auto rounded-lg border border-mp-border">
         <table className="w-full min-w-max text-sm">
+          <caption className="sr-only">生徒別演習状況一覧</caption>
           <thead className="bg-mp-surface text-mp-muted">
             <tr>
-              <th className="whitespace-nowrap px-3 py-2 text-left">学籍番号</th>
-              <th className="whitespace-nowrap px-3 py-2 text-left">氏名</th>
-              <th className="whitespace-nowrap px-3 py-2 text-left">正解</th>
-              <th className="whitespace-nowrap px-3 py-2 text-left">提出</th>
+              <th scope="col" className="whitespace-nowrap px-3 py-2 text-left">学籍番号</th>
+              <th scope="col" className="whitespace-nowrap px-3 py-2 text-left">氏名</th>
+              <th scope="col" className="whitespace-nowrap px-3 py-2 text-left">正解</th>
+              <th scope="col" className="whitespace-nowrap px-3 py-2 text-left">提出</th>
               {stats.tasks.map((t) => (
-                <th key={t.id} className="whitespace-nowrap px-3 py-2 text-left" title={t.title}>
+                <th key={t.id} scope="col" className="whitespace-nowrap px-3 py-2 text-left" title={t.title}>
                   {t.order + 1}. {t.title.length > 10 ? `${t.title.slice(0, 10)}…` : t.title}
                 </th>
               ))}
-              <th className="whitespace-nowrap px-3 py-2 text-left">最終提出</th>
+              <th scope="col" className="whitespace-nowrap px-3 py-2 text-left">最終提出</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((s) => (
               <tr key={s.id} className="border-t border-mp-border even:bg-mp-surface/50">
-                <td className="whitespace-nowrap px-3 py-2">{s.studentNumber}</td>
+                <th scope="row" className="whitespace-nowrap px-3 py-2 text-left font-normal">
+                  {s.studentNumber}
+                </th>
                 <td className="whitespace-nowrap px-3 py-2">{s.displayName}</td>
                 <td className="whitespace-nowrap px-3 py-2 font-bold">
                   {s.solvedCount} / {stats.tasks.length}

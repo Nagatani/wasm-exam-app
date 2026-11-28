@@ -337,17 +337,21 @@ export function ExamResultsPage() {
           ) : (
             <div className="overflow-x-auto rounded-lg border border-mp-border">
               <table className="w-full min-w-max text-sm">
+                <caption className="sr-only">生徒別成績一覧</caption>
                 <thead className="bg-mp-surface text-mp-muted">
                   <tr>
-                    <th className="w-8 px-3 py-2"></th>
+                    <th scope="col" className="w-8 px-3 py-2">
+                      <span className="sr-only">詳細</span>
+                    </th>
                     <SortHeader label="学籍番号" sortKey="studentNumber" sort={sort} onSort={handleSort} />
                     <SortHeader label="氏名" sortKey="displayName" sort={sort} onSort={handleSort} />
                     <SortHeader label="合計点" sortKey="totalScore" sort={sort} onSort={handleSort} />
-                    <th className="whitespace-nowrap px-3 py-2 text-left font-bold">受験</th>
-                    <th className="whitespace-nowrap px-3 py-2 text-left font-bold" title="時間延長（分）">
+                    <th scope="col" className="whitespace-nowrap px-3 py-2 text-left font-bold">受験</th>
+                    <th scope="col" className="whitespace-nowrap px-3 py-2 text-left font-bold" title="時間延長（分）">
                       延長
                     </th>
                     <th
+                      scope="col"
                       className="whitespace-nowrap px-3 py-2 text-left font-bold"
                       title="この生徒だけに追加で認める受験回数（受験可能回数への上乗せ）"
                     >
@@ -360,7 +364,7 @@ export function ExamResultsPage() {
                       sort={sort}
                       onSort={handleSort}
                     />
-                    <th className="whitespace-nowrap px-3 py-2 text-left">操作</th>
+                    <th scope="col" className="whitespace-nowrap px-3 py-2 text-left">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -431,17 +435,19 @@ function SortHeader({
   sort: SortState | null;
   onSort: (key: SortKey) => void;
 }) {
-  const active = sort?.key === sortKey;
+  const activeDir = sort?.key === sortKey ? sort.dir : null;
+  const ariaSort = activeDir === 'asc' ? 'ascending' : activeDir === 'desc' ? 'descending' : 'none';
   return (
-    <th className="whitespace-nowrap px-3 py-2 text-left">
+    <th scope="col" aria-sort={ariaSort} className="whitespace-nowrap px-3 py-2 text-left">
       <button
+        type="button"
         onClick={() => onSort(sortKey)}
         className="flex items-center gap-1 font-bold hover:text-mp-fg"
         aria-label={`${label}で並べ替え`}
       >
         {label}
         <span className="text-xs" aria-hidden="true">
-          {active ? (sort!.dir === 'asc' ? '▲' : '▼') : '↕'}
+          {activeDir === 'asc' ? '▲' : activeDir === 'desc' ? '▼' : '↕'}
         </span>
       </button>
     </th>
@@ -558,18 +564,21 @@ function StudentResultRowGroup({
       >
         <td className="px-1 py-2 text-center">
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onToggle();
             }}
             aria-expanded={expanded}
-            aria-label={expanded ? '設問別の詳細を閉じる' : '設問別の詳細を開く'}
+            aria-label={`${student.displayName}の設問別の詳細を${expanded ? '閉じる' : '開く'}`}
             className="px-2 text-mp-muted hover:text-mp-fg"
           >
             {expanded ? '▼' : '▶'}
           </button>
         </td>
-        <td className="whitespace-nowrap px-3 py-2">{student.studentNumber}</td>
+        <th scope="row" className="whitespace-nowrap px-3 py-2 text-left font-normal">
+          {student.studentNumber}
+        </th>
         <td className="whitespace-nowrap px-3 py-2">{student.displayName}</td>
         <td className="whitespace-nowrap px-3 py-2 font-bold">
           {student.totalScore}
@@ -642,12 +651,13 @@ function StudentResultRowGroup({
         <tr className="border-t border-mp-border bg-mp-bg">
           <td colSpan={10} className="px-3 py-3">
             <table className="w-full min-w-max text-xs">
+              <caption className="sr-only">{student.displayName}の設問別結果</caption>
               <thead className="text-mp-muted">
                 <tr>
-                  <th className="whitespace-nowrap px-2 py-1 text-left">設問</th>
-                  <th className="whitespace-nowrap px-2 py-1 text-left">結果</th>
-                  <th className="whitespace-nowrap px-2 py-1 text-left">打鍵数</th>
-                  <th className="whitespace-nowrap px-2 py-1 text-left">解答時間</th>
+                  <th scope="col" className="whitespace-nowrap px-2 py-1 text-left">設問</th>
+                  <th scope="col" className="whitespace-nowrap px-2 py-1 text-left">結果</th>
+                  <th scope="col" className="whitespace-nowrap px-2 py-1 text-left">打鍵数</th>
+                  <th scope="col" className="whitespace-nowrap px-2 py-1 text-left">解答時間</th>
                 </tr>
               </thead>
               <tbody>
@@ -655,9 +665,9 @@ function StudentResultRowGroup({
                   const cell = student.results.find((r) => r.taskId === task.id);
                   return (
                     <tr key={task.id} className="border-t border-mp-border/50">
-                      <td className="whitespace-nowrap px-2 py-1.5">
+                      <th scope="row" className="whitespace-nowrap px-2 py-1.5 text-left font-normal">
                         {task.title}（{task.points}点）
-                      </td>
+                      </th>
                       <td className="whitespace-nowrap px-2 py-1.5">
                         {cell?.status ? (
                           <span className={`font-bold ${STATUS_COLOR[cell.status]}`}>
@@ -800,14 +810,15 @@ function SubmissionDetailView({
           {t.results.length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full min-w-max text-xs">
+                <caption className="sr-only">{t.title}のテストケース別判定結果</caption>
                 <thead className="text-mp-muted">
                   <tr>
-                    <th className="px-2 py-1 text-left">#</th>
-                    <th className="px-2 py-1 text-left">入力</th>
-                    <th className="px-2 py-1 text-left">期待</th>
-                    <th className="px-2 py-1 text-left">実際</th>
-                    <th className="px-2 py-1 text-left">判定</th>
-                    <th className="px-2 py-1 text-left" title="実行時間。C/JS/TS/Python は生徒の端末で計測した目安、Java は judge での計測（JVM の起動時間を含む）">
+                    <th scope="col" className="px-2 py-1 text-left">#</th>
+                    <th scope="col" className="px-2 py-1 text-left">入力</th>
+                    <th scope="col" className="px-2 py-1 text-left">期待</th>
+                    <th scope="col" className="px-2 py-1 text-left">実際</th>
+                    <th scope="col" className="px-2 py-1 text-left">判定</th>
+                    <th scope="col" className="px-2 py-1 text-left" title="実行時間。C/JS/TS/Python は生徒の端末で計測した目安、Java は judge での計測（JVM の起動時間を含む）">
                       時間
                     </th>
                   </tr>
@@ -817,10 +828,10 @@ function SubmissionDetailView({
                     const r = t.results.find((x) => x.testCaseId === tc.id);
                     return (
                       <tr key={tc.id} className="border-t border-mp-border/50 align-top">
-                        <td className="px-2 py-1">
+                        <th scope="row" className="px-2 py-1 text-left font-normal">
                           {i + 1}
                           {tc.isSample ? '' : '*'}
-                        </td>
+                        </th>
                         <td className="max-w-[12rem] px-2 py-1">
                           <pre className="whitespace-pre-wrap break-words">{tc.input || '(なし)'}</pre>
                         </td>
