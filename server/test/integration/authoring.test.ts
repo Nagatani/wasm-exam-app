@@ -204,17 +204,73 @@ describe('exam duplication', () => {
 });
 
 describe('publish check', () => {
-  it('flags a task with no test cases / no sample / 0 points', async () => {
+  it('flags a task with no test cases / no sample / 0 points and attaches taskId', async () => {
     const { client: teacher } = await signupTeacher();
     const exam = await createExam(teacher, {
       publish: false,
       tasks: [{ title: 'OK' }, { title: '空', points: 0, cases: [['1', '1', false]] }],
     });
+    // Populate statementMarkdown + matching solution so 'OK' has no task-level issues.
+    await teacher.patch(`/api/tasks/${exam.tasks[0].id}`, { statementMarkdown: '2数の和を出力せよ。' });
+    await teacher.put(`/api/tasks/${exam.tasks[0].id}/solutions/js`, { code: 'print(3);' });
+
     const res = await teacher.get(`/api/exams/${exam.examId}/publish-check`);
     expect(res.status).toBe(200);
-    const messages: string[] = res.body.issues.map((i: { message: string }) => i.message);
-    expect(messages.some((m) => m.includes('空'))).toBe(true);
-    expect(messages.some((m) => m.includes('OK'))).toBe(false);
+    const issues: Array<{ level: string; message: string; taskId?: string }> = res.body.issues;
+    expect(issues.some((i) => i.message.includes('空') && i.taskId === exam.tasks[1].id)).toBe(true);
+    expect(issues.some((i) => i.message.includes('OK'))).toBe(false);
+  });
+
+  it('warns on missing solution, empty statement, duplicate inputs, and errors on missing /uploads images', async () => {
+    const { client: teacher } = await signupTeacher();
+    const PNG = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    ]);
+    const uploaded = await teacher.upload('/api/uploads', PNG, 'image/png');
+    expect(uploaded.status).toBe(201);
+    const existingUrl: string = uploaded.body.url;
+
+    const exam = await createExam(teacher, {
+      mode: 'PRACTICE',
+      publish: false,
+      tasks: [
+        {
+          title: '不備あり',
+          language: 'PYTHON',
+          cases: [
+            ['1 2', '3', true],
+            ['1 2', '3', false],
+          ],
+        },
+        {
+          title: '画像あり',
+          language: 'JS',
+          cases: [['1', '1', true]],
+        },
+      ],
+    });
+    const [badTask, imgTask] = exam.tasks;
+    // Give badTask a solution in a *different* language (JS != PYTHON) so PYTHON is still missing.
+    await teacher.put(`/api/tasks/${badTask.id}/solutions/js`, { code: 'print(1)' });
+    // Give imgTask a valid statement with one existing image and one missing image, plus a JS solution.
+    await teacher.patch(`/api/tasks/${imgTask.id}`, {
+      statementMarkdown: `図1: ![](${existingUrl})\n図2: ![欠損](/uploads/nonexistent-file.png)\n図3: ![不正](/uploads/../secret.png)`,
+    });
+    await teacher.put(`/api/tasks/${imgTask.id}/solutions/js`, { code: 'print(1)' });
+
+    const res = await teacher.get(`/api/exams/${exam.examId}/publish-check`);
+    expect(res.status).toBe(200);
+    const issues: Array<{ level: string; message: string; taskId?: string }> = res.body.issues;
+
+    const badIssues = issues.filter((i) => i.taskId === badTask.id);
+    expect(badIssues.some((i) => i.level === 'warn' && i.message.includes('問題文が空'))).toBe(true);
+    expect(badIssues.some((i) => i.level === 'warn' && i.message.includes('解答例が登録されていません'))).toBe(true);
+    expect(badIssues.some((i) => i.level === 'warn' && i.message.includes('入力が重複'))).toBe(true);
+
+    const imgIssues = issues.filter((i) => i.taskId === imgTask.id);
+    expect(imgIssues.some((i) => i.message.includes(existingUrl))).toBe(false);
+    expect(imgIssues.some((i) => i.level === 'error' && i.message.includes('nonexistent-file.png'))).toBe(true);
+    expect(imgIssues.some((i) => i.level === 'error' && i.message.includes('../secret.png'))).toBe(true);
   });
 
   it('warns once that browser-executed languages are not server-graded without a judge (EXAM only)', async () => {
@@ -237,6 +293,52 @@ describe('publish check', () => {
       await teacher.get(`/api/exams/${practice.examId}/publish-check`)
     ).body.issues;
     expect(practiceIssues.some((i) => i.message.includes('judge'))).toBe(false);
+  });
+});
+
+describe('verification bundle', () => {
+  it('returns ordered tasks with test cases and matching-language solutionCode (teacher-only)', async () => {
+    const { client: teacher } = await signupTeacher();
+    const exam = await createExam(teacher, {
+      publish: false,
+      tasks: [
+        { title: '問1', language: 'PYTHON', cases: [['1 2', '3', true], ['4 5', '9', false]] },
+        { title: '問2', language: 'JS', cases: [['10', '20', true]] },
+      ],
+    });
+    await teacher.put(`/api/tasks/${exam.tasks[0].id}/solutions/python`, { code: 'print(sum(map(int, input().split())))' });
+    await teacher.put(`/api/tasks/${exam.tasks[0].id}/solutions/js`, { code: '// wrong language' });
+
+    const res = await teacher.get(`/api/exams/${exam.examId}/verification-bundle`);
+    expect(res.status).toBe(200);
+    expect(res.body.tasks).toHaveLength(2);
+    expect(res.body.tasks[0]).toMatchObject({
+      id: exam.tasks[0].id,
+      order: 0,
+      title: '問1',
+      language: 'PYTHON',
+      comparisonMode: 'EXACT',
+      solutionCode: 'print(sum(map(int, input().split())))',
+    });
+    expect(res.body.tasks[0].testCases).toHaveLength(2);
+    expect(res.body.tasks[0].testCases[0]).toMatchObject({
+      input: '1 2',
+      expectedOutput: '3',
+      isSample: true,
+    });
+    expect(res.body.tasks[1]).toMatchObject({
+      id: exam.tasks[1].id,
+      order: 1,
+      title: '問2',
+      language: 'JS',
+      solutionCode: null,
+    });
+
+    // Non-teachers are rejected.
+    const { client: student } = await signup('s001');
+    expect((await student.get(`/api/exams/${exam.examId}/verification-bundle`)).status).toBe(403);
+    // Unknown exam returns 404.
+    expect((await teacher.get('/api/exams/nonexistent-id/verification-bundle')).status).toBe(404);
   });
 });
 

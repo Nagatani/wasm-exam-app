@@ -1,5 +1,6 @@
 import { apiFetch, ApiError } from './client';
 import type {
+  ComparisonMode,
   ExamDetail,
   ExamMode,
   ExamResults,
@@ -71,11 +72,39 @@ export function getExamResults(examId: string) {
 export interface PublishIssue {
   level: 'error' | 'warn';
   message: string;
+  taskId?: string;
 }
 
 // Advisory pre-publish sanity check for a teacher.
 export function getPublishCheck(examId: string) {
   return apiFetch<{ issues: PublishIssue[] }>(`/api/exams/${examId}/publish-check`);
+}
+
+export interface VerificationBundleTestCase {
+  id: string;
+  order: number;
+  input: string;
+  expectedOutput: string;
+  isSample: boolean;
+  timeLimitMs: number;
+  memoryLimitMb: number;
+}
+
+export interface VerificationBundleTask {
+  id: string;
+  order: number;
+  title: string;
+  language: Language;
+  comparisonMode: ComparisonMode;
+  floatTolerance: number;
+  testCases: VerificationBundleTestCase[];
+  solutionCode: string | null;
+}
+
+// Teacher-only bundle of all tasks' test cases and matching reference solutions
+// for exam-wide batch verification.
+export function getVerificationBundle(examId: string) {
+  return apiFetch<{ tasks: VerificationBundleTask[] }>(`/api/exams/${examId}/verification-bundle`);
 }
 
 // Per-student time accommodation (minutes; 0 removes it).

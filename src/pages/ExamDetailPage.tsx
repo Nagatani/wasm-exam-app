@@ -1,11 +1,20 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from '../lib/router';
 import { useNavigate, useParams } from '../lib/routerContext';
-import { deleteExam, getExam, getPublishCheck, updateExam, type PublishIssue } from '../api/exams';
-import { createTask, duplicateTask, updateTask } from '../api/tasks';
+import {
+  deleteExam,
+  getExam,
+  getPublishCheck,
+  getVerificationBundle,
+  updateExam,
+  type PublishIssue,
+} from '../api/exams';
+import { checkSolution, createTask, duplicateTask, updateTask } from '../api/tasks';
 import { listCourses } from '../api/courses';
 import { ApiError } from '../api/client';
-import { ALL_LANGUAGES, LANGUAGE_LABEL } from '../lib/language';
+import { ALL_LANGUAGES, isServerExec, LANGUAGE_LABEL } from '../lib/language';
+import { compareOutput } from '../lib/compareOutput';
+import { runClientSide } from '../runner/clientRunner';
 import type { ExamDetail, ExamMode, ExamStatus, Language } from '../types/exam';
 import type { CourseSummary } from '../types/course';
 import { BackHeader } from '../components/BackHeader';
@@ -18,6 +27,29 @@ import { EXAM_MODE_HELP_TEXT } from '../lib/examModeHelp';
 import { confirmLeaveIfDirty, useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { datetimeLocalToIso, toDatetimeLocalValue } from '../lib/datetime';
 import { changedOrders, moveItem } from '../lib/reorder';
+
+type BatchVerifyStatus = 'AC' | 'WA' | 'CE' | 'NO_SOLUTION' | 'NO_TESTS' | 'ERROR';
+
+interface BatchVerifyRow {
+  taskId: string;
+  order: number;
+  title: string;
+  language: Language;
+  status: BatchVerifyStatus;
+  passed: number;
+  total: number;
+  maxTimeMs: number | null;
+  detail?: string;
+}
+
+const VERIFY_STATUS_META: Record<BatchVerifyStatus, { label: string; cls: string }> = {
+  AC: { label: 'AC', cls: 'text-mp-green' },
+  WA: { label: 'WA', cls: 'text-mp-red' },
+  CE: { label: 'CE', cls: 'text-mp-red' },
+  NO_SOLUTION: { label: '解答例未登録', cls: 'text-mp-yellow' },
+  NO_TESTS: { label: 'テストケース未登録', cls: 'text-mp-muted' },
+  ERROR: { label: 'エラー', cls: 'text-mp-red' },
+};
 
 // The exam fields the metadata form persists — used to detect unsaved edits.
 function examFormKey(e: ExamDetail): string {
@@ -50,6 +82,14 @@ export function ExamDetailPage() {
   const [reorderError, setReorderError] = useState<string | null>(null);
   const [bankPickerOpen, setBankPickerOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [verifyingAll, setVerifyingAll] = useState(false);
+  const [verifyProgress, setVerifyProgress] = useState<{
+    current: number;
+    total: number;
+    title: string;
+  } | null>(null);
+  const [verifyRows, setVerifyRows] = useState<BatchVerifyRow[] | null>(null);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
   const savedSnapshotRef = useRef('');
 
   function refreshPublishCheck(id: string) {
@@ -180,6 +220,127 @@ export function ExamDetailPage() {
     } catch (err) {
       setReorderError(err instanceof ApiError ? err.message : '並び替えの保存に失敗しました。');
       await load();
+    }
+  }
+
+  async function handleVerifyAllSolutions() {
+    if (!exam || verifyingAll) return;
+    setVerifyingAll(true);
+    setVerifyError(null);
+    setVerifyRows([]);
+    setVerifyProgress(null);
+    try {
+      const { tasks } = await getVerificationBundle(exam.id);
+      for (const [idx, task] of tasks.entries()) {
+        setVerifyProgress({ current: idx + 1, total: tasks.length, title: task.title });
+        if (task.solutionCode === null || task.solutionCode.trim() === '') {
+          setVerifyRows((prev) => [
+            ...(prev ?? []),
+            {
+              taskId: task.id,
+              order: task.order,
+              title: task.title,
+              language: task.language,
+              status: 'NO_SOLUTION',
+              passed: 0,
+              total: task.testCases.length,
+              maxTimeMs: null,
+            },
+          ]);
+          continue;
+        }
+        if (task.testCases.length === 0) {
+          setVerifyRows((prev) => [
+            ...(prev ?? []),
+            {
+              taskId: task.id,
+              order: task.order,
+              title: task.title,
+              language: task.language,
+              status: 'NO_TESTS',
+              passed: 0,
+              total: 0,
+              maxTimeMs: null,
+            },
+          ]);
+          continue;
+        }
+        try {
+          const run = isServerExec(task.language)
+            ? await checkSolution(task.id, task.solutionCode)
+            : await runClientSide(
+                task.language,
+                task.solutionCode,
+                task.testCases.map((tc) => ({ id: tc.id, input: tc.input })),
+                () => {},
+              );
+          if (run.compileFailed) {
+            setVerifyRows((prev) => [
+              ...(prev ?? []),
+              {
+                taskId: task.id,
+                order: task.order,
+                title: task.title,
+                language: task.language,
+                status: 'CE',
+                passed: 0,
+                total: task.testCases.length,
+                maxTimeMs: null,
+                detail: run.compileStderr || 'コンパイル／構文エラー',
+              },
+            ]);
+            continue;
+          }
+          let passed = 0;
+          let maxTimeMs: number | null = null;
+          for (const tc of task.testCases) {
+            const outcome = run.outcomes.find((o) => o.testCaseId === tc.id);
+            if (outcome && typeof outcome.timeMs === 'number') {
+              maxTimeMs = maxTimeMs === null ? outcome.timeMs : Math.max(maxTimeMs, outcome.timeMs);
+            }
+            if (
+              outcome &&
+              outcome.stage === 'success' &&
+              compareOutput(tc.expectedOutput, outcome.stdout, task.comparisonMode, task.floatTolerance)
+            ) {
+              passed += 1;
+            }
+          }
+          setVerifyRows((prev) => [
+            ...(prev ?? []),
+            {
+              taskId: task.id,
+              order: task.order,
+              title: task.title,
+              language: task.language,
+              status: passed === task.testCases.length ? 'AC' : 'WA',
+              passed,
+              total: task.testCases.length,
+              maxTimeMs,
+            },
+          ]);
+        } catch (err) {
+          setVerifyRows((prev) => [
+            ...(prev ?? []),
+            {
+              taskId: task.id,
+              order: task.order,
+              title: task.title,
+              language: task.language,
+              status: 'ERROR',
+              passed: 0,
+              total: task.testCases.length,
+              maxTimeMs: null,
+              detail: err instanceof ApiError ? err.message : '検証の実行に失敗しました。',
+            },
+          ]);
+        }
+      }
+    } catch (err) {
+      setVerifyError(err instanceof ApiError ? err.message : '検証データの取得に失敗しました。');
+    } finally {
+      setVerifyingAll(false);
+      setVerifyProgress(null);
     }
   }
 
@@ -443,6 +604,14 @@ export function ExamDetailPage() {
                 >
                   {issue.level === 'error' ? '⚠ ' : '△ '}
                   {issue.message}
+                  {issue.taskId && (
+                    <Link
+                      to={`/teacher/exams/${exam.id}/tasks/${issue.taskId}`}
+                      className="ml-2 text-xs font-semibold text-mp-cyan underline hover:opacity-80"
+                    >
+                      編集する
+                    </Link>
+                  )}
                 </li>
               ))}
             </ul>
@@ -455,9 +624,19 @@ export function ExamDetailPage() {
         </div>
       )}
 
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-bold">問題一覧</h2>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {exam.tasks.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleVerifyAllSolutions()}
+              disabled={verifyingAll}
+              className="rounded border border-mp-border bg-mp-surface px-3 py-1.5 text-sm font-bold hover:bg-mp-surface-hover disabled:opacity-50"
+            >
+              {verifyingAll ? '一括検証中...' : '全問題の解答例を一括検証'}
+            </button>
+          )}
           {exam.mode === 'EXAM' && (
             <Link
               to={`/teacher/exams/${exam.id}/results`}
@@ -488,6 +667,84 @@ export function ExamDetailPage() {
           </button>
         </div>
       </div>
+
+      {(verifyRows !== null || verifyError || verifyingAll) && (
+        <div className="mb-4 rounded-lg border border-mp-border bg-mp-surface p-3 text-sm">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="font-bold text-mp-muted">
+              全問題の解答例検証結果
+              {verifyProgress && (
+                <span className="ml-2 text-xs font-normal text-mp-cyan">
+                  ({verifyProgress.current} / {verifyProgress.total}：{verifyProgress.title} を検証中...)
+                </span>
+              )}
+            </p>
+            {!verifyingAll && (
+              <button
+                type="button"
+                onClick={() => {
+                  setVerifyRows(null);
+                  setVerifyError(null);
+                }}
+                className="text-xs font-semibold text-mp-cyan hover:underline"
+              >
+                閉じる
+              </button>
+            )}
+          </div>
+          {verifyError && <p className="mb-2 text-xs text-mp-red">{verifyError}</p>}
+          {verifyRows && verifyRows.length > 0 && (
+            <>
+              {!verifyingAll && (
+                <p className="mb-2 text-xs text-mp-muted">
+                  AC: {verifyRows.filter((r) => r.status === 'AC').length} 問 / 不一致・エラー:{' '}
+                  {verifyRows.filter((r) => r.status === 'WA' || r.status === 'CE' || r.status === 'ERROR').length}{' '}
+                  問 / 未登録:{' '}
+                  {verifyRows.filter((r) => r.status === 'NO_SOLUTION' || r.status === 'NO_TESTS').length} 問
+                </p>
+              )}
+              <ul className="divide-y divide-mp-border rounded border border-mp-border bg-mp-bg">
+                {verifyRows.map((r) => {
+                  const meta = VERIFY_STATUS_META[r.status];
+                  return (
+                    <li key={r.taskId} className="px-3 py-2 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Link
+                            to={`/teacher/exams/${exam.id}/tasks/${r.taskId}`}
+                            className="font-semibold text-mp-cyan hover:underline"
+                          >
+                            {r.order + 1}. {r.title}
+                          </Link>
+                          <span className="rounded border border-mp-border px-1.5 py-0.5 text-[11px] text-mp-muted">
+                            {LANGUAGE_LABEL[r.language]}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {r.total > 0 && r.status !== 'NO_SOLUTION' && (
+                            <span className="font-mono text-mp-muted">
+                              {r.passed} / {r.total} 通過
+                            </span>
+                          )}
+                          {r.maxTimeMs !== null && (
+                            <span className="font-mono text-mp-muted">最大 {r.maxTimeMs} ms</span>
+                          )}
+                          <span className={`font-bold ${meta.cls}`}>{meta.label}</span>
+                        </div>
+                      </div>
+                      {r.detail && (
+                        <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap rounded bg-mp-surface p-2 text-[11px] text-mp-red">
+                          {r.detail}
+                        </pre>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
 
       {exam.tasks.length === 0 ? (
         <EmptyState

@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
@@ -9,6 +11,7 @@ import { languageSchema } from '../lib/language';
 import { isServerExec } from '../lib/attempts';
 import { isJudgeConfigured } from '../lib/judgeClient';
 import { portableTaskFileSchema } from '../lib/taskPortable';
+import { UPLOADS_DIR, UPLOADS_URL_PREFIX } from '../lib/uploads';
 
 export const examsRouter = Router();
 
@@ -236,56 +239,132 @@ examsRouter.post('/:examId/duplicate', async (req, res) => {
 examsRouter.get('/:examId/publish-check', async (req, res) => {
   const exam = await prisma.exam.findUnique({
     where: { id: req.params.examId },
-    include: { tasks: { orderBy: { order: 'asc' }, include: { testCases: true } } },
+    include: {
+      tasks: {
+        orderBy: { order: 'asc' },
+        include: { testCases: { orderBy: { order: 'asc' } }, solutions: true },
+      },
+    },
   });
   if (!exam) {
     res.status(404).json({ error: '試験が見つかりません。' });
     return;
   }
 
-  const issues: { level: 'error' | 'warn'; message: string }[] = [];
+  const LANGUAGE_LABEL: Record<string, string> = {
+    C: 'C',
+    JAVA: 'Java',
+    JS: 'JavaScript',
+    TS: 'TypeScript',
+    PYTHON: 'Python',
+  };
+
+  const issues: { level: 'error' | 'warn'; message: string; taskId?: string }[] = [];
   if (exam.tasks.length === 0) {
     issues.push({ level: 'error', message: '問題が1つも登録されていません。' });
   }
+
+  const uploadPrefix = `${UPLOADS_URL_PREFIX}/`;
+  const uploadRefRe = /\/uploads\/([^\s)"'<>?#]+)/g;
 
   let totalPoints = 0;
   for (const t of exam.tasks) {
     totalPoints += t.points;
     const label = `問題「${t.title}」`;
     if (t.testCases.length === 0) {
-      issues.push({ level: 'error', message: `${label}: テストケースがありません。` });
+      issues.push({ level: 'error', taskId: t.id, message: `${label}: テストケースがありません。` });
     } else if (!t.testCases.some((tc) => tc.isSample)) {
       issues.push({
         level: 'warn',
+        taskId: t.id,
         message: `${label}: サンプルテストケースがありません（生徒に入出力例が表示されません）。`,
       });
     }
     if (t.points === 0) {
-      issues.push({ level: 'warn', message: `${label}: 配点が0点です。` });
+      issues.push({ level: 'warn', taskId: t.id, message: `${label}: 配点が0点です。` });
+    }
+    if (t.statementMarkdown.trim() === '') {
+      issues.push({ level: 'warn', taskId: t.id, message: `${label}: 問題文が空です。` });
+    }
+    if (!t.solutions.some((s) => s.language === t.language && s.code.trim() !== '')) {
+      issues.push({
+        level: 'warn',
+        taskId: t.id,
+        message: `${label}: ${LANGUAGE_LABEL[t.language]} の解答例が登録されていません。`,
+      });
     }
     if (t.testCases.some((tc) => tc.expectedOutput.trim() === '')) {
       issues.push({
         level: 'warn',
+        taskId: t.id,
         message: `${label}: 期待される出力が空のテストケースがあります。`,
+      });
+    }
+    const seenInputs = new Set<string>();
+    let hasDuplicateInput = false;
+    for (const tc of t.testCases) {
+      if (seenInputs.has(tc.input)) {
+        hasDuplicateInput = true;
+        break;
+      }
+      seenInputs.add(tc.input);
+    }
+    if (hasDuplicateInput) {
+      issues.push({
+        level: 'warn',
+        taskId: t.id,
+        message: `${label}: 入力が重複しているテストケースがあります。`,
       });
     }
     if (t.comparisonMode === 'FLOAT' && t.testCases.some((tc) => !/-?\d/.test(tc.expectedOutput))) {
       issues.push({
         level: 'warn',
+        taskId: t.id,
         message: `${label}: 比較モードが「数値許容誤差」ですが、数値を含まない期待出力があります。`,
       });
     }
     if (isServerExec(t.language) && !isJudgeConfigured()) {
       issues.push({
         level: 'error',
+        taskId: t.id,
         message: `${label}: Java の実行環境（judge）が未設定のため、この問題は受験できません。`,
       });
+    }
+
+    // Check `/uploads/<filename>` image references in statementMarkdown against UPLOADS_DIR.
+    const checkedUploads = new Set<string>();
+    for (const match of t.statementMarkdown.matchAll(uploadRefRe)) {
+      const rawRef = match[1];
+      if (!rawRef || checkedUploads.has(rawRef)) continue;
+      checkedUploads.add(rawRef);
+      const safeName = path.basename(rawRef);
+      const resolved = path.resolve(UPLOADS_DIR, safeName);
+      const isSafe =
+        safeName === rawRef &&
+        safeName !== '.' &&
+        safeName !== '..' &&
+        resolved.startsWith(UPLOADS_DIR + path.sep);
+      let exists = false;
+      if (isSafe) {
+        try {
+          await fs.access(resolved);
+          exists = true;
+        } catch {
+          exists = false;
+        }
+      }
+      if (!exists) {
+        issues.push({
+          level: 'error',
+          taskId: t.id,
+          message: `${label}: 問題文で参照されている画像が見つかりません（${uploadPrefix}${rawRef}）。`,
+        });
+      }
     }
   }
   if (exam.tasks.length > 0 && totalPoints === 0) {
     issues.push({ level: 'warn', message: '合計配点が0点です。' });
   }
-  const LANGUAGE_LABEL: Record<string, string> = { C: 'C', JAVA: 'Java', JS: 'JavaScript', TS: 'TypeScript', PYTHON: 'Python' };
   // Without a judge, an EXAM's grading falls back to browser-reported outcomes
   // for C/JS/TS/Python (and a deadline auto-finalize can't run those drafts:
   // they score 0). One exam-level warning — Java tasks already get a per-task
@@ -313,6 +392,48 @@ examsRouter.get('/:examId/publish-check', async (req, res) => {
   }
 
   res.json({ issues });
+});
+
+// Teacher-only bundle of every task's test cases + matching reference solution
+// so ExamDetailPage can verify all solutions in one pass.
+examsRouter.get('/:examId/verification-bundle', async (req, res) => {
+  const exam = await prisma.exam.findUnique({
+    where: { id: req.params.examId },
+    include: {
+      tasks: {
+        orderBy: { order: 'asc' },
+        include: {
+          testCases: { orderBy: { order: 'asc' } },
+          solutions: true,
+        },
+      },
+    },
+  });
+  if (!exam) {
+    res.status(404).json({ error: '試験が見つかりません。' });
+    return;
+  }
+
+  res.json({
+    tasks: exam.tasks.map((t) => ({
+      id: t.id,
+      order: t.order,
+      title: t.title,
+      language: t.language,
+      comparisonMode: t.comparisonMode,
+      floatTolerance: t.floatTolerance,
+      testCases: t.testCases.map((tc) => ({
+        id: tc.id,
+        order: tc.order,
+        input: tc.input,
+        expectedOutput: tc.expectedOutput,
+        isSample: tc.isSample,
+        timeLimitMs: tc.timeLimitMs,
+        memoryLimitMb: tc.memoryLimitMb,
+      })),
+      solutionCode: t.solutions.find((s) => s.language === t.language)?.code ?? null,
+    })),
+  });
 });
 
 examsRouter.get('/:examId', async (req, res) => {
