@@ -3,6 +3,7 @@ import {
   deleteModelAllInfoInCache,
   hasModelInCache,
   prebuiltAppConfig,
+  type AppConfig,
   type InitProgressReport,
   type MLCEngineInterface,
 } from '@mlc-ai/web-llm';
@@ -14,8 +15,25 @@ import {
   getSelectedModelTier,
   MODEL_PRESETS,
   resolveModelId,
+  resolveWebLlmMirrorBases,
+  rewriteWebLlmModelRecord,
   type ModelTier,
 } from './aiModelConfig';
+
+function buildWebLlmAppConfig(): AppConfig {
+  const bases = resolveWebLlmMirrorBases();
+  if (!bases.modelBaseUrl && !bases.wasmBaseUrl) {
+    return prebuiltAppConfig;
+  }
+  return {
+    ...prebuiltAppConfig,
+    model_list: prebuiltAppConfig.model_list.map((record) =>
+      rewriteWebLlmModelRecord(record, bases),
+    ),
+  };
+}
+
+const webLlmAppConfig: AppConfig = buildWebLlmAppConfig();
 
 export const DEFAULT_WEBLLM_MODEL_ID = resolveModelId(DEFAULT_MODEL_TIER, true);
 
@@ -103,7 +121,7 @@ export async function resolveActiveModelId(tier?: ModelTier): Promise<string> {
 // size closely enough for a "about how big" caption.
 export function getWebLlmModelSizeLabel(modelId?: string): string {
   const targetId = modelId ?? resolveModelId(getSelectedModelTier(), true);
-  const record = prebuiltAppConfig.model_list.find((m) => m.model_id === targetId);
+  const record = webLlmAppConfig.model_list.find((m) => m.model_id === targetId);
   if (record?.vram_required_MB) {
     return `約${(record.vram_required_MB / 1024).toFixed(1)}GB`;
   }
@@ -123,7 +141,7 @@ export async function estimateStorageUsageBytes(): Promise<number | null> {
 
 async function safeHasModelInCache(modelId: string): Promise<boolean> {
   try {
-    return await hasModelInCache(modelId);
+    return await hasModelInCache(modelId, webLlmAppConfig);
   } catch {
     return false;
   }
@@ -290,6 +308,7 @@ export async function loadWebLlmEngine(
       });
       activeWorker = worker;
       return CreateWebWorkerMLCEngine(worker, modelId, {
+        appConfig: webLlmAppConfig,
         initProgressCallback: (report) => {
           for (const listener of progressListeners) {
             listener(report);
@@ -386,7 +405,7 @@ export async function clearWebLlmModelCache(
   if (loadedModelId === modelId || enginePromise) {
     await unloadWebLlmEngine();
   }
-  await deleteModelAllInfoInCache(modelId);
+  await deleteModelAllInfoInCache(modelId, webLlmAppConfig);
 }
 
 /**
@@ -399,7 +418,7 @@ export async function clearTierModelCache(tier: ModelTier): Promise<void> {
   }
   for (const id of ids) {
     try {
-      await deleteModelAllInfoInCache(id);
+      await deleteModelAllInfoInCache(id, webLlmAppConfig);
     } catch {
       /* ignore missing cache entries */
     }
@@ -413,7 +432,7 @@ export async function clearAllPresetModelCaches(): Promise<void> {
   await unloadWebLlmEngine();
   for (const id of getAllPresetModelIds()) {
     try {
-      await deleteModelAllInfoInCache(id);
+      await deleteModelAllInfoInCache(id, webLlmAppConfig);
     } catch {
       /* ignore missing cache entries */
     }

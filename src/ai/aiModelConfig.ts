@@ -108,3 +108,88 @@ export function formatByteSize(bytes: number): string {
   const mb = bytes / 1024 / 1024;
   return mb >= 1024 ? `約${(mb / 1024).toFixed(1)}GB` : `約${Math.round(mb)}MB`;
 }
+
+export interface WebLlmMirrorEnv {
+  readonly VITE_WEBLLM_MODEL_BASE_URL?: string;
+  readonly VITE_WEBLLM_WASM_BASE_URL?: string;
+}
+
+export interface WebLlmMirrorBases {
+  readonly modelBaseUrl: string | null;
+  readonly wasmBaseUrl: string | null;
+}
+
+export interface WebLlmModelRecordLike {
+  readonly model: string;
+  readonly model_id: string;
+  readonly model_lib: string;
+}
+
+function normalizeMirrorBaseUrl(configured: string | undefined | null): string | null {
+  const url = (configured ?? '').trim();
+  if (!url) return null;
+  return `${url.replace(/\/+$/, '')}/`;
+}
+
+function extractUrlBasename(url: string): string {
+  const withoutQuery = url.split(/[?#]/, 1)[0] ?? '';
+  const trimmed = withoutQuery.replace(/\/+$/, '');
+  const idx = trimmed.lastIndexOf('/');
+  return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
+}
+
+/**
+ * Resolves optional build-time campus/self-hosted mirror base URLs for WebLLM
+ * model weights (`VITE_WEBLLM_MODEL_BASE_URL`) and compiled `.wasm` model
+ * libraries (`VITE_WEBLLM_WASM_BASE_URL`). Normalizes non-empty values to end
+ * with a single trailing slash. Safe to call in both Vite and plain Node tests.
+ */
+export function resolveWebLlmMirrorBases(env?: WebLlmMirrorEnv): WebLlmMirrorBases {
+  const rawModel = env
+    ? env.VITE_WEBLLM_MODEL_BASE_URL
+    : import.meta.env
+      ? import.meta.env.VITE_WEBLLM_MODEL_BASE_URL
+      : undefined;
+  const rawWasm = env
+    ? env.VITE_WEBLLM_WASM_BASE_URL
+    : import.meta.env
+      ? import.meta.env.VITE_WEBLLM_WASM_BASE_URL
+      : undefined;
+  return {
+    modelBaseUrl: normalizeMirrorBaseUrl(rawModel),
+    wasmBaseUrl: normalizeMirrorBaseUrl(rawWasm),
+  };
+}
+
+/**
+ * Rewrites a WebLLM `ModelRecord`-shaped object to point at configured campus
+ * mirror base URLs. Returns `record` unchanged when neither mirror base URL is
+ * configured (keeping WebLLM's default Hugging Face / GitHub raw URLs).
+ */
+export function rewriteWebLlmModelRecord<T extends WebLlmModelRecordLike>(
+  record: T,
+  bases: WebLlmMirrorBases,
+): T {
+  const modelBase = normalizeMirrorBaseUrl(bases.modelBaseUrl);
+  const wasmBase = normalizeMirrorBaseUrl(bases.wasmBaseUrl);
+  if (!modelBase && !wasmBase) {
+    return record;
+  }
+
+  const cleanModelId = record.model_id.replace(/^\/+|\/+$/g, '');
+  const nextModel = modelBase ? `${modelBase}${cleanModelId}/` : record.model;
+
+  let nextModelLib = record.model_lib;
+  if (wasmBase) {
+    const basename = extractUrlBasename(record.model_lib);
+    if (basename) {
+      nextModelLib = `${wasmBase}${basename}`;
+    }
+  }
+
+  return {
+    ...record,
+    model: nextModel,
+    model_lib: nextModelLib,
+  };
+}
