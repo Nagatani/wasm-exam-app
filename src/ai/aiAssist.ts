@@ -5,8 +5,9 @@ import {
   GenerationAbortedError,
   loadWebLlmEngine,
 } from './webllmEngine';
-import type { Language } from '../types/exam';
+import type { ComparisonMode, Language } from '../types/exam';
 import { LANGUAGE_LABEL } from '../lib/language';
+import { COMPARISON_MODE_LABEL } from '../lib/compareOutput';
 
 export interface AiTaskDraftInput {
   language: Language;
@@ -26,6 +27,28 @@ export interface GenerateTaskDraftOptions {
   signal?: AbortSignal;
 }
 
+export interface ExistingTaskTestCase {
+  input: string;
+  expectedOutput: string;
+  isSample: boolean;
+}
+
+export interface ExistingTaskContext {
+  title: string;
+  statementMarkdown: string;
+  language: Language;
+  comparisonMode?: ComparisonMode;
+  testCases: ExistingTaskTestCase[];
+  solutionCode: string;
+  count?: number;
+}
+
+export interface ReviewTaskStatementOptions {
+  onDelta?: (textSoFar: string) => void;
+  onProgress?: (report: InitProgressReport) => void;
+  signal?: AbortSignal;
+}
+
 const DRAFT_JSON_SCHEMA = JSON.stringify({
   type: 'object',
   properties: {
@@ -35,6 +58,22 @@ const DRAFT_JSON_SCHEMA = JSON.stringify({
     testCaseInputs: { type: 'array', items: { type: 'string' } },
   },
   required: ['statementMarkdown', 'starterCode', 'solutionCode', 'testCaseInputs'],
+});
+
+const EDGE_CASE_INPUTS_SCHEMA = JSON.stringify({
+  type: 'object',
+  properties: {
+    inputs: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['inputs'],
+});
+
+const STARTER_CODE_SCHEMA = JSON.stringify({
+  type: 'object',
+  properties: {
+    starterCode: { type: 'string' },
+  },
+  required: ['starterCode'],
 });
 
 function isAiTaskDraft(v: unknown): v is AiTaskDraft {
@@ -47,6 +86,34 @@ function isAiTaskDraft(v: unknown): v is AiTaskDraft {
     Array.isArray(o.testCaseInputs) &&
     o.testCaseInputs.every((x) => typeof x === 'string')
   );
+}
+
+function isEdgeCaseInputsResponse(v: unknown): v is { inputs: string[] } {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return Array.isArray(o.inputs) && o.inputs.every((x) => typeof x === 'string');
+}
+
+function isStarterCodeResponse(v: unknown): v is { starterCode: string } {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.starterCode === 'string';
+}
+
+function formatExistingTestCases(testCases: ExistingTaskTestCase[], includeExpected: boolean): string {
+  if (testCases.length === 0) return '(まだテストケースがありません)';
+  return testCases
+    .slice(0, 20)
+    .map((tc, i) => {
+      const label = `ケース${i + 1}${tc.isSample ? '（サンプル）' : ''}`;
+      const inputText = tc.input.slice(0, 500) || '(空)';
+      if (!includeExpected) {
+        return `${label} 入力:\n${inputText}`;
+      }
+      const expectedText = tc.expectedOutput.slice(0, 500) || '(空)';
+      return `${label}\n入力:\n${inputText}\n期待出力:\n${expectedText}`;
+    })
+    .join('\n\n');
 }
 
 // Deliberately does NOT ask the model for expected outputs — small models
@@ -112,4 +179,266 @@ export async function generateTaskDraft(
     throw new Error('AIの出力の形式が正しくありませんでした。もう一度お試しください。');
   }
   return parsed;
+}
+
+/**
+ * Generates additional edge-case standard inputs for an existing task.
+ * Deliberately returns inputs ONLY — never expected outputs. The caller
+ * must execute the teacher's reference solution against each input via
+ * `runClientSide` / `checkSolution` to derive verified expected outputs.
+ */
+export async function generateEdgeCaseInputs(
+  taskContext: ExistingTaskContext,
+  options?: GenerateTaskDraftOptions,
+): Promise<string[]> {
+  const signal = options?.signal;
+  if (signal?.aborted) {
+    throw new GenerationAbortedError();
+  }
+
+  const engine = await loadWebLlmEngine(options?.onProgress);
+  if (signal?.aborted) {
+    throw new GenerationAbortedError();
+  }
+
+  const count = Math.min(10, Math.max(1, taskContext.count ?? 3));
+  const languageLabel = LANGUAGE_LABEL[taskContext.language];
+
+  const system = `あなたはプログラミング演習のテストケース設計を手伝うアシスタントです。既存の問題文・既存テストケース・解答例（${languageLabel}）を確認し、既存テストケースではカバーできていない境界値・コーナーケースの「標準入力のみ」をちょうど${count}件生成してください。
+
+必ず次のJSONスキーマに従ったJSONオブジェクトのみを出力してください。説明文・前置き・コードブロックの \`\`\` 記法は一切使わないでください: ${EDGE_CASE_INPUTS_SCHEMA}
+
+ルール:
+- inputs は標準入力の文字列配列で、ちょうど${count}件にすること。
+- 既存のテストケースと重複する入力は避けること。
+- 最小値・最大値・0・負数・単一要素・同値・空文字・境界条件など、問題仕様を満たす有効なエッジケースを選ぶこと。
+- 期待される出力は絶対に生成しないこと（解答例の実実行から求めるため）。`;
+
+  const user = `【タイトル】
+${taskContext.title || '(未設定)'}
+
+【問題文】
+${taskContext.statementMarkdown || '(未設定)'}
+
+【既存のテストケース入力】
+${formatExistingTestCases(taskContext.testCases, false)}
+
+【解答例（${languageLabel}）】
+${taskContext.solutionCode.slice(0, 4000) || '(なし)'}`;
+
+  beginWebLlmGeneration();
+  let completion;
+  try {
+    completion = await engine.chat.completions.create({
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+      response_format: { type: 'json_object', schema: EDGE_CASE_INPUTS_SCHEMA },
+      temperature: 0.6,
+      max_tokens: 800,
+    });
+  } finally {
+    endWebLlmGeneration();
+  }
+
+  if (signal?.aborted || completion.choices[0]?.finish_reason === 'abort') {
+    throw new GenerationAbortedError();
+  }
+
+  const content = completion.choices[0]?.message?.content ?? '';
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new Error('AIの出力を解析できませんでした。もう一度お試しください。');
+  }
+  if (!isEdgeCaseInputsResponse(parsed)) {
+    throw new Error('AIの出力の形式が正しくありませんでした。もう一度お試しください。');
+  }
+
+  const existingSet = new Set(taskContext.testCases.map((tc) => tc.input));
+  const seen = new Set<string>();
+  const uniqueInputs: string[] = [];
+  for (const raw of parsed.inputs) {
+    if (existingSet.has(raw) || seen.has(raw)) continue;
+    seen.add(raw);
+    uniqueInputs.push(raw);
+  }
+  return uniqueInputs;
+}
+
+/**
+ * Streams a concise Japanese review of an existing task's statement,
+ * checking for ambiguity, missing constraints, and mismatches with
+ * test cases or comparison mode. Advisory only — never auto-overwrites.
+ */
+export async function reviewTaskStatement(
+  taskContext: ExistingTaskContext,
+  options?: ReviewTaskStatementOptions,
+): Promise<string> {
+  const signal = options?.signal;
+  if (signal?.aborted) {
+    throw new GenerationAbortedError();
+  }
+
+  const engine = await loadWebLlmEngine(options?.onProgress);
+  if (signal?.aborted) {
+    throw new GenerationAbortedError();
+  }
+
+  const languageLabel = LANGUAGE_LABEL[taskContext.language];
+  const comparisonLabel = taskContext.comparisonMode
+    ? COMPARISON_MODE_LABEL[taskContext.comparisonMode]
+    : '未指定';
+
+  const system = `あなたはプログラミング課題の品質レビューを行うアシスタントです。教師が作成した問題文・テストケース・比較設定・解答例を突合し、生徒が誤解しやすい点や仕様の抜け漏れを簡潔に指摘してください。
+
+確認観点:
+1. 問題文の曖昧さ（入力形式・出力形式・改行や空白の扱い・端数処理など）
+2. 制約の記載漏れ（値の範囲、個数、型、0 や負数の扱いなど）
+3. 問題文とテストケース・比較設定・解答例の不整合
+
+回答形式:
+- 日本語の簡潔な箇条書き（3〜6点程度）で出力してください。
+- 問題文全体の書き直しは行わず、確認すべき具体的なポイントだけを示してください。
+- 大きな問題が見当たらない場合は、その旨を簡潔に伝えてください。`;
+
+  const user = `【タイトル】
+${taskContext.title || '(未設定)'}
+
+【解答言語】${languageLabel}
+【出力の比較方法】${comparisonLabel}
+
+【問題文】
+${taskContext.statementMarkdown || '(未設定)'}
+
+【テストケース】
+${formatExistingTestCases(taskContext.testCases, true)}
+
+【解答例】
+${taskContext.solutionCode.slice(0, 4000) || '(未登録)'}`;
+
+  let accumulated = '';
+  let abortedByEngine = false;
+
+  beginWebLlmGeneration();
+  try {
+    const stream = await engine.chat.completions.create({
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+      temperature: 0.3,
+      max_tokens: 700,
+      stream: true,
+    });
+
+    for await (const chunk of stream) {
+      if (signal?.aborted) {
+        abortedByEngine = true;
+        break;
+      }
+      const choice = chunk.choices[0];
+      const delta = choice?.delta?.content;
+      if (delta) {
+        accumulated += delta;
+        options?.onDelta?.(accumulated);
+      }
+      if (choice?.finish_reason === 'abort') {
+        abortedByEngine = true;
+      }
+    }
+  } catch (err) {
+    if (signal?.aborted) {
+      throw new GenerationAbortedError();
+    }
+    throw new Error('問題文チェックの生成に失敗しました。もう一度お試しください。', { cause: err });
+  } finally {
+    endWebLlmGeneration();
+  }
+
+  if (abortedByEngine || signal?.aborted) {
+    throw new GenerationAbortedError();
+  }
+
+  const content = accumulated.trim();
+  if (!content) {
+    throw new Error('問題文チェックの出力が空でした。もう一度お試しください。');
+  }
+  return content;
+}
+
+/**
+ * Generates a clean student starter-code skeleton from an existing reference
+ * solution, stripping out the core answer logic while preserving boilerplate.
+ */
+export async function generateStarterFromSolution(
+  taskContext: ExistingTaskContext,
+  options?: GenerateTaskDraftOptions,
+): Promise<string> {
+  const signal = options?.signal;
+  if (signal?.aborted) {
+    throw new GenerationAbortedError();
+  }
+  if (!taskContext.solutionCode.trim()) {
+    throw new Error('解答例コードが入力されていません。');
+  }
+
+  const engine = await loadWebLlmEngine(options?.onProgress);
+  if (signal?.aborted) {
+    throw new GenerationAbortedError();
+  }
+
+  const languageLabel = LANGUAGE_LABEL[taskContext.language];
+
+  const system = `あなたはプログラミング演習の教材作成を手伝うアシスタントです。教師の解答例コード（${languageLabel}）から、生徒に配布する初期テンプレートコード（starterCode）の骨組みを作成してください。
+
+必ず次のJSONスキーマに従ったJSONオブジェクトのみを出力してください。説明文・前置き・コードブロックの \`\`\` 記法は一切使わないでください: ${STARTER_CODE_SCHEMA}
+
+ルール:
+- 必要な import / include、main 関数や関数のシグネチャ、基本的な入出力の枠組みは残して構いません。
+- 核心となる解答ロジック・計算処理は必ず削除し、TODO コメントに置き換えてください（答えが漏れないようにすること）。
+- ${languageLabel} として自然な構文・インデントにしてください。`;
+
+  const user = `【タイトル】
+${taskContext.title || '(未設定)'}
+
+【問題文】
+${taskContext.statementMarkdown || '(未設定)'}
+
+【解答例コード（${languageLabel}）】
+${taskContext.solutionCode.slice(0, 6000)}`;
+
+  beginWebLlmGeneration();
+  let completion;
+  try {
+    completion = await engine.chat.completions.create({
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+      response_format: { type: 'json_object', schema: STARTER_CODE_SCHEMA },
+      temperature: 0.3,
+      max_tokens: 800,
+    });
+  } finally {
+    endWebLlmGeneration();
+  }
+
+  if (signal?.aborted || completion.choices[0]?.finish_reason === 'abort') {
+    throw new GenerationAbortedError();
+  }
+
+  const content = completion.choices[0]?.message?.content ?? '';
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new Error('AIの出力を解析できませんでした。もう一度お試しください。');
+  }
+  if (!isStarterCodeResponse(parsed) || !parsed.starterCode.trim()) {
+    throw new Error('スターターコードの形式が正しくありませんでした。もう一度お試しください。');
+  }
+  return parsed.starterCode;
 }

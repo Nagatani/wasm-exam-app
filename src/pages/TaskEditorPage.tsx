@@ -373,6 +373,19 @@ export function TaskEditorPage() {
     setAiApplyCounter((c) => c + 1);
   }
 
+  async function handleAddAiTestCases(cases: { input: string; expectedOutput: string }[]) {
+    if (!task || cases.length === 0) return;
+    const { testCases } = await bulkCreateTestCases(
+      task.id,
+      cases.map((tc) => ({ ...tc, isSample: false })),
+    );
+    setTask((prev) => (prev ? { ...prev, testCases } : prev));
+  }
+
+  function handleApplyAiStarterCode(starterCode: string) {
+    setTask((prev) => (prev ? { ...prev, starterCode } : prev));
+  }
+
   async function handleAddTestCase() {
     if (!task) return;
     const { testCase } = await createTestCase(task.id, {
@@ -1007,7 +1020,26 @@ export function TaskEditorPage() {
               hasExistingContent={
                 task.statementMarkdown.trim() !== '' || !isUntouchedTemplate(task.starterCode ?? '')
               }
+              existingTask={{
+                title: task.title,
+                statementMarkdown: task.statementMarkdown,
+                language: task.language,
+                comparisonMode: task.comparisonMode,
+                testCases: task.testCases.map((tc) => ({
+                  input: tc.input,
+                  expectedOutput: tc.expectedOutput,
+                  isSample: tc.isSample,
+                })),
+                solutionCode: aiSolutionOverride ?? findSolution(task, task.language),
+              }}
+              getCurrentSolutionCode={() =>
+                solutionEditorRef.current?.getCode() ??
+                aiSolutionOverride ??
+                findSolution(task, task.language)
+              }
               onApply={handleApplyAiDraft}
+              onAddTestCases={handleAddAiTestCases}
+              onApplyStarterCode={handleApplyAiStarterCode}
             />
           </Suspense>
         ) : (
@@ -1516,6 +1548,7 @@ function findSolution(task: TaskDetail, language: Language): string {
 
 interface SolutionEditorHandle {
   save: () => Promise<void>;
+  getCode: () => string;
 }
 
 // The teacher-only reference solution for this task's language, with its own
@@ -1590,6 +1623,7 @@ function SolutionEditor({
 
   useImperativeHandle(ref, () => ({
     save: saveSolution,
+    getCode: () => code,
   }));
 
   function handleSave() {
