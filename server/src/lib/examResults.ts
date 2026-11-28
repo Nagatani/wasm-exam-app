@@ -1,6 +1,6 @@
 import { prisma } from './prisma';
 import type { SubmissionStatus } from '@prisma/client';
-import { maybeSettleAttempt } from './attempts';
+import { settleExpiredAttemptsForExam } from './attempts';
 
 export interface TaskColumn {
   id: string;
@@ -86,18 +86,11 @@ export async function getExamResults(examId: string): Promise<ExamResults | null
         orderBy: { studentNumber: 'asc' },
       });
 
-  // Settle any attempt whose time is up but which was never submitted, so its
-  // (auto-finalized) result shows here rather than as "未提出".
-  const expired = await prisma.examAttempt.findMany({
-    where: { examId, status: 'IN_PROGRESS' },
-  });
-  for (const a of expired) {
-    try {
-      await maybeSettleAttempt(a.id);
-    } catch {
-      /* skip — a transient judge failure shouldn't blank the dashboard */
-    }
-  }
+  // Load per-student time extensions once and batch-settle any attempt whose
+  // time is up, so auto-finalized results appear here rather than as "未提出".
+  const extensions = await prisma.examTimeExtension.findMany({ where: { examId } });
+  const extraByStudent = new Map(extensions.map((e) => [e.studentId, e.extraMinutes]));
+  await settleExpiredAttemptsForExam(exam, extraByStudent);
 
   const attempts = await prisma.examAttempt.findMany({
     where: { examId, status: 'SUBMITTED' },
@@ -119,8 +112,6 @@ export async function getExamResults(examId: string): Promise<ExamResults | null
     }
   }
 
-  const extensions = await prisma.examTimeExtension.findMany({ where: { examId } });
-  const extraByStudent = new Map(extensions.map((e) => [e.studentId, e.extraMinutes]));
   const grants = await prisma.examAttemptGrant.findMany({ where: { examId } });
   const extraAttemptsByStudent = new Map(grants.map((g) => [g.studentId, g.extraAttempts]));
 

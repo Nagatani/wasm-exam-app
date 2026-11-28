@@ -91,18 +91,10 @@ export function judgeInputFromContainer(jr: Awaited<ReturnType<typeof runOnJudge
   };
 }
 
-// Auto-finalize an attempt whose time is up but which the student never
-// submitted (decision 2026-09-10: "自動確定して評価"). With a judge configured
-// the attempt is locked as GRADING (submittedAt = the deadline) and every
-// drafted task — any language — is graded in the background from its saved
-// draft (lib/grading.ts). Without a judge (legacy), the server can't re-run
-// browser-executed languages, so a drafted client-exec task is graded WA/0.
-// A no-op unless the attempt is IN_PROGRESS *and* past its deadline. Returns
-// whether it settled (i.e. is no longer in progress).
-//
-// Concurrency-safe: the status flip is a single guarded UPDATE, so only one
-// caller wins and writes submissions.
-export async function maybeSettleAttempt(attemptId: string): Promise<boolean> {
+// Legacy (no-judge) settlement path: loads tasks, test cases, and drafts only
+// when we actually need to grade in-process (never on the server-graded path or
+// for attempts that have not yet expired).
+async function settleLegacyAttempt(attemptId: string, deadline: Date): Promise<boolean> {
   const attempt = await prisma.examAttempt.findUnique({
     where: { id: attemptId },
     include: {
@@ -111,20 +103,6 @@ export async function maybeSettleAttempt(attemptId: string): Promise<boolean> {
     },
   });
   if (!attempt || attempt.status !== 'IN_PROGRESS') return false;
-
-  const deadline = attemptDeadline(
-    attempt.startedAt,
-    // Non-null: an ExamAttempt only ever exists for a mode:EXAM exam, which
-    // requires timeLimitMinutes at creation (server/src/routes/exams.ts).
-    attempt.exam.timeLimitMinutes!,
-    attempt.exam.closesAt,
-    await extraMinutesFor(attempt.examId, attempt.studentId),
-  );
-  if (Date.now() < deadline.getTime()) return false;
-
-  if (isServerGraded()) {
-    return beginGrading(attempt.id, deadline);
-  }
 
   const draftByTask = new Map(attempt.drafts.map((d) => [d.taskId, d]));
   const submissionData: Prisma.SubmissionCreateManyInput[] = [];
@@ -187,4 +165,106 @@ export async function maybeSettleAttempt(attemptId: string): Promise<boolean> {
     await prisma.submission.createMany({ data: submissionData });
   }
   return true;
+}
+
+// Auto-finalize an attempt whose time is up but which the student never
+// submitted (decision 2026-09-10: "自動確定して評価"). With a judge configured
+// the attempt is locked as GRADING (submittedAt = the deadline) and every
+// drafted task — any language — is graded in the background from its saved
+// draft (lib/grading.ts). Without a judge (legacy), the server can't re-run
+// browser-executed languages, so a drafted client-exec task is graded WA/0.
+// A no-op unless the attempt is IN_PROGRESS *and* past its deadline. Returns
+// whether it settled (i.e. is no longer in progress).
+//
+// Two-stage lookup: stage 1 fetches only minimal attempt + exam deadline fields
+// so neither non-expired checks nor server-graded settlements ever join tasks,
+// testCases, or drafts.
+//
+// Concurrency-safe: the status flip is a single guarded UPDATE, so only one
+// caller wins and writes submissions.
+export async function maybeSettleAttempt(attemptId: string): Promise<boolean> {
+  const attempt = await prisma.examAttempt.findUnique({
+    where: { id: attemptId },
+    select: {
+      id: true,
+      examId: true,
+      studentId: true,
+      status: true,
+      startedAt: true,
+      exam: { select: { timeLimitMinutes: true, closesAt: true } },
+    },
+  });
+  if (!attempt || attempt.status !== 'IN_PROGRESS') return false;
+
+  const deadline = attemptDeadline(
+    attempt.startedAt,
+    // Non-null: an ExamAttempt only ever exists for a mode:EXAM exam, which
+    // requires timeLimitMinutes at creation (server/src/routes/exams.ts).
+    attempt.exam.timeLimitMinutes!,
+    attempt.exam.closesAt,
+    await extraMinutesFor(attempt.examId, attempt.studentId),
+  );
+  if (Date.now() < deadline.getTime()) return false;
+
+  if (isServerGraded()) {
+    return beginGrading(attempt.id, deadline);
+  }
+
+  return settleLegacyAttempt(attempt.id, deadline);
+}
+
+const DEFAULT_BATCH_SETTLE_CONCURRENCY = 8;
+
+// Batch-settle expired IN_PROGRESS attempts for one exam using preloaded exam
+// metadata and time extensions (1 query for attempts instead of N+1 eager joins
+// + N extension lookups). Settles only expired attempts with bounded concurrency.
+export async function settleExpiredAttemptsForExam(
+  exam: { id: string; timeLimitMinutes: number | null; closesAt: Date | null },
+  extraByStudent: ReadonlyMap<string, number>,
+  concurrency = DEFAULT_BATCH_SETTLE_CONCURRENCY,
+  now = Date.now(),
+): Promise<number> {
+  if (exam.timeLimitMinutes === null) return 0;
+
+  const inProgress = await prisma.examAttempt.findMany({
+    where: { examId: exam.id, status: 'IN_PROGRESS' },
+    select: { id: true, studentId: true, startedAt: true },
+  });
+
+  const expired: Array<{ id: string; deadline: Date }> = [];
+  for (const a of inProgress) {
+    const deadline = attemptDeadline(
+      a.startedAt,
+      exam.timeLimitMinutes,
+      exam.closesAt,
+      extraByStudent.get(a.studentId) ?? 0,
+    );
+    if (now >= deadline.getTime()) {
+      expired.push({ id: a.id, deadline });
+    }
+  }
+  if (expired.length === 0) return 0;
+
+  const serverGraded = isServerGraded();
+  const limit = Math.max(1, Math.min(concurrency, expired.length));
+  let cursor = 0;
+  let settled = 0;
+
+  await Promise.all(
+    Array.from({ length: limit }, async () => {
+      while (cursor < expired.length) {
+        const item = expired[cursor++];
+        try {
+          const ok = serverGraded
+            ? await beginGrading(item.id, item.deadline)
+            : await settleLegacyAttempt(item.id, item.deadline);
+          if (ok) settled += 1;
+        } catch {
+          /* skip — a transient judge failure shouldn't blank the dashboard */
+        }
+      }
+    }),
+  );
+
+  return settled;
 }
