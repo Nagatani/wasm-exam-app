@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { generateHint, HINT_STAGE_LABEL, type HintStage } from '../ai/aiHint';
+import { explainErrorStream, hasExplainableError } from '../ai/aiErrorExplain';
 import { interruptGenerate, isGenerationAbortedError } from '../ai/webllmEngine';
 import type { PracticeTask } from '../types/practice';
 import type { JudgeVerdict } from '../types/student';
@@ -7,24 +8,12 @@ import type { JudgeVerdict } from '../types/student';
 const STAGES: HintStage[] = [1, 2, 3];
 
 /**
- * Staged AI hint panel for a practice-mode task (PracticeTaskPage). Three
- * buttons, unlocked one at a time: ヒント1 becomes pressable only once the
- * student has an actual non-AC run result (never before they've tried
- * anything themselves); ヒント2/3 each require the previous stage to have
- * been generated first. A generated hint's text is kept once shown — it is
- * NOT regenerated automatically as the student keeps editing; pressing a
- * stage again would just reflect whatever `code`/`verdict` this component
- * currently has as props (which the caller re-renders with as run/submit
- * happen), not a live-typing preview.
+ * Staged AI hint & error-explanation panel for a practice-mode task
+ * (PracticeTaskPage). Strictly PRACTICE mode only — never mounted in EXAM mode.
  *
  * PracticeTaskPage only mounts this (lazily) once it has confirmed both the
  * task's teacher-set `aiHintEnabled` flag and this browser's student opt-in
  * (aiHintSettings.ts) are true — this component doesn't re-check either.
- *
- * `task.aiHintMaxStage` (1-3, teacher-set) caps how many of the 3 stages are
- * offered at all — added after real-model testing showed stage 3 can land
- * close to the literal answer for simple bugs, so a teacher can restrict a
- * task to stage 1 or 2 only.
  */
 export function HintPanel({
   task,
@@ -45,10 +34,17 @@ export function HintPanel({
   const [progressText, setProgressText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [abortedMessage, setAbortedMessage] = useState<string | null>(null);
+
+  // Beginner-friendly CE / RE / TLE / MLE error explanation (L6)
+  const [explainingError, setExplainingError] = useState(false);
+  const [errorExplanation, setErrorExplanation] = useState<string | null>(null);
+  const [errorExplainStreamText, setErrorExplainStreamText] = useState('');
+
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const hasFailedRun = verdict !== null && verdict.overallStatus !== 'AC';
-  const busy = loadingStage !== null;
+  const showErrorExplain = hasExplainableError(verdict, compileStderr);
+  const busy = loadingStage !== null || explainingError;
 
   function isStageAvailable(stage: HintStage): boolean {
     if (stage === 1) return hasFailedRun;
@@ -106,9 +102,93 @@ export function HintPanel({
     }
   }
 
+  async function handleExplainError() {
+    if (!verdict) return;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setError(null);
+    setAbortedMessage(null);
+    setExplainingError(true);
+    setErrorExplanation(null);
+    setErrorExplainStreamText('');
+    setProgressText('');
+    try {
+      const text = await explainErrorStream(
+        {
+          language: task.language,
+          code,
+          verdict,
+          compileStderr,
+        },
+        {
+          onProgress: (report) => setProgressText(report.text),
+          onDelta: (textSoFar) => {
+            setProgressText('');
+            setErrorExplainStreamText(textSoFar);
+          },
+          signal: controller.signal,
+        },
+      );
+      setErrorExplanation(text);
+    } catch (err) {
+      if (isGenerationAbortedError(err)) {
+        setAbortedMessage('エラー解説の生成を中断しました。');
+      } else {
+        setError(err instanceof Error ? err.message : 'エラー解説の生成に失敗しました。');
+      }
+    } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+      setExplainingError(false);
+      setErrorExplainStreamText('');
+      setProgressText('');
+    }
+  }
+
   return (
     <div className="rounded border border-mp-border bg-mp-bg p-3">
-      <p className="mb-2 text-xs font-bold text-mp-muted">🤖 AIヒント</p>
+      <p className="mb-2 text-xs font-bold text-mp-muted">🤖 AI学習サポート</p>
+
+      {showErrorExplain && (
+        <div className="mb-3 border-b border-mp-border pb-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleExplainError()}
+              disabled={busy}
+              className="flex-1 rounded border border-mp-yellow/60 bg-mp-surface px-3 py-1.5 text-left text-xs font-bold text-mp-fg hover:bg-mp-surface-hover disabled:opacity-40"
+            >
+              {explainingError ? '解説を生成中...' : '💡 エラーをやさしく解説'}
+            </button>
+            {explainingError && (
+              <button
+                type="button"
+                onClick={handleAbort}
+                className="rounded border border-mp-red/50 bg-mp-surface px-2.5 py-1.5 text-xs font-bold text-mp-red hover:bg-mp-red hover:text-mp-btn-fg"
+              >
+                中断
+              </button>
+            )}
+          </div>
+          {explainingError && progressText && (
+            <p className="mt-1 text-xs text-mp-muted">{progressText}</p>
+          )}
+          {explainingError && errorExplainStreamText && (
+            <div className="mt-2 rounded border border-mp-yellow/40 bg-mp-yellow/5 p-2 text-xs">
+              <p className="mb-1 font-bold text-mp-yellow">エラー解説（生成中）</p>
+              <p className="whitespace-pre-wrap text-mp-fg">{errorExplainStreamText}</p>
+            </div>
+          )}
+          {!explainingError && errorExplanation && (
+            <div className="mt-2 rounded border border-mp-yellow/40 bg-mp-yellow/5 p-2 text-xs">
+              <p className="mb-1 font-bold text-mp-yellow">エラー解説</p>
+              <p className="whitespace-pre-wrap text-mp-fg">{errorExplanation}</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {!hasFailedRun && (
         <p className="mb-2 text-xs text-mp-muted">
           まずは「実行」して結果を確認してから、ヒントを利用できます。
@@ -169,7 +249,7 @@ export function HintPanel({
 }
 
 // Default export so PracticeTaskPage can `React.lazy()` this — it (and
-// @mlc-ai/web-llm underneath it, via ../ai/aiHint → ../ai/webllmEngine) is
-// several MB of JS that shouldn't land in the shared main bundle just from
-// opening a practice task page.
+// @mlc-ai/web-llm underneath it, via ../ai/aiHint / ../ai/aiErrorExplain →
+// ../ai/webllmEngine) is several MB of JS that shouldn't land in the shared
+// main bundle just from opening a practice task page.
 export default HintPanel;
