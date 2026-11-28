@@ -3,6 +3,7 @@ import { Link } from '../lib/router';
 import { useNavigate, useParams } from '../lib/routerContext';
 import { MarkdownBody } from '../components/MarkdownBody';
 import { CodeEditor } from '../components/CodeEditor';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { UserDrawer } from '../components/UserDrawer';
 import {
   getPracticeExam,
@@ -117,6 +118,11 @@ export function PracticeTaskPage() {
   const [submissions, setSubmissions] = useState<PracticeSubmissionSummary[]>([]);
   const [lastSubmitFlash, setLastSubmitFlash] = useState(false);
   const [aiHintOptedIn, setAiHintOptedIn] = useState(isAiHintEnabled);
+  const [pendingAction, setPendingAction] = useState<
+    | { kind: 'navigate'; targetId: string }
+    | { kind: 'loadSubmission'; submission: PracticeSubmissionSummary }
+    | null
+  >(null);
 
   useEffect(() => onAiHintSettingsChanged(() => setAiHintOptedIn(isAiHintEnabled())), []);
 
@@ -245,22 +251,25 @@ export function PracticeTaskPage() {
 
   function goToTask(targetId: string) {
     if (!examId || targetId === task?.id) return;
-    if (
-      dirty &&
-      !window.confirm('このページの編集内容は保存されません。移動しますか？（キャンセルで移動を中止）')
-    ) {
+    if (dirty) {
+      setPendingAction({ kind: 'navigate', targetId });
       return;
     }
     navigate(`/student/practice/exams/${examId}/tasks/${targetId}`);
   }
 
-  function loadSubmissionCode(s: PracticeSubmissionSummary) {
-    if (dirty && !window.confirm('現在の編集内容を破棄して、この提出のコードを読み込みますか？')) {
-      return;
-    }
+  function applySubmissionCode(s: PracticeSubmissionSummary) {
     setCode(s.code);
     initialCodeRef.current = s.code;
     setVerdict(null);
+  }
+
+  function loadSubmissionCode(s: PracticeSubmissionSummary) {
+    if (dirty) {
+      setPendingAction({ kind: 'loadSubmission', submission: s });
+      return;
+    }
+    applySubmissionCode(s);
   }
 
   if (loading) {
@@ -600,6 +609,32 @@ export function PracticeTaskPage() {
           )}
         </div>
       </main>
+
+      <ConfirmDialog
+        open={pendingAction !== null}
+        title={
+          pendingAction?.kind === 'loadSubmission'
+            ? '提出コードを読み込む'
+            : '未保存の変更を破棄して移動'
+        }
+        message={
+          pendingAction?.kind === 'loadSubmission'
+            ? '現在の編集内容を破棄して、この提出のコードを読み込みますか？'
+            : 'このページの編集内容は保存されません。移動しますか？'
+        }
+        confirmLabel={pendingAction?.kind === 'loadSubmission' ? '読み込む' : '移動する'}
+        onConfirm={() => {
+          if (!pendingAction) return;
+          const action = pendingAction;
+          setPendingAction(null);
+          if (action.kind === 'navigate' && examId) {
+            navigate(`/student/practice/exams/${examId}/tasks/${action.targetId}`);
+          } else if (action.kind === 'loadSubmission') {
+            applySubmissionCode(action.submission);
+          }
+        }}
+        onCancel={() => setPendingAction(null)}
+      />
     </div>
   );
 }

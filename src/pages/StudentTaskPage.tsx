@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from '../lib/routerContext';
 import { MarkdownBody } from '../components/MarkdownBody';
 import { CodeEditor } from '../components/CodeEditor';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { UserDrawer } from '../components/UserDrawer';
 import { getStudentExam, getStudentTask, runTask, saveTaskDraft } from '../api/student';
 import { prewarmClientRunner, runClientSide } from '../runner/clientRunner';
@@ -100,6 +101,7 @@ export function StudentTaskPage() {
   const [compileError, setCompileError] = useState<string | null>(null);
   const [compileMarkers, setCompileMarkers] = useState<EditorMarker[]>([]);
   const [draftedTaskIds, setDraftedTaskIds] = useState<string[]>([]);
+  const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
   const [timerAlert, setTimerAlert] = useState('');
   const announcedMilestoneRef = useRef<'none' | '5m' | '1m' | 'timeup'>('none');
 
@@ -293,22 +295,28 @@ export function StudentTaskPage() {
     }
   }
 
-  async function goToTask(targetId: string) {
+  function goToTask(targetId: string) {
     if (!examId || targetId === task?.id) return;
     if (code !== savedCodeRef.current) {
-      if (
-        !window.confirm(
-          'このページの編集内容はまだ下書き保存されていません。保存してから移動しますか？（キャンセルで移動を中止）',
-        )
-      ) {
-        return;
-      }
-      try {
-        await persistDraft();
-      } catch {
-        setError('下書きの保存に失敗したため移動を中止しました。');
-        return;
-      }
+      setPendingTaskId(targetId);
+      return;
+    }
+    navigate(`/student/exams/${examId}/tasks/${targetId}`);
+  }
+
+  async function confirmGoToTask() {
+    if (!examId || !pendingTaskId) return;
+    const targetId = pendingTaskId;
+    setPendingTaskId(null);
+    setSavingDraft(true);
+    setError(null);
+    try {
+      await persistDraft();
+    } catch {
+      setError('下書きの保存に失敗したため移動を中止しました。');
+      return;
+    } finally {
+      setSavingDraft(false);
     }
     navigate(`/student/exams/${examId}/tasks/${targetId}`);
   }
@@ -690,6 +698,15 @@ export function StudentTaskPage() {
           )}
         </div>
       </main>
+
+      <ConfirmDialog
+        open={pendingTaskId !== null}
+        title="未保存の変更を保存して移動"
+        message="このページの編集内容はまだ下書き保存されていません。保存してから移動しますか？"
+        confirmLabel="保存して移動"
+        onConfirm={() => void confirmGoToTask()}
+        onCancel={() => setPendingTaskId(null)}
+      />
     </div>
   );
 }
