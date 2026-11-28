@@ -66,25 +66,62 @@ describe('buildStageContext', () => {
 
 describe('looksLikeCode (hint leak guard)', () => {
   for (const text of [
+    // C
     'for (int i = 0; i < n; i++) にしてください',
     'while(x) を見直しましょう',
     'if (a == b) の部分',
     'i <= n にします',
     '```c\nint x;\n```',
     'scanf("%d") の回数',
+    'printf("%d\\n", ans) とします',
     'i++ を確認',
+    '#include <stdio.h> を追加',
+    // Python
+    'def solve(n): のように関数を定義',
+    'for i in range(n): を使いましょう',
+    'print(result) で出力します',
+    'elif x > 0: で分岐します',
+    'n = int(input()) で読み取ります',
+    'if x < 0: の条件を見直しましょう',
+    // JavaScript / TypeScript
+    'const total = 0 として初期化します',
+    'let count = 0 を使います',
+    'const sum: number = 0 に変更',
+    'console.log(ans) で出力します',
+    'items.map(x => x * 2) を使います',
+    'function calc(n) の戻り値を確認',
+    // Java
+    'System.out.println(ans) にします',
+    'Scanner sc = new Scanner(System.in) を使います',
+    'public static void main の引数を変更',
   ]) {
     it(`flags ${text}`, () => {
       assert.equal(looksLikeCode(text), true);
     });
   }
 
+  it('flags language-specific patterns when language is specified', () => {
+    assert.equal(looksLikeCode('import sys を使ってください', 'PYTHON'), true);
+    assert.equal(looksLikeCode('int count = 0 の初期化', 'C'), true);
+    assert.equal(looksLikeCode('new ArrayList() で生成します', 'JAVA'), true);
+    assert.equal(looksLikeCode('return ans として返します', 'JS'), true);
+    assert.equal(looksLikeCode('type Pair = number を定義します', 'TS'), true);
+  });
+
   for (const text of [
     'ループが何回繰り返されるかを、問題文の入力の個数と比べてみましょう。',
     '出力の形式が問題文の指示どおりになっているか確認してみてください。',
+    '配列のインデックスが0から始まる点と、最後の要素の扱いに注目してみましょう。',
+    '整数同士の割り算と小数点以下の扱いについて、問題文の条件を見直してください。',
+    '条件分岐の境界（等しいときを含むかどうか）をもう一度確認してみましょう。',
   ]) {
     it(`allows prose: ${text}`, () => {
       assert.equal(looksLikeCode(text), false);
+      assert.equal(looksLikeCode(text, 'C'), false);
+      assert.equal(looksLikeCode(text, 'PYTHON'), false);
+      assert.equal(looksLikeCode(text, 'JS'), false);
+      assert.equal(looksLikeCode(text, 'TS'), false);
+      assert.equal(looksLikeCode(text, 'JAVA'), false);
     });
   }
 });

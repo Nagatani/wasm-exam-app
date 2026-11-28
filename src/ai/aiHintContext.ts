@@ -68,17 +68,71 @@ export function buildStageContext(stage: HintStage, ctx: HintContext): string {
   return lines.join('\n');
 }
 
+export const MAX_FOLLOW_UP_TURNS = 2;
+export const MAX_FOLLOW_UP_QUESTION_CHARS = 100;
+
 // Best-effort safety net, not a guarantee: the system prompt's NO_CODE_RULE
 // isn't reliably followed by a 3B model (see the 2026-09-19 note above this
 // file's STAGE_INSTRUCTION — stage 3 was observed emitting the literal
-// corrected line despite being told not to). This catches the common case —
-// C-family control-flow syntax — and rejects the output rather than showing
-// it, so a retry (new sampling) gets another chance instead of the student
-// seeing a near-complete answer. Deliberately simple/over-inclusive: a false
-// positive just costs a retry, which is cheap here.
-const CODE_LIKE_PATTERN =
-  /\bfor\s*\(|\bwhile\s*\(|\bif\s*\(|[{};]|==|!=|<=|>=|\+\+|--|\bscanf\s*\(|\bprintf\s*\(|```/;
+// corrected line despite being told not to). This catches common code leaks
+// across all 5 supported languages (C, Java, JS, TS, Python) and rejects the
+// output rather than showing it, so a retry (new sampling) gets another chance
+// instead of the student seeing a near-complete answer. Deliberately simple /
+// over-inclusive: a false positive just costs a retry, which is cheap here.
+const CODE_LIKE_PATTERN = new RegExp(
+  [
+    // Markdown code fences
+    '```',
+    // C-family control flow, braces/semicolons, comparison & inc/dec operators, arrows
+    '\\bfor\\s*\\(',
+    '\\bwhile\\s*\\(',
+    '\\bif\\s*\\(',
+    '[{};]',
+    '==',
+    '!=',
+    '<=',
+    '>=',
+    '\\+\\+',
+    '--',
+    '=>',
+    // C
+    '\\bscanf\\s*\\(',
+    '\\bprintf\\s*\\(',
+    '#include\\b',
+    '\\bint\\s+main\\b',
+    // Python
+    '\\bdef\\s+\\w+\\s*\\(',
+    '\\brange\\s*\\(',
+    '\\bprint\\s*\\(',
+    '\\belif\\b',
+    '\\binput\\s*\\(',
+    '\\bfor\\s+\\w+\\s+in\\b',
+    '\\b(?:if|while)\\s+[A-Za-z0-9_(\\s!=<>+\\-*/%]+\\s*:',
+    // JavaScript / TypeScript
+    '\\b(?:const|let|var)\\s+\\w+\\s*(?::[^=\\n]+)?=',
+    '\\bconsole\\.log\\b',
+    '\\bfunction\\s+\\w*\\s*\\(',
+    '\\breadline\\s*\\(',
+    // Java
+    '\\bSystem\\.out\\b',
+    '\\bScanner\\b',
+    '\\bpublic\\s+(?:static\\s+)?(?:void|class)\\b',
+  ].join('|'),
+);
 
-export function looksLikeCode(text: string): boolean {
-  return CODE_LIKE_PATTERN.test(text);
+const LANGUAGE_EXTRA_CODE_PATTERN: Partial<Record<Language, RegExp>> = {
+  PYTHON: /\bimport\s+\w+|\blambda\s+\w+:/,
+  JS: /\breturn\s+[A-Za-z0-9_([\s]/,
+  TS: /\b(?:interface|type)\s+\w+\s*[={]|\breturn\s+[A-Za-z0-9_([\s]/,
+  JAVA: /\bimport\s+java\.|\bnew\s+[A-Z]\w*\s*\(/,
+  C: /\b(?:int|long|double|char|void)\s+\w+\s*(?:=|\[)/,
+};
+
+export function looksLikeCode(text: string, language?: Language): boolean {
+  if (CODE_LIKE_PATTERN.test(text)) return true;
+  if (language) {
+    const extra = LANGUAGE_EXTRA_CODE_PATTERN[language];
+    if (extra?.test(text)) return true;
+  }
+  return false;
 }

@@ -9,12 +9,33 @@ import type { JudgeVerdict } from '../types/student';
 import {
   buildStageContext,
   looksLikeCode,
+  MAX_FOLLOW_UP_QUESTION_CHARS,
+  MAX_FOLLOW_UP_TURNS,
   type HintContext,
   type HintStage,
 } from './aiHintContext';
 import { LANGUAGE_LABEL } from '../lib/language';
 
-export { HINT_STAGE_LABEL, type HintContext, type HintStage } from './aiHintContext';
+export {
+  HINT_STAGE_LABEL,
+  MAX_FOLLOW_UP_QUESTION_CHARS,
+  MAX_FOLLOW_UP_TURNS,
+  type HintContext,
+  type HintStage,
+} from './aiHintContext';
+
+export interface HintFollowUpExchange {
+  question: string;
+  answer: string;
+}
+
+export interface HintFollowUpInput {
+  stage: HintStage;
+  ctx: HintContext;
+  hintText: string;
+  history: HintFollowUpExchange[];
+  question: string;
+}
 
 export interface GenerateHintOptions {
   onProgress?: (report: InitProgressReport) => void;
@@ -163,7 +184,7 @@ ${ctx.code || '(まだ何も書かれていません)'}
   if (!content) {
     throw new Error(GENERATE_FAILURE_MESSAGE);
   }
-  if (looksLikeCode(content)) {
+  if (looksLikeCode(content, ctx.language)) {
     throw new Error(CONTAINS_CODE_MESSAGE);
   }
   return content;
@@ -197,6 +218,149 @@ export async function generateHint(
       // Only worth retrying when the *content itself* was rejected — a
       // model/network failure (GENERATE_FAILURE_MESSAGE) won't be fixed by
       // resampling the same request.
+      if (!(err instanceof Error) || err.message !== CONTAINS_CODE_MESSAGE) {
+        throw err;
+      }
+    }
+  }
+  throw lastError;
+}
+
+const FOLLOW_UP_FAILURE_MESSAGE = '質問への回答の生成に失敗しました。もう一度お試しください。';
+
+async function requestFollowUpOnce(
+  engine: MLCEngineInterface,
+  input: HintFollowUpInput,
+  sanitizedQuestion: string,
+  attempt: number,
+  options?: GenerateHintOptions,
+): Promise<string> {
+  const signal = options?.signal;
+  if (signal?.aborted) {
+    throw new GenerationAbortedError();
+  }
+
+  const { stage, ctx, hintText, history } = input;
+  const languageLabel = LANGUAGE_LABEL[ctx.language];
+  const stageContext = buildStageContext(stage, ctx);
+  const extraGuard = isCompileErrorGuardActive(stage, ctx.verdict)
+    ? '\n\nこの生徒のコードはまだコンパイルが通っていません。まずはエラーメッセージが指している箇所を確認するよう促してください。'
+    : '';
+
+  const system = `あなたはプログラミング学習者を指導するアシスタントです。生徒が先ほど表示されたヒントについて追加の質問をしています。専門用語の意味や考え方を分かりやすく補足してください。ただし、生徒に「答えそのもの」や「修正済みコード」を教えてはいけません。現在のヒント段階以上の情報には踏み込まないでください。
+
+${STAGE_INSTRUCTION[stage]}${extraGuard}
+
+${NO_CODE_RULE}${buildRetryNudge(attempt)}
+
+回答は日本語で、2〜4文程度の短い文章のみにしてください。見出しや箇条書き、コードブロック（\`\`\`）は使わないでください。`;
+
+  const userContext = `【問題文】
+${ctx.statementMarkdown}
+
+【生徒の現在のコード（${languageLabel}）】
+${ctx.code || '(まだ何も書かれていません)'}
+
+【${stageContext}】`;
+
+  const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+    { role: 'system', content: system },
+    { role: 'user', content: userContext },
+    { role: 'assistant', content: hintText },
+  ];
+
+  for (const turn of history.slice(-MAX_FOLLOW_UP_TURNS)) {
+    messages.push(
+      { role: 'user', content: turn.question },
+      { role: 'assistant', content: turn.answer },
+    );
+  }
+  messages.push({ role: 'user', content: sanitizedQuestion });
+
+  let accumulated = '';
+  let abortedByEngine = false;
+
+  beginWebLlmGeneration();
+  try {
+    const stream = await engine.chat.completions.create({
+      messages,
+      temperature: 0.4,
+      max_tokens: 280,
+      stream: true,
+    });
+
+    for await (const chunk of stream) {
+      if (signal?.aborted) {
+        abortedByEngine = true;
+        break;
+      }
+      const choice = chunk.choices[0];
+      const delta = choice?.delta?.content;
+      if (delta) {
+        accumulated += delta;
+        options?.onDelta?.(accumulated);
+      }
+      if (choice?.finish_reason === 'abort') {
+        abortedByEngine = true;
+      }
+    }
+  } catch (err) {
+    if (signal?.aborted) {
+      throw new GenerationAbortedError();
+    }
+    throw new Error(FOLLOW_UP_FAILURE_MESSAGE, { cause: err });
+  } finally {
+    endWebLlmGeneration();
+  }
+
+  if (abortedByEngine || signal?.aborted) {
+    throw new GenerationAbortedError();
+  }
+
+  const content = accumulated.trim();
+  if (!content) {
+    throw new Error(FOLLOW_UP_FAILURE_MESSAGE);
+  }
+  if (looksLikeCode(content, ctx.language)) {
+    throw new Error(CONTAINS_CODE_MESSAGE);
+  }
+  return content;
+}
+
+/**
+ * Answers a short student follow-up question (max 100 chars, max 2 turns)
+ * about the most recently unlocked hint, strictly constrained by the same
+ * `buildStageContext(stage, ctx)` + `NO_CODE_RULE` + `looksLikeCode` guard.
+ */
+export async function askHintFollowUpStream(
+  input: HintFollowUpInput,
+  options?: GenerateHintOptions,
+): Promise<string> {
+  if (options?.signal?.aborted) {
+    throw new GenerationAbortedError();
+  }
+  if (input.history.length >= MAX_FOLLOW_UP_TURNS) {
+    throw new Error(`質問は最大${MAX_FOLLOW_UP_TURNS}往復までです。`);
+  }
+  const sanitizedQuestion = input.question.trim().slice(0, MAX_FOLLOW_UP_QUESTION_CHARS);
+  if (!sanitizedQuestion) {
+    throw new Error('質問を入力してください。');
+  }
+
+  const engine = await loadWebLlmEngine(options?.onProgress);
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      options?.onDelta?.('');
+    }
+    try {
+      return await requestFollowUpOnce(engine, input, sanitizedQuestion, attempt, options);
+    } catch (err) {
+      if (err instanceof GenerationAbortedError) {
+        throw err;
+      }
+      lastError = err;
       if (!(err instanceof Error) || err.message !== CONTAINS_CODE_MESSAGE) {
         throw err;
       }

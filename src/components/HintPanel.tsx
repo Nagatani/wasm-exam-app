@@ -1,5 +1,13 @@
 import { useRef, useState } from 'react';
-import { generateHint, HINT_STAGE_LABEL, type HintStage } from '../ai/aiHint';
+import {
+  askHintFollowUpStream,
+  generateHint,
+  HINT_STAGE_LABEL,
+  MAX_FOLLOW_UP_QUESTION_CHARS,
+  MAX_FOLLOW_UP_TURNS,
+  type HintFollowUpExchange,
+  type HintStage,
+} from '../ai/aiHint';
 import { explainErrorStream, hasExplainableError } from '../ai/aiErrorExplain';
 import { reviewAcCodeStream } from '../ai/aiCodeReview';
 import { interruptGenerate, isGenerationAbortedError } from '../ai/webllmEngine';
@@ -49,12 +57,19 @@ export function HintPanel({
   const [codeReview, setCodeReview] = useState<string | null>(null);
   const [codeReviewStreamText, setCodeReviewStreamText] = useState('');
 
+  // Follow-up Q&A on unlocked hints (L8, max 2 turns / 100 chars)
+  const [followUpHistory, setFollowUpHistory] = useState<HintFollowUpExchange[]>([]);
+  const [followUpInput, setFollowUpInput] = useState('');
+  const [askingFollowUp, setAskingFollowUp] = useState(false);
+  const [followUpStreamText, setFollowUpStreamText] = useState('');
+
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const ac = isAc ?? verdict?.overallStatus === 'AC';
   const hasFailedRun = verdict !== null && verdict.overallStatus !== 'AC';
   const showErrorExplain = hasExplainableError(verdict, compileStderr);
-  const busy = loadingStage !== null || explainingError || reviewingCode;
+  const busy = loadingStage !== null || explainingError || reviewingCode || askingFollowUp;
+  const remainingFollowUps = Math.max(0, MAX_FOLLOW_UP_TURNS - followUpHistory.length);
 
   function isStageAvailable(stage: HintStage): boolean {
     if (stage === 1) return hasFailedRun;
@@ -195,6 +210,63 @@ export function HintPanel({
       }
       setReviewingCode(false);
       setCodeReviewStreamText('');
+      setProgressText('');
+    }
+  }
+
+  async function handleAskFollowUp() {
+    if (!verdict || unlockedStage === 0) return;
+    const question = followUpInput.trim().slice(0, MAX_FOLLOW_UP_QUESTION_CHARS);
+    if (!question || followUpHistory.length >= MAX_FOLLOW_UP_TURNS) return;
+    const stage = unlockedStage as HintStage;
+    const hintText = hints[stage] ?? '';
+    if (!hintText) return;
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setError(null);
+    setAbortedMessage(null);
+    setAskingFollowUp(true);
+    setFollowUpStreamText('');
+    setProgressText('');
+    try {
+      const answer = await askHintFollowUpStream(
+        {
+          stage,
+          ctx: {
+            language: task.language,
+            statementMarkdown: task.statementMarkdown,
+            code,
+            verdict,
+            compileStderr,
+          },
+          hintText,
+          history: followUpHistory,
+          question,
+        },
+        {
+          onProgress: (report) => setProgressText(report.text),
+          onDelta: (textSoFar) => {
+            setProgressText('');
+            setFollowUpStreamText(textSoFar);
+          },
+          signal: controller.signal,
+        },
+      );
+      setFollowUpHistory((prev) => [...prev, { question, answer }]);
+      setFollowUpInput('');
+    } catch (err) {
+      if (isGenerationAbortedError(err)) {
+        setAbortedMessage('質問への回答生成を中断しました。');
+      } else {
+        setError(err instanceof Error ? err.message : '質問への回答の生成に失敗しました。');
+      }
+    } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+      setAskingFollowUp(false);
+      setFollowUpStreamText('');
       setProgressText('');
     }
   }
@@ -348,6 +420,87 @@ export function HintPanel({
           );
         })}
       </div>
+
+      {unlockedStage > 0 && verdict !== null && (
+        <div className="mt-3 border-t border-mp-border pt-3">
+          <div className="mb-1.5 flex items-center justify-between gap-2 text-xs">
+            <span className="font-bold text-mp-muted">
+              このヒントについて質問する（最大 {MAX_FOLLOW_UP_TURNS} 往復・{MAX_FOLLOW_UP_QUESTION_CHARS} 文字以内）
+            </span>
+            <span className="shrink-0 text-mp-muted">残り {remainingFollowUps} 往復</span>
+          </div>
+
+          {followUpHistory.length > 0 && (
+            <div className="mb-2 space-y-1.5">
+              {followUpHistory.map((turn, idx) => (
+                <div
+                  key={idx}
+                  className="rounded border border-mp-border bg-mp-surface p-2 text-xs"
+                >
+                  <p className="mb-1 font-bold text-mp-fg">Q: {turn.question}</p>
+                  <p className="whitespace-pre-wrap text-mp-fg">A: {turn.answer}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {askingFollowUp && progressText && (
+            <p className="mb-1 text-xs text-mp-muted">{progressText}</p>
+          )}
+          {askingFollowUp && followUpStreamText && (
+            <div className="mb-2 rounded border border-mp-cyan/30 bg-mp-cyan/5 p-2 text-xs">
+              <p className="mb-1 font-bold text-mp-cyan">回答（生成中）</p>
+              <p className="whitespace-pre-wrap text-mp-fg">{followUpStreamText}</p>
+            </div>
+          )}
+
+          {remainingFollowUps > 0 ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void handleAskFollowUp();
+              }}
+              className="flex items-center gap-1.5"
+            >
+              <input
+                type="text"
+                maxLength={MAX_FOLLOW_UP_QUESTION_CHARS}
+                value={followUpInput}
+                onChange={(e) => setFollowUpInput(e.target.value)}
+                disabled={busy}
+                aria-label="このヒントについての質問"
+                placeholder="例: 境界条件とは具体的にどういう意味ですか？"
+                className="min-w-0 flex-1 rounded border border-mp-border bg-mp-surface px-2 py-1 text-xs text-mp-fg disabled:opacity-50"
+              />
+              <span className="shrink-0 text-[11px] text-mp-muted">
+                {followUpInput.length}/{MAX_FOLLOW_UP_QUESTION_CHARS}
+              </span>
+              {askingFollowUp ? (
+                <button
+                  type="button"
+                  onClick={handleAbort}
+                  className="shrink-0 rounded border border-mp-red/50 bg-mp-surface px-2 py-1 text-xs font-bold text-mp-red hover:bg-mp-red hover:text-mp-btn-fg"
+                >
+                  中断
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={busy || followUpInput.trim() === ''}
+                  className="shrink-0 rounded bg-mp-cyan px-2.5 py-1 text-xs font-bold text-mp-btn-fg hover:opacity-90 disabled:opacity-40"
+                >
+                  質問する
+                </button>
+              )}
+            </form>
+          ) : (
+            <p className="text-xs text-mp-muted">
+              質問の上限（{MAX_FOLLOW_UP_TURNS}往復）に達しました。
+            </p>
+          )}
+        </div>
+      )}
+
       {abortedMessage && <p className="mt-2 text-xs text-mp-muted">{abortedMessage}</p>}
       {error && <p className="mt-2 text-xs text-mp-red">{error}</p>}
     </div>
